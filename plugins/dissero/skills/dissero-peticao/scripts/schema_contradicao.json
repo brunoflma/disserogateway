@@ -1,0 +1,83 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "dsr:contradicao:v1",
+  "title": "Contrato de contradicao entre pecas Dissero v1 - dois lastros literais conferidos",
+  "description": "O schema cobre FORMA e so isso. As regras que decidem se a contradicao pode ser AFIRMADA vivem em contradicao_contract.validar_regras: contagem exata de lados, evidence_id distintos, conferencia do sha256, existencia do evidence_id no CONFERENCIA.json, casamento verbatim do trecho e derivacao do status. Nao e escolha de estilo: o validador da casa (schema_mini.py) implementa apenas $ref, const, enum, type, minLength, required, additionalProperties e items - minItems/maxItems seriam IGNORADOS EM SILENCIO, e uma regra que parece estar no schema e nao esta e pior do que regra nenhuma.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "contradicoes"],
+  "properties": {
+    "schema_version": { "const": "dsr.contradicao.v1" },
+    "caso": { "type": "string" },
+    "gerado_em": { "type": "string" },
+    "conferencia": {
+      "type": ["string", "null"],
+      "description": "Caminho do CONFERENCIA.json (dsr.conferencia.v1) contra o qual os lastros foram conferidos. Campo informativo: quem confere e o validador, que recebe o dataset da conferencia carregado."
+    },
+    "contradicoes": { "type": "array", "items": { "$ref": "#/definitions/contradicao" } }
+  },
+  "definitions": {
+    "contradicao": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "afirmada_por", "tese", "status", "lados"],
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Identificador do registro dentro do dataset. minLength 1 de proposito: nao ha base medida para exigir tamanho maior, entao o schema so proibe o vazio."
+        },
+        "afirmada_por": {
+          "enum": ["modelo", "advogado"],
+          "description": "Quem afirmou a contradicao. Registro de autoria, nao de peso: o contrato NAO da desconto ao advogado - lastro e lastro."
+        },
+        "tese": {
+          "type": "string",
+          "minLength": 1,
+          "description": "TEXTO LIVRE. O que o afirmante sustenta que se contradiz. O validador NUNCA le este campo para decidir coisa alguma - se ha contradicao e juizo humano."
+        },
+        "status": {
+          "enum": ["lastreada", "inconclusiva"],
+          "description": "DERIVADO por contradicao_contract.derivar_status, nunca aceito como declarado. Sem CONFERENCIA.json o derivado e sempre 'inconclusiva' - falha fechado."
+        },
+        "lados": {
+          "type": "array",
+          "items": { "$ref": "#/definitions/lado" },
+          "description": "Exatamente DOIS. A contagem e verificada em codigo (ver descricao do schema)."
+        }
+      }
+    },
+    "lado": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["peca", "doc_id", "evidence_id", "trecho_literal", "sha256_trecho"],
+      "properties": {
+        "peca": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Rotulo livre da peca, para o advogado ler ('inicial', 'contestacao'). O codigo NAO confere o rotulo; o que ele confere e o doc_id, que e conteudo."
+        },
+        "doc_id": {
+          "type": "string",
+          "minLength": 6,
+          "description": "doc_id do documento no CONFERENCIA.json (12 hex do sha256 do arquivo). minLength 6 espelha schema_conferencia.json - nao e numero novo."
+        },
+        "evidence_id": {
+          "type": "string",
+          "minLength": 12,
+          "description": "evidence_id do trecho lido no CONFERENCIA.json. minLength 12 espelha schema_conferencia.json - nao e numero novo."
+        },
+        "trecho_literal": {
+          "type": "string",
+          "minLength": 1,
+          "description": "A citacao literal deste lado. Os DOIS limiares que decidem se ela pode ser lastro nao estao aqui, e sao regra de codigo porque herdam os defaults de confere_transcricao: MINIMO_CONFERIVEL (25) e o piso do TOTAL normalizado, e MINIMO_PARTE_CONFERIVEL (12) e o piso de CADA parte separada por elipse ([...], (...), ...) - parte abaixo desse piso e ignorada na comparacao. Os dois mudam o veredito da MESMA citacao, os dois sao parametro de todas as funcoes publicas e os dois tem opcao de linha de comando (--minimo, --minimo-parte). O schema so mede tamanho porque minLength e o unico limite que schema_mini.py sabe aplicar; o resto seria regra que parece existir e nao existe."
+        },
+        "sha256_trecho": {
+          "type": "string",
+          "minLength": 64,
+          "description": "SHA-256 do proprio trecho_literal (64 hex e o tamanho exato do digest, nao um limiar arbitrario). Prova que a citacao nao foi editada depois de registrada; quem prova que ela esta no documento e a conferencia verbatim."
+        }
+      }
+    }
+  }
+}

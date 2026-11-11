@@ -1,0 +1,256 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "dsr:pseudonimizacao:local:v1",
+  "title": "Relatorio da camada local de pseudonimizacao Dissero v1",
+  "description": "Relatorio da camada local de pseudonimizacao. `pseudonimizar_local.validar_relatorio()` valida contra este schema e a CLI confere a propria saida antes de gravar; com `additionalProperties: false`, todo campo emitido tem de estar declarado aqui. As consts `desclassifica_sigilo` false, `revisao_humana_obrigatoria` true e `cobertura_total_garantida` false NAO sao configuracao: sao o que a camada promete nunca fazer.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "experimental",
+    "sigiloso_entrada",
+    "sigiloso_saida",
+    "desclassifica_sigilo",
+    "revisao_humana_obrigatoria",
+    "cobertura_total_garantida",
+    "nao_coberto",
+    "aviso",
+    "sha256_original",
+    "sha256_sanitizado",
+    "texto_sanitizado",
+    "mapping",
+    "ner_descartados",
+    "incerteza",
+    "total",
+    "total_entidades_distintas",
+    "total_digito_invalido",
+    "mascara_digito_invalido",
+    "prompt_injection",
+    "suprimidos_por_zona",
+    "auditoria_residual"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": "dsr.pseudonimizacao.local.v1"
+    },
+    "experimental": {
+      "const": true,
+      "description": "A camada e experimental e o artefato o declara. Sair do estado experimental e subir a versao do contrato, nao virar este booleano."
+    },
+    "sigiloso_entrada": {
+      "type": "boolean"
+    },
+    "sigiloso_saida": {
+      "type": "boolean"
+    },
+    "desclassifica_sigilo": {
+      "const": false,
+      "description": "Mascarar NUNCA rebaixa a classificacao. Documento sigiloso mascarado segue sigiloso."
+    },
+    "revisao_humana_obrigatoria": {
+      "const": true
+    },
+    "cobertura_total_garantida": {
+      "const": false,
+      "description": "A cobertura nao e total; `nao_coberto` diz onde ela termina."
+    },
+    "nao_coberto": {
+      "type": "array",
+      "description": "O que esta camada NAO mascara, por extenso e no proprio artefato. Obrigatorio: quem recebe um texto cheio de [CPF_1] le 'anonimizado', e o nome que nem o NER nem a heuristica de nome acharam continua inteiro no meio. A diferenca entre mascarado e anonimo nao pode depender de quem le ter lido a documentacao certa. test_pseudonimizar_cobertura.py confere que a lista e a medicao concordam."
+    },
+    "aviso": {
+      "type": "string",
+      "minLength": 1,
+      "description": "MASCARADO NAO E ANONIMO, dito de forma que nao dependa de ninguem abrir a lista."
+    },
+    "sha256_original": {
+      "type": "string",
+      "minLength": 64
+    },
+    "sha256_sanitizado": {
+      "type": "string",
+      "minLength": 64
+    },
+    "texto_sanitizado": {
+      "type": "string",
+      "description": "O texto com os marcadores no lugar dos identificadores."
+    },
+    "mapping": {
+      "type": "array"
+    },
+    "ner_descartados": {
+      "type": "array"
+    },
+    "incerteza": {
+      "type": "boolean"
+    },
+    "total": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "total_digito_invalido": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "Quantos foram mascarados SEM o digito verificador conferir. 'Mascarei 7' e 'mascarei 7, dos quais 2 nao pude validar' sao declaracoes diferentes, e quem decide sobre sigilo tem direito a segunda."
+    },
+    "mascara_digito_invalido": {
+      "type": "boolean",
+      "description": "Se a regra de mascarar identificador FORMATADO com digito invalido estava ligada nesta execucao. Padrao ligado; desliga por DSR_PSEUDONIMIZACAO_SEM_DIGITO_INVALIDO."
+    },
+    "prompt_injection": {
+      "type": "object"
+    },
+    "total_entidades_distintas": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "Quantas ENTIDADES distintas foram mascaradas; `total` conta ocorrencias. O mesmo valor repetido recebe o mesmo marcador."
+    },
+    "suprimidos_por_zona": {
+      "type": "array",
+      "description": "Candidatos que a detecção viu e uma zona protegida barrou. Zona que engole identificador de verdade é VAZAMENTO, então nada aqui é silencioso. O valor sai por hash curto, nunca cru.",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "tipo",
+          "zona",
+          "inicio",
+          "fim",
+          "valor_sha256_12",
+          "origem"
+        ],
+        "properties": {
+          "tipo": {
+            "type": "string"
+          },
+          "zona": {
+            "type": "string"
+          },
+          "inicio": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "fim": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "valor_sha256_12": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{12}$"
+          },
+          "origem": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "estrategia": {
+      "enum": [
+        "marcador",
+        "parcial",
+        "total"
+      ]
+    },
+    "mascarar_locais": {
+      "type": "boolean"
+    },
+    "excecoes_aplicadas": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "mapping_base_sha256": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "ner_fonte": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "ner_meta": {
+      "type": [
+        "object",
+        "null"
+      ]
+    },
+    "revisao": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "total_padrao_sem_dv": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "heuristica_nome": {
+      "type": "boolean"
+    },
+    "total_heuristica_nome": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "partes_informadas": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "Quantas pessoas a lista de partes do advogado (--partes) declarou. So a contagem; o nome fica no mapping, na raiz local segura."
+    },
+    "partes_sem_ocorrencia": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "Pessoas declaradas que nao apareceram no texto em nenhuma grafia: grafia diferente da declarada, ou a pessoa nao esta nesta peca. Pede olhada."
+    },
+    "total_lista_de_partes": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "Ocorrencias mascaradas pela lista de partes (origem lista_de_partes). Uma pessoa, um rotulo, qualquer grafia."
+    },
+    "auditoria_residual": {
+      "type": "object",
+      "description": "Segunda passada sobre o texto JA mascarado: todo detector de identificador e cada valor mapeado (sem caixa, sem acento, tolerando espaco e quebra). So tipo e contagem, NUNCA o valor. Sem `aprovada: true` a CLI nao grava o derivado, e ele nao pode sair para servico externo.",
+      "additionalProperties": false,
+      "required": [
+        "aprovada",
+        "codigo",
+        "total_residuos",
+        "por_tipo",
+        "valores_conferidos"
+      ],
+      "properties": {
+        "aprovada": {
+          "type": "boolean"
+        },
+        "codigo": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "total_residuos": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 0
+        },
+        "por_tipo": {
+          "type": "object"
+        },
+        "valores_conferidos": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "possiveis_por_tipo": {
+          "type": "object",
+          "description": "Nome de PESSOA ou LOCAL de uma palavra so que reaparece em minuscula ou como parte de outro nome (\"15 dias\", \"Sao Paulo\"): nao reprova, so e contado para a revisao humana. Nunca o valor."
+        },
+        "erro": {
+          "type": "string"
+        }
+      }
+    }
+  }
+}

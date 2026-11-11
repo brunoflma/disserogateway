@@ -1,0 +1,495 @@
+{
+  "schema": "dsr.squad.catalogo.v1",
+  "squads": [
+    {
+      "id": "peca-criminal-defesa",
+      "titulo": "Defesa criminal",
+      "area": "criminal",
+      "tipo_entrega": "peca",
+      "etapas": ["foco", "memoria", "pesquisa", "estrategia", "redacao", "minuta", "revisao", "final", "checklist_externo"],
+      "checkpoints": ["foco", "memoria", "estrategia", "minuta", "final"],
+      "oficios": [
+        {"id": "leitor-autos", "titulo": "Leitor de fatia dos autos", "model": "sonnet", "camada": "leitor"},
+        {"id": "fatos", "titulo": "Fatos e cronologia", "model": "opus", "camada": "especialista"},
+        {"id": "teses", "titulo": "Teses de defesa", "model": "opus", "camada": "especialista", "roteiros": ["acervo/agentes/25-defesa-criminal-resposta-acusacao.md", "acervo/agentes/26-alegacoes-finais-criminal.md", "acervo/agentes/27-habeas-corpus.md", "acervo/agentes/28-apelacao-criminal.md", "acervo/agentes/29-revisao-criminal.md"]},
+        {"id": "precedentes", "titulo": "Precedentes", "model": "opus", "camada": "especialista"},
+        {"id": "prova", "titulo": "Prova e nulidades", "model": "opus", "camada": "especialista"},
+        {"id": "dosimetria", "titulo": "Dosimetria e regime", "model": "opus", "camada": "especialista"}
+      ]
+    },
+    {
+      "id": "peca-civel-contencioso",
+      "titulo": "Contencioso civel",
+      "area": "civel",
+      "tipo_entrega": "peca",
+      "etapas": ["foco", "memoria", "pesquisa", "estrategia", "redacao", "minuta", "revisao", "final", "checklist_externo"],
+      "checkpoints": ["foco", "memoria", "estrategia", "minuta", "final"],
+      "oficios": [
+        {"id": "leitor-autos", "titulo": "Leitor de fatia dos autos", "model": "sonnet", "camada": "leitor"},
+        {"id": "fatos", "titulo": "Fatos e cronologia", "model": "opus", "camada": "especialista"},
+        {"id": "teses", "titulo": "Teses da causa", "model": "opus", "camada": "especialista", "roteiros": ["acervo/agentes/01-peticao-inicial-civel.md", "acervo/agentes/02-contestacao-civel.md", "acervo/agentes/03-apelacao-civel.md", "acervo/agentes/04-agravo-instrumento.md", "acervo/agentes/05-embargos-declaracao.md", "acervo/agentes/07-acao-indenizacao-danos-morais.md", "acervo/agentes/08-acao-indenizacao-danos-materiais.md", "acervo/agentes/10-acao-rescisoria.md"]},
+        {"id": "precedentes", "titulo": "Precedentes", "model": "opus", "camada": "especialista"},
+        {"id": "prova", "titulo": "Prova e onus", "model": "opus", "camada": "especialista"},
+        {"id": "valor-da-causa", "titulo": "Valor da causa e liquidacao", "model": "opus", "camada": "especialista"}
+      ]
+    },
+    {
+      "id": "peca-trabalhista",
+      "titulo": "Contencioso trabalhista",
+      "area": "trabalhista",
+      "tipo_entrega": "peca",
+      "etapas": ["foco", "memoria", "pesquisa", "estrategia", "redacao", "minuta", "revisao", "final", "checklist_externo"],
+      "checkpoints": ["foco", "memoria", "estrategia", "minuta", "final"],
+      "oficios": [
+        {"id": "leitor-autos", "titulo": "Leitor de fatia dos autos", "model": "sonnet", "camada": "leitor"},
+        {"id": "fatos", "titulo": "Fatos e cronologia", "model": "opus", "camada": "especialista"},
+        {"id": "teses", "titulo": "Teses da reclamatoria", "model": "opus", "camada": "especialista", "roteiros": ["acervo/agentes/11-reclamacao-trabalhista-inicial.md", "acervo/agentes/12-defesa-trabalhista-empregador.md", "acervo/agentes/15-recurso-ordinario-trt.md", "acervo/agentes/16-recurso-revista-tst.md"]},
+        {"id": "precedentes", "titulo": "Precedentes", "model": "opus", "camada": "especialista"},
+        {"id": "prova", "titulo": "Prova e onus", "model": "opus", "camada": "especialista"},
+        {"id": "verbas", "titulo": "Verbas e calculos", "model": "opus", "camada": "especialista", "roteiros": ["acervo/agentes/13-calculo-verbas-rescisorias.md", "acervo/agentes/14-calculo-horas-extras.md"]}
+      ]
+    },
+    {
+      "id": "peca-administrativo-licitacoes",
+      "titulo": "Administrativo e licitacoes",
+      "area": "administrativo-licitacoes",
+      "tipo_entrega": "peca",
+      "etapas": ["foco", "memoria", "pesquisa", "estrategia", "redacao", "minuta", "revisao", "final", "checklist_externo"],
+      "checkpoints": ["foco", "memoria", "estrategia", "minuta", "final"],
+      "oficios": [
+        {"id": "leitor-autos", "titulo": "Leitor de fatia dos autos", "model": "sonnet", "camada": "leitor"},
+        {"id": "fatos", "titulo": "Fatos e cronologia", "model": "opus", "camada": "especialista"},
+        {"id": "teses", "titulo": "Teses da causa", "model": "opus", "camada": "especialista"},
+        {"id": "precedentes", "titulo": "Precedentes", "model": "opus", "camada": "especialista"},
+        {"id": "prova", "titulo": "Prova e processo administrativo", "model": "opus", "camada": "especialista"},
+        {"id": "licitacoes-contratos", "titulo": "Licitacao e contrato publico", "model": "opus", "camada": "especialista"},
+        {"id": "controle-do-ato", "titulo": "Ato administrativo e seu controle", "model": "opus", "camada": "especialista", "roteiros": ["acervo/agentes/57-mandado-seguranca.md"]}
+      ]
+    },
+    {
+      "id": "peca-advocacia-publica",
+      "titulo": "Advocacia publica",
+      "area": "advocacia-publica",
+      "tipo_entrega": "peca",
+      "etapas": ["foco", "memoria", "pesquisa", "estrategia", "redacao", "minuta", "revisao", "final", "checklist_externo"],
+      "checkpoints": ["foco", "memoria", "estrategia", "minuta", "final"],
+      "oficios": [
+        {"id": "leitor-autos", "titulo": "Leitor de fatia dos autos", "model": "sonnet", "camada": "leitor"},
+        {"id": "fatos", "titulo": "Fatos e cronologia", "model": "opus", "camada": "especialista"},
+        {"id": "teses", "titulo": "Teses do ente", "model": "opus", "camada": "especialista"},
+        {"id": "precedentes", "titulo": "Precedentes", "model": "opus", "camada": "especialista"},
+        {"id": "prova", "titulo": "Prova e onus", "model": "opus", "camada": "especialista"},
+        {"id": "fazenda-em-juizo", "titulo": "Prerrogativas da Fazenda em juizo", "model": "opus", "camada": "especialista", "roteiros": ["acervo/agentes/57-mandado-seguranca.md"]},
+        {"id": "precatorios", "titulo": "Precatorio, RPV e execucao contra a Fazenda", "model": "opus", "camada": "especialista"}
+      ]
+    },
+    {
+      "id": "peca-aeronautico",
+      "titulo": "Aeronautico",
+      "area": "aeronautico",
+      "tipo_entrega": "peca",
+      "etapas": ["foco", "memoria", "pesquisa", "estrategia", "redacao", "minuta", "revisao", "final", "checklist_externo"],
+      "checkpoints": ["foco", "memoria", "estrategia", "minuta", "final"],
+      "oficios": [
+        {"id": "leitor-autos", "titulo": "Leitor de fatia dos autos", "model": "sonnet", "camada": "leitor"},
+        {"id": "fatos", "titulo": "Fatos e cronologia", "model": "opus", "camada": "especialista"},
+        {"id": "teses", "titulo": "Teses da causa", "model": "opus", "camada": "especialista"},
+        {"id": "precedentes", "titulo": "Precedentes", "model": "opus", "camada": "especialista"},
+        {"id": "prova", "titulo": "Prova e onus", "model": "opus", "camada": "especialista"},
+        {"id": "regime-aeronautico", "titulo": "CBA, convencoes e regulacao da ANAC", "model": "opus", "camada": "especialista"},
+        {"id": "danos", "titulo": "Danos e indenizacao no transporte aereo", "model": "opus", "camada": "especialista"}
+      ]
+    },
+    {
+      "id": "peca-agrario",
+      "titulo": "Agrario e agronegocio",
+      "area": "agrario",
+      "tipo_entrega": "peca",
+      "etapas": ["foco", "memoria", "pesquisa", "estrategia", "redacao", "minuta", "revisao", "final", "checklist_externo"],
+      "checkpoints": ["foco", "memoria", "estrategia", "minuta", "final"],
+      "oficios": [
+        {"id": "leitor-autos", "titulo": "Leitor de fatia dos autos", "model": "sonnet", "camada": "leitor"},
+        {"id": "fatos", "titulo": "Fatos e cronologia", "model": "opus", "camada": "especialista"},
+        {"id": "teses", "titulo": "Teses da causa", "model": "opus", "camada": "especialista"},
+        {"id": "precedentes", "titulo": "Precedentes", "model": "opus", "camada": "especialista"},
+        {"id": "prova", "titulo": "Prova e onus", "model": "opus", "camada": "especialista"},
+        {"id": "contratos-agrarios", "titulo": "Contratos agrarios e credito rural", "model": "opus", "camada": "especialista"},
+        {"id": "terra-rural", "titulo": "Posse, registro e regularizacao rural", "model": "opus", "camada": "especialista"}
+      ]
+    },
+    {
+      "id": "peca-ambiental",
+      "titulo": "Ambiental",
+      "area": "ambiental",
+      "tipo_entrega": "peca",
+      "etapas": ["foco", "memoria", "pesquisa", "estrategia", "redacao", "minuta", "revisao", "final", "checklist_externo"],
+      "checkpoints": ["foco", "memoria", "estrategia", "minuta", "final"],
+      "oficios": [
+        {"id": "leitor-autos", "titulo": "Leitor de fatia dos autos", "model": "sonnet", "camada": "leitor"},
+        {"id": "fatos", "titulo": "Fatos e cronologia", "model": "opus", "camada": "especialista"},
+        {"id": "teses", "titulo": "Teses da causa", "model": "opus", "camada": "especialista"},
+        {"id": "precedentes", "titulo": "Precedentes", "model": "opus", "camada": "especialista"},
+        {"id": "prova", "titulo": "Prova tecnica e onus", "model": "opus", "camada": "especialista"},
+        {"id": "tres-esferas", "titulo": "Responsabilidade civil, administrativa e penal ambiental", "model": "opus", "camada": "especialista"},
+        {"id": "licenciamento", "titulo": "Licenciamento e regime florestal", "model": "opus", "camada": "especialista", "roteiros": ["acervo/agentes/57-mandado-seguranca.md"]}
+      ]
+    },
+    {
+      "id": "peca-bancario",
+      "titulo": "Bancario e credito",
+      "area": "bancario",
+      "tipo_entrega": "peca",
+      "etapas": ["foco", "memoria", "pesquisa", "estrategia", "redacao", "minuta", "revisao", "final", "checklist_externo"],
+      "checkpoints": ["foco", "memoria", "estrategia", "minuta", "final"],
+      "oficios": [
+        {"id": "leitor-autos", "titulo": "Leitor de fatia dos autos", "model": "sonnet", "camada": "leitor"},
+        {"id": "fatos", "titulo": "Fatos e cronologia", "model": "opus", "camada": "especialista"},
+        {"id": "teses", "titulo": "Teses da causa", "model": "opus", "camada": "especialista"},
+        {"id": "precedentes", "titulo": "Precedentes", "model": "opus", "camada": "especialista"},
+        {"id": "prova", "titulo": "Prova e onus", "model": "opus", "camada": "especialista"},
+        {"id": "contrato-bancario", "titulo": "Contrato bancario, juros e garantias", "model": "opus", "camada": "especialista", "roteiros": ["acervo/agentes/06-acao-cobranca.md", "acervo/agentes/09-acao-revisional-contrato.md"]},
+        {"id": "calculo-bancario", "titulo": "Calculo, revisao e liquidacao", "model": "opus", "camada": "especialista", "roteiros": ["acervo/agentes/52-cumprimento-sentenca.md", "acervo/agentes/53-impugnacao-cumprimento-sentenca.md", "acervo/agentes/54-calculo-judicial-atualizacao.md"]}
+      ]
+    },
+    {
+      "id": "peca-consumidor",
+      "titulo": "Consumidor",
+      "area": "consumidor",
+      "tipo_entrega": "peca",
+      "etapas": ["foco", "memoria", "pesquisa", "estrategia", "redacao", "minuta", "revisao", "final", "checklist_externo"],
+      "checkpoints": ["foco", "memoria", "estrategia", "minuta", "final"],
+      "oficios": [
+        {"id": "leitor-autos", "titulo": "Leitor de fatia dos autos", "model": "sonnet", "camada": "leitor"},
+        {"id": "fatos", "titulo": "Fatos e cronologia", "model": "opus", "camada": "especialista"},
+        {"id": "teses", "titulo": "Teses da causa", "model": "opus", "camada": "especialista"},
+        {"id": "precedentes", "titulo": "Precedentes", "model": "opus", "camada": "especialista"},
+        {"id": "prova", "titulo": "Prova e inversao do onus", "model": "opus", "camada": "especialista"},
+        {"id": "relacao-de-consumo", "titulo": "Relacao de consumo e responsabilidade do fornecedor", "model": "opus", "camada": "especialista", "roteiros": ["acervo/agentes/40-acao-consumidor-procon.md", "acervo/agentes/41-acao-cdc-pratica-abusiva.md", "acervo/agentes/42-acao-vicio-produto-servico.md"]},
+        {"id": "danos-e-juizado", "titulo": "Danos e rito do Juizado Especial", "model": "opus", "camada": "especialista"}
+      ]
+    },
+    {
+      "id": "peca-desportivo",
+      "titulo": "Desportivo",
+      "area": "desportivo",
+      "tipo_entrega": "peca",
+      "etapas": ["foco", "memoria", "pesquisa", "estrategia", "redacao", "minuta", "revisao", "final", "checklist_externo"],
+      "checkpoints": ["foco", "memoria", "estrategia", "minuta", "final"],
+      "oficios": [
+        {"id": "leitor-autos", "titulo": "Leitor de fatia dos autos", "model": "sonnet", "camada": "leitor"},
+        {"id": "fatos", "titulo": "Fatos e cronologia", "model": "opus", "camada": "especialista"},
+        {"id": "teses", "titulo": "Teses da causa", "model": "opus", "camada": "especialista"},
+        {"id": "precedentes", "titulo": "Precedentes", "model": "opus", "camada": "especialista"},
+        {"id": "prova", "titulo": "Prova e onus", "model": "opus", "camada": "especialista"},
+        {"id": "justica-desportiva", "titulo": "Justica Desportiva e antidopagem", "model": "opus", "camada": "especialista"},
+        {"id": "atleta-e-clube", "titulo": "Contrato do atleta, imagem e clubes", "model": "opus", "camada": "especialista"}
+      ]
+    },
+    {
+      "id": "peca-digital-lgpd",
+      "titulo": "Digital e protecao de dados",
+      "area": "digital-lgpd",
+      "tipo_entrega": "peca",
+      "etapas": ["foco", "memoria", "pesquisa", "estrategia", "redacao", "minuta", "revisao", "final", "checklist_externo"],
+      "checkpoints": ["foco", "memoria", "estrategia", "minuta", "final"],
+      "oficios": [
+        {"id": "leitor-autos", "titulo": "Leitor de fatia dos autos", "model": "sonnet", "camada": "leitor"},
+        {"id": "fatos", "titulo": "Fatos e cronologia", "model": "opus", "camada": "especialista"},
+        {"id": "teses", "titulo": "Teses da causa", "model": "opus", "camada": "especialista"},
+        {"id": "precedentes", "titulo": "Precedentes", "model": "opus", "camada": "especialista"},
+        {"id": "prova", "titulo": "Prova e onus", "model": "opus", "camada": "especialista"},
+        {"id": "protecao-de-dados", "titulo": "LGPD e sancionador da ANPD", "model": "opus", "camada": "especialista"},
+        {"id": "prova-digital", "titulo": "Prova digital, plataformas e remocao de conteudo", "model": "opus", "camada": "especialista"}
+      ]
+    },
+    {
+      "id": "peca-eleitoral",
+      "titulo": "Eleitoral e partidario",
+      "area": "eleitoral",
+      "tipo_entrega": "peca",
+      "etapas": ["foco", "memoria", "pesquisa", "estrategia", "redacao", "minuta", "revisao", "final", "checklist_externo"],
+      "checkpoints": ["foco", "memoria", "estrategia", "minuta", "final"],
+      "oficios": [
+        {"id": "leitor-autos", "titulo": "Leitor de fatia dos autos", "model": "sonnet", "camada": "leitor"},
+        {"id": "fatos", "titulo": "Fatos e cronologia", "model": "opus", "camada": "especialista"},
+        {"id": "teses", "titulo": "Teses da causa", "model": "opus", "camada": "especialista"},
+        {"id": "precedentes", "titulo": "Precedentes", "model": "opus", "camada": "especialista"},
+        {"id": "prova", "titulo": "Prova e onus", "model": "opus", "camada": "especialista"},
+        {"id": "registro-e-elegibilidade", "titulo": "Registro, elegibilidade e acoes eleitorais", "model": "opus", "camada": "especialista", "roteiros": ["acervo/agentes/57-mandado-seguranca.md"]},
+        {"id": "propaganda-e-contas", "titulo": "Propaganda, condutas vedadas e contas", "model": "opus", "camada": "especialista"}
+      ]
+    },
+    {
+      "id": "peca-empresarial-recuperacao",
+      "titulo": "Empresarial e recuperacao",
+      "area": "empresarial-recuperacao",
+      "tipo_entrega": "peca",
+      "etapas": ["foco", "memoria", "pesquisa", "estrategia", "redacao", "minuta", "revisao", "final", "checklist_externo"],
+      "checkpoints": ["foco", "memoria", "estrategia", "minuta", "final"],
+      "oficios": [
+        {"id": "leitor-autos", "titulo": "Leitor de fatia dos autos", "model": "sonnet", "camada": "leitor"},
+        {"id": "fatos", "titulo": "Fatos e cronologia", "model": "opus", "camada": "especialista"},
+        {"id": "teses", "titulo": "Teses da causa", "model": "opus", "camada": "especialista"},
+        {"id": "precedentes", "titulo": "Precedentes", "model": "opus", "camada": "especialista"},
+        {"id": "prova", "titulo": "Prova e onus", "model": "opus", "camada": "especialista"},
+        {"id": "insolvencia", "titulo": "Recuperacao judicial, falencia e creditos", "model": "opus", "camada": "especialista", "roteiros": ["acervo/agentes/35-recuperacao-judicial-empresarial.md", "acervo/agentes/36-falencia-pedido.md"]},
+        {"id": "contratos-empresariais", "titulo": "Contratos empresariais", "model": "opus", "camada": "especialista"}
+      ]
+    },
+    {
+      "id": "peca-etica-oab",
+      "titulo": "Etica e prerrogativas da advocacia",
+      "area": "etica-oab",
+      "tipo_entrega": "peca",
+      "etapas": ["foco", "memoria", "pesquisa", "estrategia", "redacao", "minuta", "revisao", "final", "checklist_externo"],
+      "checkpoints": ["foco", "memoria", "estrategia", "minuta", "final"],
+      "oficios": [
+        {"id": "leitor-autos", "titulo": "Leitor de fatia dos autos", "model": "sonnet", "camada": "leitor"},
+        {"id": "fatos", "titulo": "Fatos e cronologia", "model": "opus", "camada": "especialista"},
+        {"id": "teses", "titulo": "Teses de defesa ou representacao", "model": "opus", "camada": "especialista"},
+        {"id": "precedentes", "titulo": "Precedentes", "model": "opus", "camada": "especialista"},
+        {"id": "prova", "titulo": "Prova e onus", "model": "opus", "camada": "especialista"},
+        {"id": "processo-disciplinar", "titulo": "Processo disciplinar, sancoes e prescricao", "model": "opus", "camada": "especialista"},
+        {"id": "prerrogativas-honorarios", "titulo": "Prerrogativas e honorarios", "model": "opus", "camada": "especialista"}
+      ]
+    },
+    {
+      "id": "peca-execucao-cobranca",
+      "titulo": "Execucao e cobranca",
+      "area": "execucao-cobranca",
+      "tipo_entrega": "peca",
+      "etapas": ["foco", "memoria", "pesquisa", "estrategia", "redacao", "minuta", "revisao", "final", "checklist_externo"],
+      "checkpoints": ["foco", "memoria", "estrategia", "minuta", "final"],
+      "oficios": [
+        {"id": "leitor-autos", "titulo": "Leitor de fatia dos autos", "model": "sonnet", "camada": "leitor"},
+        {"id": "fatos", "titulo": "Fatos e cronologia", "model": "opus", "camada": "especialista"},
+        {"id": "teses", "titulo": "Teses da causa", "model": "opus", "camada": "especialista"},
+        {"id": "precedentes", "titulo": "Precedentes", "model": "opus", "camada": "especialista"},
+        {"id": "prova", "titulo": "Prova e onus", "model": "opus", "camada": "especialista"},
+        {"id": "titulo-e-execucao", "titulo": "Titulo, cumprimento e defesa do executado", "model": "opus", "camada": "especialista", "roteiros": ["acervo/agentes/06-acao-cobranca.md", "acervo/agentes/52-cumprimento-sentenca.md", "acervo/agentes/53-impugnacao-cumprimento-sentenca.md"]},
+        {"id": "patrimonio-e-calculo", "titulo": "Penhora, expropriacao e calculo", "model": "opus", "camada": "especialista", "roteiros": ["acervo/agentes/54-calculo-judicial-atualizacao.md"]}
+      ]
+    },
+    {
+      "id": "peca-familia-sucessoes",
+      "titulo": "Familia e sucessoes",
+      "area": "familia-sucessoes",
+      "tipo_entrega": "peca",
+      "etapas": ["foco", "memoria", "pesquisa", "estrategia", "redacao", "minuta", "revisao", "final", "checklist_externo"],
+      "checkpoints": ["foco", "memoria", "estrategia", "minuta", "final"],
+      "oficios": [
+        {"id": "leitor-autos", "titulo": "Leitor de fatia dos autos", "model": "sonnet", "camada": "leitor"},
+        {"id": "fatos", "titulo": "Fatos e cronologia", "model": "opus", "camada": "especialista"},
+        {"id": "teses", "titulo": "Teses da causa", "model": "opus", "camada": "especialista"},
+        {"id": "precedentes", "titulo": "Precedentes", "model": "opus", "camada": "especialista"},
+        {"id": "prova", "titulo": "Prova e onus", "model": "opus", "camada": "especialista"},
+        {"id": "familia", "titulo": "Divorcio, uniao estavel, guarda e alimentos", "model": "opus", "camada": "especialista", "roteiros": ["acervo/agentes/17-divorcio-consensual.md", "acervo/agentes/18-divorcio-litigioso.md", "acervo/agentes/19-acao-alimentos.md", "acervo/agentes/23-guarda-compartilhada.md", "acervo/agentes/24-uniao-estavel-reconhecimento.md"]},
+        {"id": "sucessoes", "titulo": "Inventario, partilha e testamento", "model": "opus", "camada": "especialista", "roteiros": ["acervo/agentes/20-inventario-extrajudicial.md", "acervo/agentes/21-inventario-judicial.md", "acervo/agentes/21-inventario-judicial-2.md", "acervo/agentes/22-partilha-bens.md", "acervo/agentes/22-partilha-bens-2.md"]}
+      ]
+    },
+    {
+      "id": "peca-imobiliario",
+      "titulo": "Imobiliario e condominial",
+      "area": "imobiliario",
+      "tipo_entrega": "peca",
+      "etapas": ["foco", "memoria", "pesquisa", "estrategia", "redacao", "minuta", "revisao", "final", "checklist_externo"],
+      "checkpoints": ["foco", "memoria", "estrategia", "minuta", "final"],
+      "oficios": [
+        {"id": "leitor-autos", "titulo": "Leitor de fatia dos autos", "model": "sonnet", "camada": "leitor"},
+        {"id": "fatos", "titulo": "Fatos e cronologia", "model": "opus", "camada": "especialista"},
+        {"id": "teses", "titulo": "Teses da causa", "model": "opus", "camada": "especialista"},
+        {"id": "precedentes", "titulo": "Precedentes", "model": "opus", "camada": "especialista"},
+        {"id": "prova", "titulo": "Prova e onus", "model": "opus", "camada": "especialista"},
+        {"id": "locacao-e-condominio", "titulo": "Locacao e condominio", "model": "opus", "camada": "especialista", "roteiros": ["acervo/agentes/43-acao-despejo.md", "acervo/agentes/44-acao-renovatoria-locacao.md"]},
+        {"id": "posse-e-propriedade", "titulo": "Posse, usucapiao e registro", "model": "opus", "camada": "especialista", "roteiros": ["acervo/agentes/45-usucapiao-extrajudicial.md", "acervo/agentes/46-usucapiao-judicial.md", "acervo/agentes/47-adjudicacao-compulsoria.md"]}
+      ]
+    },
+    {
+      "id": "peca-internacional-imigracao",
+      "titulo": "Internacional e imigracao",
+      "area": "internacional-imigracao",
+      "tipo_entrega": "peca",
+      "etapas": ["foco", "memoria", "pesquisa", "estrategia", "redacao", "minuta", "revisao", "final", "checklist_externo"],
+      "checkpoints": ["foco", "memoria", "estrategia", "minuta", "final"],
+      "oficios": [
+        {"id": "leitor-autos", "titulo": "Leitor de fatia dos autos", "model": "sonnet", "camada": "leitor"},
+        {"id": "fatos", "titulo": "Fatos e cronologia", "model": "opus", "camada": "especialista"},
+        {"id": "teses", "titulo": "Teses da causa", "model": "opus", "camada": "especialista"},
+        {"id": "precedentes", "titulo": "Precedentes", "model": "opus", "camada": "especialista"},
+        {"id": "prova", "titulo": "Prova e documentos estrangeiros", "model": "opus", "camada": "especialista"},
+        {"id": "migracao-e-nacionalidade", "titulo": "Migracao, refugio e nacionalidade", "model": "opus", "camada": "especialista"},
+        {"id": "cooperacao-internacional", "titulo": "Lei aplicavel, cooperacao e Convencao de Haia", "model": "opus", "camada": "especialista"}
+      ]
+    },
+    {
+      "id": "peca-leiloes",
+      "titulo": "Leiloes",
+      "area": "leiloes",
+      "tipo_entrega": "peca",
+      "etapas": ["foco", "memoria", "pesquisa", "estrategia", "redacao", "minuta", "revisao", "final", "checklist_externo"],
+      "checkpoints": ["foco", "memoria", "estrategia", "minuta", "final"],
+      "oficios": [
+        {"id": "leitor-autos", "titulo": "Leitor de fatia dos autos", "model": "sonnet", "camada": "leitor"},
+        {"id": "fatos", "titulo": "Fatos e cronologia", "model": "opus", "camada": "especialista"},
+        {"id": "teses", "titulo": "Teses da causa", "model": "opus", "camada": "especialista"},
+        {"id": "precedentes", "titulo": "Precedentes", "model": "opus", "camada": "especialista"},
+        {"id": "prova", "titulo": "Prova e onus", "model": "opus", "camada": "especialista"},
+        {"id": "edital-e-arrematacao", "titulo": "Edital, arrematacao e posse do bem", "model": "opus", "camada": "especialista"},
+        {"id": "nulidades-do-leilao", "titulo": "Intimacoes, preco vil e nulidades do leilao", "model": "opus", "camada": "especialista"}
+      ]
+    },
+    {
+      "id": "peca-medico-saude",
+      "titulo": "Medico e saude",
+      "area": "medico-saude",
+      "tipo_entrega": "peca",
+      "etapas": ["foco", "memoria", "pesquisa", "estrategia", "redacao", "minuta", "revisao", "final", "checklist_externo"],
+      "checkpoints": ["foco", "memoria", "estrategia", "minuta", "final"],
+      "oficios": [
+        {"id": "leitor-autos", "titulo": "Leitor de fatia dos autos", "model": "sonnet", "camada": "leitor"},
+        {"id": "fatos", "titulo": "Fatos e cronologia", "model": "opus", "camada": "especialista"},
+        {"id": "teses", "titulo": "Teses da causa", "model": "opus", "camada": "especialista"},
+        {"id": "precedentes", "titulo": "Precedentes", "model": "opus", "camada": "especialista"},
+        {"id": "prova", "titulo": "Prova pericial e prontuario", "model": "opus", "camada": "especialista"},
+        {"id": "planos-e-sus", "titulo": "Planos de saude e SUS", "model": "opus", "camada": "especialista"},
+        {"id": "responsabilidade-medica", "titulo": "Responsabilidade medica e processo etico", "model": "opus", "camada": "especialista"}
+      ]
+    },
+    {
+      "id": "peca-militar",
+      "titulo": "Militar",
+      "area": "militar",
+      "tipo_entrega": "peca",
+      "etapas": ["foco", "memoria", "pesquisa", "estrategia", "redacao", "minuta", "revisao", "final", "checklist_externo"],
+      "checkpoints": ["foco", "memoria", "estrategia", "minuta", "final"],
+      "oficios": [
+        {"id": "leitor-autos", "titulo": "Leitor de fatia dos autos", "model": "sonnet", "camada": "leitor"},
+        {"id": "fatos", "titulo": "Fatos e cronologia", "model": "opus", "camada": "especialista"},
+        {"id": "teses", "titulo": "Teses da causa", "model": "opus", "camada": "especialista"},
+        {"id": "precedentes", "titulo": "Precedentes", "model": "opus", "camada": "especialista"},
+        {"id": "prova", "titulo": "Prova e nulidades", "model": "opus", "camada": "especialista"},
+        {"id": "penal-militar", "titulo": "Crime militar e Justica Militar", "model": "opus", "camada": "especialista"},
+        {"id": "estatuto-militar", "titulo": "Disciplina, estatuto e pensao militar", "model": "opus", "camada": "especialista"}
+      ]
+    },
+    {
+      "id": "peca-notarial-registral",
+      "titulo": "Notarial e registral",
+      "area": "notarial-registral",
+      "tipo_entrega": "peca",
+      "etapas": ["foco", "memoria", "pesquisa", "estrategia", "redacao", "minuta", "revisao", "final", "checklist_externo"],
+      "checkpoints": ["foco", "memoria", "estrategia", "minuta", "final"],
+      "oficios": [
+        {"id": "leitor-autos", "titulo": "Leitor de fatia dos autos", "model": "sonnet", "camada": "leitor"},
+        {"id": "fatos", "titulo": "Fatos e cronologia", "model": "opus", "camada": "especialista"},
+        {"id": "teses", "titulo": "Teses do requerimento", "model": "opus", "camada": "especialista"},
+        {"id": "precedentes", "titulo": "Precedentes", "model": "opus", "camada": "especialista"},
+        {"id": "prova", "titulo": "Prova documental e matricula", "model": "opus", "camada": "especialista"},
+        {"id": "qualificacao-registral", "titulo": "Qualificacao registral e duvida", "model": "opus", "camada": "especialista"},
+        {"id": "extrajudicial", "titulo": "Atos notariais e procedimentos extrajudiciais", "model": "opus", "camada": "especialista", "roteiros": ["acervo/agentes/45-usucapiao-extrajudicial.md", "acervo/agentes/20-inventario-extrajudicial.md"]}
+      ]
+    },
+    {
+      "id": "peca-previdenciario",
+      "titulo": "Previdenciario",
+      "area": "previdenciario",
+      "tipo_entrega": "peca",
+      "etapas": ["foco", "memoria", "pesquisa", "estrategia", "redacao", "minuta", "revisao", "final", "checklist_externo"],
+      "checkpoints": ["foco", "memoria", "estrategia", "minuta", "final"],
+      "oficios": [
+        {"id": "leitor-autos", "titulo": "Leitor de fatia dos autos", "model": "sonnet", "camada": "leitor"},
+        {"id": "fatos", "titulo": "Fatos e cronologia", "model": "opus", "camada": "especialista"},
+        {"id": "teses", "titulo": "Teses da causa", "model": "opus", "camada": "especialista"},
+        {"id": "precedentes", "titulo": "Precedentes", "model": "opus", "camada": "especialista"},
+        {"id": "prova", "titulo": "Prova, pericia e tempo de contribuicao", "model": "opus", "camada": "especialista"},
+        {"id": "beneficios", "titulo": "Requisitos do beneficio e regras de transicao", "model": "opus", "camada": "especialista", "roteiros": ["acervo/agentes/48-aposentadoria-tempo-contribuicao.md", "acervo/agentes/49-aposentadoria-especial.md", "acervo/agentes/50-bpc-loas.md", "acervo/agentes/51-auxilio-doenca-recurso.md"]},
+        {"id": "calculo-previdenciario", "titulo": "CNIS, renda mensal e atrasados", "model": "opus", "camada": "especialista"}
+      ]
+    },
+    {
+      "id": "peca-propriedade-intelectual",
+      "titulo": "Propriedade intelectual",
+      "area": "propriedade-intelectual",
+      "tipo_entrega": "peca",
+      "etapas": ["foco", "memoria", "pesquisa", "estrategia", "redacao", "minuta", "revisao", "final", "checklist_externo"],
+      "checkpoints": ["foco", "memoria", "estrategia", "minuta", "final"],
+      "oficios": [
+        {"id": "leitor-autos", "titulo": "Leitor de fatia dos autos", "model": "sonnet", "camada": "leitor"},
+        {"id": "fatos", "titulo": "Fatos e cronologia", "model": "opus", "camada": "especialista"},
+        {"id": "teses", "titulo": "Teses da causa", "model": "opus", "camada": "especialista"},
+        {"id": "precedentes", "titulo": "Precedentes", "model": "opus", "camada": "especialista"},
+        {"id": "prova", "titulo": "Prova tecnica e anterioridade", "model": "opus", "camada": "especialista"},
+        {"id": "propriedade-industrial", "titulo": "Marcas, patentes e concorrencia desleal", "model": "opus", "camada": "especialista"},
+        {"id": "direito-autoral", "titulo": "Direito autoral e software", "model": "opus", "camada": "especialista"}
+      ]
+    },
+    {
+      "id": "peca-recursos-tribunais-superiores",
+      "titulo": "Recursos aos tribunais superiores",
+      "area": "recursos-tribunais-superiores",
+      "tipo_entrega": "peca",
+      "etapas": ["foco", "memoria", "pesquisa", "estrategia", "redacao", "minuta", "revisao", "final", "checklist_externo"],
+      "checkpoints": ["foco", "memoria", "estrategia", "minuta", "final"],
+      "oficios": [
+        {"id": "leitor-autos", "titulo": "Leitor de fatia dos autos", "model": "sonnet", "camada": "leitor"},
+        {"id": "fatos", "titulo": "Fatos e cronologia processual", "model": "opus", "camada": "especialista"},
+        {"id": "teses", "titulo": "Teses do recurso", "model": "opus", "camada": "especialista"},
+        {"id": "precedentes", "titulo": "Precedentes", "model": "opus", "camada": "especialista"},
+        {"id": "prova", "titulo": "Fatos fixados no acordao", "model": "opus", "camada": "especialista"},
+        {"id": "admissibilidade", "titulo": "Admissibilidade, prequestionamento e preparo", "model": "opus", "camada": "especialista"},
+        {"id": "repercussao-e-relevancia", "titulo": "Repercussao geral, relevancia e transcendencia", "model": "opus", "camada": "especialista"}
+      ]
+    },
+    {
+      "id": "peca-seguros",
+      "titulo": "Seguros",
+      "area": "seguros",
+      "tipo_entrega": "peca",
+      "etapas": ["foco", "memoria", "pesquisa", "estrategia", "redacao", "minuta", "revisao", "final", "checklist_externo"],
+      "checkpoints": ["foco", "memoria", "estrategia", "minuta", "final"],
+      "oficios": [
+        {"id": "leitor-autos", "titulo": "Leitor de fatia dos autos", "model": "sonnet", "camada": "leitor"},
+        {"id": "fatos", "titulo": "Fatos e cronologia", "model": "opus", "camada": "especialista"},
+        {"id": "teses", "titulo": "Teses da causa", "model": "opus", "camada": "especialista"},
+        {"id": "precedentes", "titulo": "Precedentes", "model": "opus", "camada": "especialista"},
+        {"id": "prova", "titulo": "Prova e onus", "model": "opus", "camada": "especialista"},
+        {"id": "contrato-de-seguro", "titulo": "Contrato de seguro e marco legal", "model": "opus", "camada": "especialista"},
+        {"id": "sinistro", "titulo": "Sinistro, regulacao e indenizacao", "model": "opus", "camada": "especialista"}
+      ]
+    },
+    {
+      "id": "peca-transito",
+      "titulo": "Transito",
+      "area": "transito",
+      "tipo_entrega": "peca",
+      "etapas": ["foco", "memoria", "pesquisa", "estrategia", "redacao", "minuta", "revisao", "final", "checklist_externo"],
+      "checkpoints": ["foco", "memoria", "estrategia", "minuta", "final"],
+      "oficios": [
+        {"id": "leitor-autos", "titulo": "Leitor de fatia dos autos", "model": "sonnet", "camada": "leitor"},
+        {"id": "fatos", "titulo": "Fatos e cronologia", "model": "opus", "camada": "especialista"},
+        {"id": "teses", "titulo": "Teses da causa", "model": "opus", "camada": "especialista"},
+        {"id": "precedentes", "titulo": "Precedentes", "model": "opus", "camada": "especialista"},
+        {"id": "prova", "titulo": "Prova e onus", "model": "opus", "camada": "especialista"},
+        {"id": "autuacao-e-cnh", "titulo": "Autuacao, recurso administrativo e CNH", "model": "opus", "camada": "especialista", "roteiros": ["acervo/agentes/57-mandado-seguranca.md"]},
+        {"id": "acidente", "titulo": "Acidente, responsabilidade e seguro obrigatorio", "model": "opus", "camada": "especialista"}
+      ]
+    },
+    {
+      "id": "peca-tributario-societario",
+      "titulo": "Tributario e societario",
+      "area": "tributario-societario",
+      "tipo_entrega": "peca",
+      "etapas": ["foco", "memoria", "pesquisa", "estrategia", "redacao", "minuta", "revisao", "final", "checklist_externo"],
+      "checkpoints": ["foco", "memoria", "estrategia", "minuta", "final"],
+      "oficios": [
+        {"id": "leitor-autos", "titulo": "Leitor de fatia dos autos", "model": "sonnet", "camada": "leitor"},
+        {"id": "fatos", "titulo": "Fatos e cronologia", "model": "opus", "camada": "especialista"},
+        {"id": "teses", "titulo": "Teses da causa", "model": "opus", "camada": "especialista"},
+        {"id": "precedentes", "titulo": "Precedentes", "model": "opus", "camada": "especialista"},
+        {"id": "prova", "titulo": "Prova e processo administrativo fiscal", "model": "opus", "camada": "especialista"},
+        {"id": "credito-tributario", "titulo": "Credito tributario, execucao fiscal e acoes do contribuinte", "model": "opus", "camada": "especialista", "roteiros": ["acervo/agentes/30-mandado-seguranca-tributario.md", "acervo/agentes/31-acao-anulatoria-debito-fiscal.md", "acervo/agentes/32-embargos-execucao-fiscal.md", "acervo/agentes/33-excecao-pre-executividade.md", "acervo/agentes/34-recuperacao-tributaria-judicial.md"]},
+        {"id": "societario", "titulo": "Societario e planejamento patrimonial", "model": "opus", "camada": "especialista", "roteiros": ["acervo/agentes/37-dissolucao-sociedade.md", "acervo/agentes/38-contrato-social-elaboracao.md", "acervo/agentes/39-acordo-acionistas.md"]}
+      ]
+    }
+  ]
+}

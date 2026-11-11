@@ -1,0 +1,474 @@
+{
+  "versao": "1.0",
+  "descricao": "Lista única das tarefas de RISCO do orquestrador e dos dados mínimos de cada uma; o catálogo (catalogo-cenarios.md) marca com [RISCO] os mesmos cenários e remete a este arquivo. Consumido por medir_completude.py para calcular FORTE/MÉDIO/FRACO em CÓDIGO. 'estrela' = campos obrigatórios (qualquer ausente rebaixa a FRACO, trava qualitativa). Presença de um cenário aqui = tarefa de risco [RISCO]. Cenários sem risco não entram (intake mínimo de 2-4 perguntas, sem gate).",
+  "prosseguimento_parcial": {
+    "subtarefas": [
+      "calculo_de_prazo",
+      "estrategia",
+      "mapa",
+      "redacao_fatos",
+      "redacao_fundamentacao",
+      "redacao_pedidos",
+      "qualificacao_partes",
+      "pesquisa_precedentes",
+      "juntada_documental",
+      "verificacao",
+      "entrega"
+    ],
+    "por_cenario": {
+      "1": {
+        "area_rito": [
+          "calculo_de_prazo",
+          "entrega",
+          "estrategia",
+          "mapa",
+          "pesquisa_precedentes",
+          "redacao_fundamentacao",
+          "verificacao"
+        ],
+        "documentos": [
+          "entrega",
+          "juntada_documental",
+          "redacao_fatos",
+          "verificacao"
+        ],
+        "fatos_cronologia": [
+          "entrega",
+          "mapa",
+          "redacao_fatos",
+          "verificacao"
+        ],
+        "juizo_tribunal": [
+          "calculo_de_prazo",
+          "pesquisa_precedentes"
+        ],
+        "lado_representado": [
+          "entrega",
+          "estrategia",
+          "mapa",
+          "pesquisa_precedentes",
+          "redacao_fatos",
+          "redacao_fundamentacao",
+          "redacao_pedidos",
+          "verificacao"
+        ],
+        "pedidos": [
+          "entrega",
+          "mapa",
+          "redacao_pedidos",
+          "verificacao"
+        ],
+        "prazo": [
+          "calculo_de_prazo",
+          "entrega"
+        ],
+        "qualificacao_partes": [
+          "entrega",
+          "qualificacao_partes"
+        ],
+        "tese_preferida": [],
+        "tipo_peca_acao": [
+          "entrega",
+          "estrategia",
+          "mapa",
+          "pesquisa_precedentes",
+          "redacao_fundamentacao",
+          "redacao_pedidos",
+          "verificacao"
+        ],
+        "valor_causa": [
+          "redacao_pedidos"
+        ]
+      },
+      "2": {
+        "pasta_regras": [
+          "entrega",
+          "mapa",
+          "redacao_fundamentacao",
+          "verificacao"
+        ],
+        "pecas_capitulos": [
+          "entrega",
+          "mapa",
+          "redacao_fatos",
+          "redacao_fundamentacao",
+          "redacao_pedidos",
+          "verificacao"
+        ],
+        "prazo_global": [
+          "calculo_de_prazo",
+          "entrega"
+        ],
+        "visao_geral": [
+          "entrega",
+          "estrategia",
+          "mapa",
+          "redacao_fatos",
+          "redacao_fundamentacao",
+          "redacao_pedidos",
+          "verificacao"
+        ]
+      },
+      "3": {
+        "data_intimacao": [
+          "calculo_de_prazo",
+          "entrega"
+        ],
+        "decisao_integral": [
+          "entrega",
+          "estrategia",
+          "mapa",
+          "pesquisa_precedentes",
+          "redacao_fundamentacao",
+          "verificacao"
+        ],
+        "lado_representado": [
+          "entrega",
+          "estrategia",
+          "mapa",
+          "redacao_fundamentacao",
+          "redacao_pedidos",
+          "verificacao"
+        ],
+        "objetivo": [
+          "estrategia"
+        ],
+        "ponto_grave": [
+          "entrega",
+          "estrategia",
+          "pesquisa_precedentes",
+          "redacao_fundamentacao"
+        ],
+        "resultado": [
+          "entrega",
+          "estrategia",
+          "redacao_pedidos"
+        ]
+      },
+      "4": {
+        "contra_tese": [
+          "estrategia",
+          "pesquisa_precedentes"
+        ],
+        "fatos_resumo": [
+          "entrega",
+          "pesquisa_precedentes"
+        ],
+        "finalidade_peca_destino": [
+          "entrega",
+          "pesquisa_precedentes",
+          "redacao_fundamentacao"
+        ],
+        "recorte_temporal": [
+          "pesquisa_precedentes"
+        ],
+        "tese_questao": [
+          "entrega",
+          "pesquisa_precedentes",
+          "redacao_fundamentacao",
+          "verificacao"
+        ],
+        "tribunais_alvo": [
+          "entrega",
+          "pesquisa_precedentes"
+        ]
+      },
+      "8": {
+        "meio_publicacao_data": [
+          "calculo_de_prazo",
+          "entrega"
+        ],
+        "parte_fazenda_def_mp": [
+          "calculo_de_prazo",
+          "entrega"
+        ],
+        "rito": [
+          "calculo_de_prazo",
+          "entrega"
+        ],
+        "tipo_ato": [
+          "calculo_de_prazo",
+          "entrega"
+        ],
+        "tribunal_comarca": [
+          "calculo_de_prazo"
+        ]
+      },
+      "10": {
+        "laudo_quesitos_contraria": [
+          "entrega",
+          "estrategia",
+          "redacao_fundamentacao",
+          "verificacao"
+        ],
+        "o_que_provar": [
+          "entrega",
+          "estrategia",
+          "redacao_fundamentacao",
+          "verificacao"
+        ],
+        "objeto_pericia": [
+          "entrega",
+          "estrategia",
+          "redacao_fundamentacao",
+          "verificacao"
+        ]
+      },
+      "12": {
+        "foro": [
+          "redacao_pedidos"
+        ],
+        "lgpd": [
+          "redacao_fundamentacao"
+        ],
+        "multa": [
+          "redacao_pedidos"
+        ],
+        "objeto": [
+          "entrega",
+          "mapa",
+          "redacao_fatos",
+          "redacao_pedidos",
+          "verificacao"
+        ],
+        "partes_qualificacao": [
+          "entrega",
+          "qualificacao_partes",
+          "redacao_fatos",
+          "verificacao"
+        ],
+        "pi": [
+          "redacao_fundamentacao"
+        ],
+        "prazo": [
+          "redacao_pedidos"
+        ],
+        "regime": [
+          "entrega",
+          "estrategia",
+          "redacao_fundamentacao",
+          "verificacao"
+        ],
+        "rescisao": [
+          "redacao_pedidos"
+        ],
+        "tipo_contrato": [
+          "entrega",
+          "estrategia",
+          "mapa",
+          "redacao_fundamentacao",
+          "redacao_pedidos",
+          "verificacao"
+        ],
+        "valor_pagamento": [
+          "entrega",
+          "redacao_pedidos",
+          "verificacao"
+        ]
+      },
+      "14": {
+        "base_legal": [
+          "pesquisa_precedentes",
+          "redacao_fundamentacao"
+        ],
+        "consequencia": [
+          "entrega",
+          "redacao_fundamentacao",
+          "redacao_pedidos",
+          "verificacao"
+        ],
+        "exigencia_prazo": [
+          "calculo_de_prazo",
+          "entrega",
+          "redacao_pedidos",
+          "verificacao"
+        ],
+        "fato_gerador_prova": [
+          "entrega",
+          "juntada_documental",
+          "redacao_fatos",
+          "verificacao"
+        ],
+        "notificante_notificado": [
+          "entrega",
+          "qualificacao_partes",
+          "redacao_fatos",
+          "verificacao"
+        ]
+      },
+      "28": {
+        "anexos_listados": [
+          "juntada_documental"
+        ],
+        "cenario_real_identificado": [
+          "entrega",
+          "estrategia",
+          "mapa",
+          "pesquisa_precedentes",
+          "redacao_fundamentacao",
+          "redacao_pedidos",
+          "verificacao"
+        ],
+        "demanda_confirmada_pelo_advogado": [
+          "calculo_de_prazo",
+          "entrega",
+          "estrategia",
+          "juntada_documental",
+          "mapa",
+          "pesquisa_precedentes",
+          "qualificacao_partes",
+          "redacao_fatos",
+          "redacao_fundamentacao",
+          "redacao_pedidos",
+          "verificacao"
+        ],
+        "parte_contraria": [
+          "qualificacao_partes"
+        ],
+        "prazo_mencionado_no_corpo": [
+          "calculo_de_prazo"
+        ],
+        "remetente_confirmado": [
+          "entrega",
+          "qualificacao_partes",
+          "redacao_fatos",
+          "verificacao"
+        ],
+        "urgencia_declarada": []
+      }
+    }
+  },
+  "cenarios": {
+    "1": {
+      "nome": "Peça nova (inicial, contestação, recurso, MS)",
+      "risco": "alto",
+      "calculaveis": [
+        "prazo"
+      ],
+      "estrela": [
+        "tipo_peca_acao",
+        "area_rito",
+        "lado_representado",
+        "fatos_cronologia",
+        "documentos",
+        "pedidos",
+        "prazo",
+        "qualificacao_partes"
+      ],
+      "complementares": [
+        "juizo_tribunal",
+        "tese_preferida",
+        "valor_causa"
+      ]
+    },
+    "2": {
+      "nome": "Caso complexo multi-capítulo",
+      "risco": "alto",
+      "estrela": [
+        "visao_geral",
+        "pecas_capitulos",
+        "pasta_regras",
+        "prazo_global"
+      ],
+      "complementares": []
+    },
+    "3": {
+      "nome": "Análise de decisão / viabilidade recursal",
+      "risco": "alto",
+      "estrela": [
+        "decisao_integral",
+        "lado_representado",
+        "data_intimacao",
+        "resultado",
+        "ponto_grave"
+      ],
+      "complementares": [
+        "objetivo"
+      ]
+    },
+    "4": {
+      "nome": "Pesquisa de jurisprudência / verificação",
+      "risco": "alto",
+      "estrela": [
+        "tese_questao",
+        "tribunais_alvo",
+        "finalidade_peca_destino",
+        "fatos_resumo"
+      ],
+      "complementares": [
+        "recorte_temporal",
+        "contra_tese"
+      ]
+    },
+    "8": {
+      "nome": "Prazos / intimações",
+      "risco": "alto",
+      "estrela": [
+        "meio_publicacao_data",
+        "tipo_ato",
+        "rito",
+        "parte_fazenda_def_mp"
+      ],
+      "complementares": [
+        "tribunal_comarca"
+      ]
+    },
+    "10": {
+      "nome": "Perícia (quesitos, análise de laudo)",
+      "risco": "alto",
+      "estrela": [
+        "objeto_pericia",
+        "o_que_provar",
+        "laudo_quesitos_contraria"
+      ],
+      "complementares": []
+    },
+    "12": {
+      "nome": "Contrato novo",
+      "risco": "alto",
+      "estrela": [
+        "tipo_contrato",
+        "regime",
+        "partes_qualificacao",
+        "objeto",
+        "valor_pagamento"
+      ],
+      "complementares": [
+        "prazo",
+        "multa",
+        "rescisao",
+        "lgpd",
+        "pi",
+        "foro"
+      ]
+    },
+    "14": {
+      "nome": "Notificação extrajudicial",
+      "risco": "alto",
+      "estrela": [
+        "notificante_notificado",
+        "fato_gerador_prova",
+        "exigencia_prazo",
+        "consequencia"
+      ],
+      "complementares": [
+        "base_legal"
+      ]
+    },
+    "28": {
+      "nome": "Intake por e-mail",
+      "risco": "alto",
+      "estrela": [
+        "remetente_confirmado",
+        "demanda_confirmada_pelo_advogado",
+        "cenario_real_identificado"
+      ],
+      "complementares": [
+        "anexos_listados",
+        "prazo_mencionado_no_corpo",
+        "parte_contraria",
+        "urgencia_declarada"
+      ]
+    }
+  }
+}

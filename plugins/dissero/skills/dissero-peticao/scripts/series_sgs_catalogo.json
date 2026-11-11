@@ -1,0 +1,448 @@
+{
+  "schema_version": "dsr.series_sgs_catalogo.v1",
+  "medido_em": "2026-09-05",
+  "ampliado_em": "2026-11-09",
+  "_leia": "Catálogo conferível da identidade das séries do SGS, para que cada uso não recomece do zero. Este arquivo NÃO afirma que um código é uma série: ele registra COMO a identidade de cada código foi estabelecida, e admite quando não foi. Série com identidade `pendente_de_atestacao` só entra em cálculo pela procedência `sgs_serie_declarada` do bcb_sgs_adapter.py, que exige atestação nominal — nunca em silêncio.",
+  "como_foi_medido": {
+    "catalogo_dados_abertos": "https://dadosabertos.bcb.gov.br/api/3/action/package_search?q=<codigo> — dataset cujo nome começa pelo próprio código LIGA código a nome. É a única prova documental de identidade que o BCB publica sem sessão.",
+    "serie_ao_vivo": "https://api.bcb.gov.br/dados/serie/bcdata.sgs.<codigo>/dados/ultimos/N?formato=json — prova que o código serve dado e revela a FORMA do ponto. Exige User-Agent de navegador: sem ele o WAF devolve HTTP 200 com corpo vazio, que parece série morta.",
+    "aritmetica_conferida": "identidade confirmada por relação aritmética entre séries, reproduzida mês a mês.",
+    "par_mensal_anual": "Taxa média de juros: o BCB publica cada modalidade em duas séries, percentual ao mês e percentual ao ano. A anual é a mensal capitalizada em 12 meses, ((1 + am/100)^12 - 1) * 100, dentro do erro do arredondamento a duas casas. A relação confere o PAR, não o nome: o nome vem do dataset do CKAN, que traz `codigo_sgs`, `periodicidade` e `unidade_medida`."
+  },
+  "avisos": [
+    "O CKAN de dados abertos é espelho PARCIAL do SGS. Na medição registrada em `medido_em`, ele traz sub-índices do IPCA (10841, 4447) e séries de dívida indexada à TR, mas NÃO o IPCA cheio (433), NÃO a TR e NÃO a taxa legal (29543). Ausência no CKAN não é prova de que a série não existe.",
+    "Não há endpoint oficial sem sessão que ligue código a nome no SGS: a tela de metadados responde 'Session expired', /metadados na API é 404 e o OData do SGS é 404.",
+    "O contrato do bcb_sgs_adapter.py só aceita ponto mensal em percentual ao mês. Série cuja forma traga `dataFim` (período com início e fim) não satisfaz esse contrato.",
+    "Taxa média de juros das operações com recursos livres (famílias 20xxx/22xxx ao ano e 25xxx ao mês) é média ponderada das CONCESSÕES do mês, por modalidade: não é índice de correção, e não se acumula. Serve à comparação com a taxa do contrato no mês da contratação. Qual modalidade corresponde ao contrato é escolha do advogado ou do assistente técnico, registrada na ficha; o catálogo não escolhe.",
+    "Esta medição não verificou se o BCB revê meses já publicados dessas séries. Por isso a `sonda_conferida` de cada uma é de mês antigo (06/2025, lido em 09/11/2026), e o que vale no caso é o snapshot, que guarda o que foi servido no dia da captura."
+  ],
+  "series": {
+    "4390": {
+      "nome_declarado": "Taxa de juros — Selic acumulada no mês",
+      "identidade": "catalogo_dados_abertos",
+      "dataset": "4390-taxa-de-juros---selic-acumulada-no-mes",
+      "forma_medida": "mensal, percentual ao mês",
+      "catalog_kind": "dados_abertos_ckan"
+    },
+    "1178": {
+      "nome_declarado": "Taxa de juros — Selic anualizada base 252",
+      "identidade": "catalogo_dados_abertos",
+      "dataset": "1178-taxa-de-juros---selic-anualizada-base-252",
+      "forma_medida": "diária, percentual ao ano",
+      "catalog_kind": "dados_abertos_ckan",
+      "nota": "Base 252 e periodicidade diária NÃO satisfazem o contrato mensal do adaptador. Registrada por identificação, não por uso."
+    },
+    "29541": {
+      "nome_declarado": "Fator acumulado da Selic no mês (insumo da taxa legal)",
+      "identidade": "aritmetica_conferida",
+      "forma_medida": "mensal, FATOR (≈1,01), não percentual",
+      "catalog_kind": "sgs_serie_declarada",
+      "nota": "Forma de fator não satisfaz `unit: percent_per_month`. Serve de insumo e de prova da identidade da 29543, não de série de cálculo."
+    },
+    "29542": {
+      "nome_declarado": "Fator de deflação por IPCA no mês (insumo da taxa legal)",
+      "identidade": "aritmetica_conferida",
+      "forma_medida": "mensal, FATOR (≈1,00), não percentual",
+      "catalog_kind": "sgs_serie_declarada"
+    },
+    "29543": {
+      "nome_declarado": "Taxa legal mensal do art. 406 do CC (Lei 14.905/2024)",
+      "identidade": "aritmetica_conferida",
+      "forma_medida": "mensal, percentual ao mês, 6 casas decimais",
+      "catalog_kind": "sgs_serie_declarada",
+      "prova_aritmetica": {
+        "relacao": "29543 = (29541 / 29542 - 1) * 100",
+        "meses_conferidos": 14,
+        "meses_que_batem": 14,
+        "janela": "08/2025 a 09/2026",
+        "maior_divergencia": "4.8e-7",
+        "leitura": "A taxa legal publicada é o fator acumulado da Selic DEFLACIONADO pelo fator de IPCA do mês, em percentual. Isso confirma a identidade da série sem depender de catálogo de nomes — e é reprodutível a qualquer momento contra a própria API. Nos 14 meses medidos o piso zero do §3º nunca foi acionado (nenhuma taxa negativa), então esta prova NÃO cobre esse ramo."
+      }
+    },
+    "433": {
+      "nome_declarado": "IPCA — variação mensal",
+      "identidade": "pendente_de_atestacao",
+      "forma_medida": "mensal, percentual ao mês",
+      "catalog_kind": "sgs_serie_declarada",
+      "nota": "Sem dataset no CKAN: `q=433` devolve apenas `ouvidorias-dos-bancos`, falso positivo. A busca por nome traz sub-índices (10841, 4447), não o índice cheio."
+    },
+    "7478": {
+      "nome_declarado": "IPCA-15 — variação mensal",
+      "identidade": "pendente_de_atestacao",
+      "forma_medida": "mensal, percentual ao mês",
+      "catalog_kind": "sgs_serie_declarada",
+      "nota": "Sem dataset no CKAN (count=0)."
+    },
+    "188": {
+      "nome_declarado": "INPC — variação mensal (CANDIDATO, não confirmado)",
+      "identidade": "pendente_de_atestacao",
+      "forma_medida": "mensal, percentual ao mês",
+      "catalog_kind": "sgs_serie_declarada",
+      "nota": "CANDIDATO. Serve dado e tem a forma certa, mas NADA nesta medição liga o código 188 ao INPC: não há dataset no CKAN e não há relação aritmética que o identifique, como há para a 29543. Não use sem atestação nominal."
+    },
+    "226": {
+      "nome_declarado": "TR — Taxa Referencial (CANDIDATO, não confirmado)",
+      "identidade": "pendente_de_atestacao",
+      "forma_medida": "período com início e FIM (`dataFim`), não ponto mensal",
+      "catalog_kind": null,
+      "nota": "INCOMPATÍVEL com o contrato do adaptador como está: o ponto traz `dataFim`, ou seja é taxa de período (02/09 a 02/10), não valor de mês civil. Usá-la exigiria estender o contrato, não só cadastrar o código."
+    },
+    "7811": {
+      "nome_declarado": "TR mensal (CANDIDATO, não confirmado)",
+      "identidade": "pendente_de_atestacao",
+      "forma_medida": "mensal, percentual ao mês",
+      "catalog_kind": "sgs_serie_declarada",
+      "nota": "CANDIDATO com a forma compatível, sem prova de identidade."
+    },
+    "25464": {
+      "nome_declarado": "Taxa média mensal de juros das operações de crédito com recursos livres - Pessoas físicas - Crédito pessoal não consignado",
+      "identidade": "catalogo_dados_abertos",
+      "dataset": "25464-taxa-media-mensal-de-juros-das-operacoes-de-credito-com-recursos-livres---pessoas-fisicas---c",
+      "forma_medida": "mensal, percentual ao mês",
+      "periodicidade": "mensal",
+      "unidade": "percentual ao mês",
+      "catalog_kind": "dados_abertos_ckan",
+      "conferido_em": "2026-11-09",
+      "familia": "taxa_media_juros_recursos_livres",
+      "modalidade": "pf_credito_pessoal_nao_consignado",
+      "par_na_outra_unidade": "20742",
+      "sonda_conferida": {
+        "periodo": "2025-06",
+        "valor": "6.31"
+      }
+    },
+    "20742": {
+      "nome_declarado": "Taxa média de juros das operações de crédito com recursos livres - Pessoas físicas - Crédito pessoal não consignado",
+      "identidade": "catalogo_dados_abertos",
+      "dataset": "20742-taxa-media-de-juros-das-operacoes-de-credito-com-recursos-livres---pessoas-fisicas---credito-",
+      "forma_medida": "mensal, percentual ao ano",
+      "periodicidade": "mensal",
+      "unidade": "percentual ao ano",
+      "catalog_kind": null,
+      "conferido_em": "2026-11-09",
+      "familia": "taxa_media_juros_recursos_livres",
+      "modalidade": "pf_credito_pessoal_nao_consignado",
+      "par_na_outra_unidade": "25464",
+      "sonda_conferida": {
+        "periodo": "2025-06",
+        "valor": "108.39"
+      },
+      "nota": "Percentual ao ano não satisfaz `unit: percent_per_month` do adaptador. Serve para comparar com a taxa anual que o contrato declara; a captura para a memória usa a série mensal 25464, da mesma modalidade."
+    },
+    "25466": {
+      "nome_declarado": "Taxa média mensal de juros das operações de crédito com recursos livres - Pessoas físicas - Crédito pessoal consignado para trabalhadores do setor privado",
+      "identidade": "catalogo_dados_abertos",
+      "dataset": "25466-taxa-media-mensal-de-juros-das-operacoes-de-credito-com-recursos-livres---pessoas-fisicas---c",
+      "forma_medida": "mensal, percentual ao mês",
+      "periodicidade": "mensal",
+      "unidade": "percentual ao mês",
+      "catalog_kind": "dados_abertos_ckan",
+      "conferido_em": "2026-11-09",
+      "familia": "taxa_media_juros_recursos_livres",
+      "modalidade": "pf_consignado_setor_privado",
+      "par_na_outra_unidade": "20744",
+      "sonda_conferida": {
+        "periodo": "2025-06",
+        "valor": "3.79"
+      }
+    },
+    "20744": {
+      "nome_declarado": "Taxa média de juros das operações de crédito com recursos livres - Pessoas físicas - Crédito pessoal consignado para trabalhadores do setor privado",
+      "identidade": "catalogo_dados_abertos",
+      "dataset": "20744-taxa-media-de-juros-das-operacoes-de-credito-com-recursos-livres---pessoas-fisicas---credito-",
+      "forma_medida": "mensal, percentual ao ano",
+      "periodicidade": "mensal",
+      "unidade": "percentual ao ano",
+      "catalog_kind": null,
+      "conferido_em": "2026-11-09",
+      "familia": "taxa_media_juros_recursos_livres",
+      "modalidade": "pf_consignado_setor_privado",
+      "par_na_outra_unidade": "25466",
+      "sonda_conferida": {
+        "periodo": "2025-06",
+        "valor": "56.26"
+      },
+      "nota": "Percentual ao ano não satisfaz `unit: percent_per_month` do adaptador. Serve para comparar com a taxa anual que o contrato declara; a captura para a memória usa a série mensal 25466, da mesma modalidade."
+    },
+    "25467": {
+      "nome_declarado": "Taxa média mensal de juros das operações de crédito com recursos livres - Pessoas físicas - Crédito pessoal consignado para trabalhadores do setor público",
+      "identidade": "catalogo_dados_abertos",
+      "dataset": "25467-taxa-media-mensal-de-juros-das-operacoes-de-credito-com-recursos-livres---pessoas-fisicas---c",
+      "forma_medida": "mensal, percentual ao mês",
+      "periodicidade": "mensal",
+      "unidade": "percentual ao mês",
+      "catalog_kind": "dados_abertos_ckan",
+      "conferido_em": "2026-11-09",
+      "familia": "taxa_media_juros_recursos_livres",
+      "modalidade": "pf_consignado_setor_publico",
+      "par_na_outra_unidade": "20745",
+      "sonda_conferida": {
+        "periodo": "2025-06",
+        "valor": "1.90"
+      }
+    },
+    "20745": {
+      "nome_declarado": "Taxa média de juros das operações de crédito com recursos livres - Pessoas físicas - Crédito pessoal consignado para trabalhadores do setor público",
+      "identidade": "catalogo_dados_abertos",
+      "dataset": "20745-taxa-media-de-juros-das-operacoes-de-credito-com-recursos-livres---pessoas-fisicas---credito-",
+      "forma_medida": "mensal, percentual ao ano",
+      "periodicidade": "mensal",
+      "unidade": "percentual ao ano",
+      "catalog_kind": null,
+      "conferido_em": "2026-11-09",
+      "familia": "taxa_media_juros_recursos_livres",
+      "modalidade": "pf_consignado_setor_publico",
+      "par_na_outra_unidade": "25467",
+      "sonda_conferida": {
+        "periodo": "2025-06",
+        "valor": "25.40"
+      },
+      "nota": "Percentual ao ano não satisfaz `unit: percent_per_month` do adaptador. Serve para comparar com a taxa anual que o contrato declara; a captura para a memória usa a série mensal 25467, da mesma modalidade."
+    },
+    "25468": {
+      "nome_declarado": "Taxa média mensal de juros das operações de crédito com recursos livres - Pessoas físicas - Crédito pessoal consignado para aposentados e pensionistas do INSS",
+      "identidade": "catalogo_dados_abertos",
+      "dataset": "25468-taxa-media-mensal-de-juros-das-operacoes-de-credito-com-recursos-livres---pessoas-fisicas---c",
+      "forma_medida": "mensal, percentual ao mês",
+      "periodicidade": "mensal",
+      "unidade": "percentual ao mês",
+      "catalog_kind": "dados_abertos_ckan",
+      "conferido_em": "2026-11-09",
+      "familia": "taxa_media_juros_recursos_livres",
+      "modalidade": "pf_consignado_inss",
+      "par_na_outra_unidade": "20746",
+      "sonda_conferida": {
+        "periodo": "2025-06",
+        "valor": "1.83"
+      }
+    },
+    "20746": {
+      "nome_declarado": "Taxa média de juros das operações de crédito com recursos livres - Pessoas físicas - Crédito pessoal consignado para aposentados e pensionistas do INSS",
+      "identidade": "catalogo_dados_abertos",
+      "dataset": "20746-taxa-media-de-juros-das-operacoes-de-credito-com-recursos-livres---pessoas-fisicas---credito-",
+      "forma_medida": "mensal, percentual ao ano",
+      "periodicidade": "mensal",
+      "unidade": "percentual ao ano",
+      "catalog_kind": null,
+      "conferido_em": "2026-11-09",
+      "familia": "taxa_media_juros_recursos_livres",
+      "modalidade": "pf_consignado_inss",
+      "par_na_outra_unidade": "25468",
+      "sonda_conferida": {
+        "periodo": "2025-06",
+        "valor": "24.25"
+      },
+      "nota": "Percentual ao ano não satisfaz `unit: percent_per_month` do adaptador. Serve para comparar com a taxa anual que o contrato declara; a captura para a memória usa a série mensal 25468, da mesma modalidade."
+    },
+    "25471": {
+      "nome_declarado": "Taxa média mensal de juros das operações de crédito com recursos livres - Pessoas físicas - Aquisição de veículos",
+      "identidade": "catalogo_dados_abertos",
+      "dataset": "25471-taxa-media-mensal-de-juros-das-operacoes-de-credito-com-recursos-livres---pessoas-fisicas---a",
+      "forma_medida": "mensal, percentual ao mês",
+      "periodicidade": "mensal",
+      "unidade": "percentual ao mês",
+      "catalog_kind": "dados_abertos_ckan",
+      "conferido_em": "2026-11-09",
+      "familia": "taxa_media_juros_recursos_livres",
+      "modalidade": "pf_aquisicao_veiculos",
+      "par_na_outra_unidade": "20749",
+      "sonda_conferida": {
+        "periodo": "2025-06",
+        "valor": "2.05"
+      }
+    },
+    "20749": {
+      "nome_declarado": "Taxa média de juros das operações de crédito com recursos livres - Pessoas físicas - Aquisição de veículos",
+      "identidade": "catalogo_dados_abertos",
+      "dataset": "20749-taxa-media-de-juros-das-operacoes-de-credito-com-recursos-livres---pessoas-fisicas---aquisica",
+      "forma_medida": "mensal, percentual ao ano",
+      "periodicidade": "mensal",
+      "unidade": "percentual ao ano",
+      "catalog_kind": null,
+      "conferido_em": "2026-11-09",
+      "familia": "taxa_media_juros_recursos_livres",
+      "modalidade": "pf_aquisicao_veiculos",
+      "par_na_outra_unidade": "25471",
+      "sonda_conferida": {
+        "periodo": "2025-06",
+        "valor": "27.59"
+      },
+      "nota": "Percentual ao ano não satisfaz `unit: percent_per_month` do adaptador. Serve para comparar com a taxa anual que o contrato declara; a captura para a memória usa a série mensal 25471, da mesma modalidade."
+    },
+    "25477": {
+      "nome_declarado": "Taxa média mensal de juros das operações de crédito com recursos livres - Pessoas físicas - Cartão de crédito rotativo",
+      "identidade": "catalogo_dados_abertos",
+      "dataset": "25477-taxa-media-mensal-de-juros-das-operacoes-de-credito-com-recursos-livres---pessoas-fisicas---c",
+      "forma_medida": "mensal, percentual ao mês",
+      "periodicidade": "mensal",
+      "unidade": "percentual ao mês",
+      "catalog_kind": "dados_abertos_ckan",
+      "conferido_em": "2026-11-09",
+      "familia": "taxa_media_juros_recursos_livres",
+      "modalidade": "pf_cartao_rotativo",
+      "par_na_outra_unidade": "22022",
+      "sonda_conferida": {
+        "periodo": "2025-06",
+        "valor": "15.34"
+      }
+    },
+    "22022": {
+      "nome_declarado": "Taxa média de juros das operações de crédito com recursos livres - Pessoas físicas - Cartão de crédito rotativo",
+      "identidade": "catalogo_dados_abertos",
+      "dataset": "22022-taxa-media-de-juros-das-operacoes-de-credito-com-recursos-livres---pessoas-fisicas---cartao-d",
+      "forma_medida": "mensal, percentual ao ano",
+      "periodicidade": "mensal",
+      "unidade": "percentual ao ano",
+      "catalog_kind": null,
+      "conferido_em": "2026-11-09",
+      "familia": "taxa_media_juros_recursos_livres",
+      "modalidade": "pf_cartao_rotativo",
+      "par_na_outra_unidade": "25477",
+      "sonda_conferida": {
+        "periodo": "2025-06",
+        "valor": "454.19"
+      },
+      "nota": "Percentual ao ano não satisfaz `unit: percent_per_month` do adaptador. Serve para comparar com a taxa anual que o contrato declara; a captura para a memória usa a série mensal 25477, da mesma modalidade."
+    },
+    "25463": {
+      "nome_declarado": "Taxa média mensal de juros das operações de crédito com recursos livres - Pessoas físicas - Cheque especial",
+      "identidade": "catalogo_dados_abertos",
+      "dataset": "25463-taxa-media-mensal-de-juros-das-operacoes-de-credito-com-recursos-livres---pessoas-fisicas---c",
+      "forma_medida": "mensal, percentual ao mês",
+      "periodicidade": "mensal",
+      "unidade": "percentual ao mês",
+      "catalog_kind": "dados_abertos_ckan",
+      "conferido_em": "2026-11-09",
+      "familia": "taxa_media_juros_recursos_livres",
+      "modalidade": "pf_cheque_especial",
+      "par_na_outra_unidade": "20741",
+      "sonda_conferida": {
+        "periodo": "2025-06",
+        "valor": "7.41"
+      }
+    },
+    "20741": {
+      "nome_declarado": "Taxa média de juros das operações de crédito com recursos livres - Pessoas físicas - Cheque especial",
+      "identidade": "catalogo_dados_abertos",
+      "dataset": "20741-taxa-media-de-juros-das-operacoes-de-credito-com-recursos-livres---pessoas-fisicas---cheque-e",
+      "forma_medida": "mensal, percentual ao ano",
+      "periodicidade": "mensal",
+      "unidade": "percentual ao ano",
+      "catalog_kind": null,
+      "conferido_em": "2026-11-09",
+      "familia": "taxa_media_juros_recursos_livres",
+      "modalidade": "pf_cheque_especial",
+      "par_na_outra_unidade": "25463",
+      "sonda_conferida": {
+        "periodo": "2025-06",
+        "valor": "135.74"
+      },
+      "nota": "Percentual ao ano não satisfaz `unit: percent_per_month` do adaptador. Serve para comparar com a taxa anual que o contrato declara; a captura para a memória usa a série mensal 25463, da mesma modalidade."
+    },
+    "25444": {
+      "nome_declarado": "Taxa média mensal de juros das operações de crédito com recursos livres - Pessoas jurídicas - Capital de giro total",
+      "identidade": "catalogo_dados_abertos",
+      "dataset": "25444-taxa-media-mensal-de-juros-das-operacoes-de-credito-com-recursos-livres---pessoas-juridicas--",
+      "forma_medida": "mensal, percentual ao mês",
+      "periodicidade": "mensal",
+      "unidade": "percentual ao mês",
+      "catalog_kind": "dados_abertos_ckan",
+      "conferido_em": "2026-11-09",
+      "familia": "taxa_media_juros_recursos_livres",
+      "modalidade": "pj_capital_de_giro_total",
+      "par_na_outra_unidade": "20725",
+      "sonda_conferida": {
+        "periodo": "2025-06",
+        "valor": "1.79"
+      }
+    },
+    "20725": {
+      "nome_declarado": "Taxa média de juros das operações de crédito com recursos livres - Pessoas jurídicas - Capital de giro total",
+      "identidade": "catalogo_dados_abertos",
+      "dataset": "20725-taxa-media-de-juros-das-operacoes-de-credito-com-recursos-livres---pessoas-juridicas---capita",
+      "forma_medida": "mensal, percentual ao ano",
+      "periodicidade": "mensal",
+      "unidade": "percentual ao ano",
+      "catalog_kind": null,
+      "conferido_em": "2026-11-09",
+      "familia": "taxa_media_juros_recursos_livres",
+      "modalidade": "pj_capital_de_giro_total",
+      "par_na_outra_unidade": "25444",
+      "sonda_conferida": {
+        "periodo": "2025-06",
+        "valor": "23.74"
+      },
+      "nota": "Percentual ao ano não satisfaz `unit: percent_per_month` do adaptador. Serve para comparar com a taxa anual que o contrato declara; a captura para a memória usa a série mensal 25444, da mesma modalidade."
+    },
+    "25445": {
+      "nome_declarado": "Taxa média mensal de juros das operações de crédito com recursos livres - Pessoas jurídicas - Conta garantida",
+      "identidade": "catalogo_dados_abertos",
+      "dataset": "25445-taxa-media-mensal-de-juros-das-operacoes-de-credito-com-recursos-livres---pessoas-juridicas--",
+      "forma_medida": "mensal, percentual ao mês",
+      "periodicidade": "mensal",
+      "unidade": "percentual ao mês",
+      "catalog_kind": "dados_abertos_ckan",
+      "conferido_em": "2026-11-09",
+      "familia": "taxa_media_juros_recursos_livres",
+      "modalidade": "pj_conta_garantida",
+      "par_na_outra_unidade": "20726",
+      "sonda_conferida": {
+        "periodo": "2025-06",
+        "valor": "3.98"
+      }
+    },
+    "20726": {
+      "nome_declarado": "Taxa média de juros das operações de crédito com recursos livres - Pessoas jurídicas - Conta garantida",
+      "identidade": "catalogo_dados_abertos",
+      "dataset": "20726-taxa-media-de-juros-das-operacoes-de-credito-com-recursos-livres---pessoas-juridicas---conta-",
+      "forma_medida": "mensal, percentual ao ano",
+      "periodicidade": "mensal",
+      "unidade": "percentual ao ano",
+      "catalog_kind": null,
+      "conferido_em": "2026-11-09",
+      "familia": "taxa_media_juros_recursos_livres",
+      "modalidade": "pj_conta_garantida",
+      "par_na_outra_unidade": "25445",
+      "sonda_conferida": {
+        "periodo": "2025-06",
+        "valor": "59.79"
+      },
+      "nota": "Percentual ao ano não satisfaz `unit: percent_per_month` do adaptador. Serve para comparar com a taxa anual que o contrato declara; a captura para a memória usa a série mensal 25445, da mesma modalidade."
+    },
+    "25438": {
+      "nome_declarado": "Taxa média mensal de juros das operações de crédito com recursos livres - Pessoas jurídicas - Desconto de duplicatas e recebíveis",
+      "identidade": "catalogo_dados_abertos",
+      "dataset": "25438-taxa-media-mensal-de-juros-das-operacoes-de-credito-com-recursos-livres---pessoas-juridicas--",
+      "forma_medida": "mensal, percentual ao mês",
+      "periodicidade": "mensal",
+      "unidade": "percentual ao mês",
+      "catalog_kind": "dados_abertos_ckan",
+      "conferido_em": "2026-11-09",
+      "familia": "taxa_media_juros_recursos_livres",
+      "modalidade": "pj_desconto_duplicatas_recebiveis",
+      "par_na_outra_unidade": "20719",
+      "sonda_conferida": {
+        "periodo": "2025-06",
+        "valor": "1.63"
+      }
+    },
+    "20719": {
+      "nome_declarado": "Taxa média de juros das operações de crédito com recursos livres - Pessoas jurídicas - Desconto de duplicatas e recebíveis",
+      "identidade": "catalogo_dados_abertos",
+      "dataset": "20719-taxa-media-de-juros-das-operacoes-de-credito-com-recursos-livres---pessoas-juridicas---descon",
+      "forma_medida": "mensal, percentual ao ano",
+      "periodicidade": "mensal",
+      "unidade": "percentual ao ano",
+      "catalog_kind": null,
+      "conferido_em": "2026-11-09",
+      "familia": "taxa_media_juros_recursos_livres",
+      "modalidade": "pj_desconto_duplicatas_recebiveis",
+      "par_na_outra_unidade": "25438",
+      "sonda_conferida": {
+        "periodo": "2025-06",
+        "valor": "21.44"
+      },
+      "nota": "Percentual ao ano não satisfaz `unit: percent_per_month` do adaptador. Serve para comparar com a taxa anual que o contrato declara; a captura para a memória usa a série mensal 25438, da mesma modalidade."
+    }
+  }
+}

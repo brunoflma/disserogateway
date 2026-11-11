@@ -1,0 +1,432 @@
+{
+  "versao": "1.0",
+  "atualizado": "2026-10-13",
+  "estado": "preenchido",
+  "modo": "consultivo",
+  "descricao": "Base própria de calendário forense em CAMADAS: um registro por evento, com VIGÊNCIA do registro e PROCEDÊNCIA da fonte oficial. Esta base traz a camada federal (art. 62 da Lei 5.010/66, escopo `esfera=federal`). O calendário de tribunal, comarca e vara vem do ato oficial do ano que o índice anual da AASP aponta (`scripts/consultar_calendario_aasp.py`): os dias do ato entram no cálculo por `--feriado` e, transcritos, no arquivo de calendário da banca, fora do plugin, passado por `--base` ou `--calendario <arquivo>`. Escopo sem entrada em `cobertura_declarada` devolve COBERTURA_PARCIAL_DECLARADA com escalonamento, e o módulo nunca devolve número.",
+  "ligacao_ao_calculo": "O módulo `calendario_camadas.py` é CONSULTIVO: o `calcular_prazo.py` confere esta base em modo AVISO (`--calendario`), o resultado sai idêntico ao que sairia sem a base, e a divergência dia a dia vem como relato, POSTERIOR ao resultado. A base só confere: o dia sem expediente do tribunal vem do ato oficial que o índice anual da AASP aponta e entra no cálculo por `--feriado`, porque um registro errado na base deslocaria o vencimento para depois, e aí o erro deixaria de ser conservador.",
+  "pendencia_juridica": {
+    "bloqueia": [
+      "registro que depende de decisão do advogado (tribunal, comarca, vara) não entra NESTE arquivo compartilhado: vive no arquivo de calendário da banca, fora do plugin, passado por `--base` ou `--calendario <arquivo>`, para que instalar ou atualizar o plugin não mude cálculo nenhum"
+    ],
+    "quem_decide": "o advogado",
+    "o_que_o_codigo_nao_faz": "O código não escolhe qual data é feriado, em qual esfera, com qual dos três efeitos, nem se dois regimes convivem. Ele carrega, valida a estrutura, separa os efeitos e declara o que falta.",
+    "fonte": "A pergunta a responder e a resposta de cada item estão em `perguntas`, com quem decidiu e quando.",
+    "enquanto_pendente": "Escopo sem cobertura declarada (hoje, tudo fora da esfera federal) devolve COBERTURA_PARCIAL_DECLARADA + escalonamento ao ato do tribunal competente, que o índice anual da AASP aponta; `resposta_numerica` é sempre nula.",
+    "premissa": "O art. 62 da Lei 5.010/66 vale por força própria na Justiça Federal. Fora dela, não se aplica por força própria e só alcança o ramo que a decisão do advogado incluir (pergunta 2: Justiça do Trabalho, pela Res. CNJ 244/2016, art. 2º, § 1º).",
+    "perguntas": [
+      {
+        "id": 1,
+        "tema": "Justiça Estadual (TJSP)",
+        "pergunta": "11/8 e 8/12 são feriados forenses no TJSP? Por qual ato (provimento, portaria, Código Judiciário do Estado)? A Semana Santa é integral ou só a Sexta-feira Santa?",
+        "resposta": "Decisão do advogado (09/10/2026): a pergunta não se decide nesta base. O calendário do TJSP, como o de qualquer tribunal, vem do ato oficial do ano que o índice anual da AASP aponta (`scripts/consultar_calendario_aasp.py`). O agente lê o ato e passa cada dia sem expediente ao `calcular_prazo.py` por `--feriado AAAA-MM-DD`. Tribunal 'não divulgado' no índice, ou ano sem página na AASP, fica sem fonte: a lacuna é declarada e o caso escala ao advogado. O índice da AASP é supletivo e quem vale é o ato.",
+        "o_que_preenche": [
+          "nada nesta base compartilhada: os dias do tribunal entram no cálculo por `--feriado`, lidos do ato que o índice anual da AASP aponta",
+          "na base da banca, para a conferência em modo aviso, registros com escopo nível `tribunal`, valor `TJSP`, transcritos do mesmo ato e com a procedência dele"
+        ]
+      },
+      {
+        "id": 2,
+        "tema": "Justiça do Trabalho",
+        "pergunta": "Mesma pergunta, considerando o art. 775 da CLT e as normas do TRT da 2ª e da 15ª Região.",
+        "resposta": "Decisão do advogado (26/08/2026): o art. 62 da Lei 5.010/1966 ALCANÇA a Justiça do Trabalho. Na JT o recesso é FERIADO e suspensão ao mesmo tempo: dia não útil pelo art. 62, I, na leitura da Res. CNJ 244/2016, art. 2º, § 1º, que equipara o recesso ao feriado nos órgãos do Judiciário da União (e TRT é órgão do Judiciário da União), com a suspensão do art. 775-A da CLT correndo por cima. TRT-2 e TRT-15 fundam os próprios calendários de 2026 na Lei 5.010/1966, citando o art. 62 expressamente. Aplicada em `extrair_calendario_portaria_trt2.py` e `extrair_calendario_portaria_trt15.py`, que emitem o recesso da janela 20/12 a 06/01 com `efeito: dia_nao_util` e `justificativa_efeito` nomeando norma e decisão.",
+        "o_que_preenche": [
+          "registros com escopo nível `tribunal`, valor `TRT2` e `TRT15`",
+          "entradas em `cobertura_declarada` para TRT2 e TRT15"
+        ]
+      },
+      {
+        "id": 3,
+        "tema": "9/7, 25/1, Carnaval, Sexta-feira Santa e Corpus Christi — fora do padrão do motor",
+        "pergunta": "9/7 e 25/1 devem sair do padrão e virar feriado por comarca, aplicados só quando o foro competente for de São Paulo? E o Carnaval, a Sexta-feira Santa e o Corpus Christi?",
+        "resposta": "Decisões do advogado de 26/08/2026 (25/1) e 13/10/2026 (9/7, Carnaval, Sexta-feira Santa e Corpus Christi): nenhum dos cinco está no padrão de `calcular_prazo.feriados()`, porque nenhum é feriado nacional por lei federal. 25/1 é feriado MUNICIPAL da Capital (Lei municipal 14.485/2007, art. 10, 'no Município da Capital'); 9/7 é feriado ESTADUAL de SP (Lei estadual 9.497/1997, art. 1º, data magna, na forma do art. 1º, II da Lei federal 9.093/1995); a Sexta-feira Santa e o Corpus Christi são feriados religiosos quando declarados em lei municipal (Lei 9.093/1995, art. 2º, que conta a Sexta-Feira da Paixão entre os até quatro dias de guarda); o Carnaval é dia sem expediente fixado pelo tribunal (CPC, art. 216). Na Justiça Federal, a Semana Santa, da quarta-feira ao Domingo de Páscoa, e o Carnaval são feriados pelo art. 62, II e III da Lei 5.010/1966, registrados nesta base com escopo `esfera=federal`. Como os demais dias do calendário do tribunal, vêm do ato oficial do ano que o índice anual da AASP aponta (`scripts/consultar_calendario_aasp.py`) e entram no cálculo por `--feriado AAAA-MM-DD`. Sem `--feriado` contam como úteis, e onde o tribunal não teve expediente o vencimento calculado nunca vem depois do real, que é a direção segura; na data-alvo e nos dias úteis restantes da triagem do DJEN o 9/7, o Carnaval, a Sexta-feira Santa e o Corpus Christi contam sempre como não úteis, informados ou não (conjunto conservador do `calcular_prazo.py`), para a data-alvo e a urgência não saírem tarde onde o tribunal fechou. Aplicada no `calcular_prazo.py`.",
+        "o_que_preenche": [
+          "nada no padrão de `calcular_prazo.feriados()`: 9/7, 25/1, Carnaval, Sexta-feira Santa e Corpus Christi entram no cálculo por `--feriado`, lidos do ato que o índice anual da AASP aponta; nesta base compartilhada ficam só a Semana Santa e o Carnaval da Justiça Federal (art. 62, II e III), para a conferência em modo aviso",
+          "na base da banca, para a conferência em modo aviso: 9/7 como `feriado_estadual` com escopo nível `uf`, valor `SP`; 25/1 como `feriado_municipal` com escopo nível `municipio`, valor do município da comarca; Carnaval, Sexta-feira Santa e Corpus Christi com o escopo e o efeito que o ato do tribunal lhes dá; cada registro com a procedência do ato"
+        ]
+      },
+      {
+        "id": 4,
+        "tema": "Recesso — art. 62, I da Lei 5.010/66 x art. 220 do CPC",
+        "pergunta": "O art. 62, I trata 20/12 a 6/1 como feriado na Justiça Federal, o que é diferente da suspensão de prazos de 20/12 a 20/01 do art. 220 do CPC. Os dois convivem? O tratamento atual (só suspensão) basta?",
+        "resposta": "Decisão do advogado (26/08/2026): CONVIVEM, e isso está no texto, não é interpretação: o art. 1.072 do CPC não revoga a Lei 5.010/1966, e o art. 220, § 1º do CPC ressalva expressamente 'os feriados instituídos por lei'. A Res. CNJ 244/2016 separa os três efeitos: o art. 2º, § 1º equipara o recesso ao FERIADO nos órgãos do Judiciário da União (20/12 a 06/01); o art. 3º suspende PRAZO até 20/01, autônomo, e o parágrafo único diz que de 7 a 20 de janeiro há expediente forense NORMAL. Portanto o efeito do recesso é `dia_nao_util` DENTRO da janela de 20/12 a 06/01 e, FORA dela, segue em aberto: o alcance decidido é o do art. 62, e o art. 62 não alcança 07/01. Os dois extratores do TRT aplicam essa fronteira e mantêm em `pendentes_de_efeito` o dia de recesso que caia fora dela.",
+        "o_que_preenche": [
+          "o `efeito` de cada registro de `recesso_forense`: `dia_nao_util` (leitura do art. 62, I) ou `suspensao_prazo` (leitura do art. 220 do CPC)",
+          "se os dois convivem no mesmo escopo, a resposta decide qual prevalece — enquanto não decidido, o módulo reporta CONFLITO DE EFEITO e escala, sem escolher"
+        ]
+      }
+    ],
+    "estado_das_perguntas": "As quatro perguntas estão respondidas pelo advogado. A pergunta 1 (TJSP) se responde pela regra geral do calendário de tribunal: os dias vêm do ato que o índice anual da AASP aponta, e esta base compartilhada não recebe registro de tribunal."
+  },
+  "efeitos": {
+    "dia_nao_util": {
+      "rotulo": "dia não útil",
+      "significado": "o dia NÃO conta na contagem em dias úteis.",
+      "nao_confundir_com": [
+        "suspensao_prazo",
+        "prorrogacao_vencimento"
+      ]
+    },
+    "suspensao_prazo": {
+      "rotulo": "suspensão de prazo",
+      "significado": "o prazo NÃO corre; o dia existe.",
+      "nao_confundir_com": [
+        "dia_nao_util",
+        "prorrogacao_vencimento"
+      ]
+    },
+    "prorrogacao_vencimento": {
+      "rotulo": "prorrogação de vencimento",
+      "significado": "o prazo CORRE; vencendo em dia sem expediente, o vencimento vai ao próximo dia útil.",
+      "nao_confundir_com": [
+        "dia_nao_util",
+        "suspensao_prazo"
+      ]
+    },
+    "regra": "Os três efeitos são DISTINTOS e não podem colapsar em um. O art. 62, I da Lei 5.010/66 ilustra: trata 20/12 a 6/1 como FERIADO na Justiça Federal, o que não é a suspensão de 20/12 a 20/01 do art. 220 do CPC."
+  },
+  "niveis_escopo": [
+    "brasil",
+    "uf",
+    "municipio",
+    "esfera",
+    "tribunal",
+    "vara",
+    "sistema"
+  ],
+  "sistemas_reconhecidos": [
+    "PJe",
+    "e-SAJ",
+    "eproc",
+    "Projudi"
+  ],
+  "tipos": {
+    "feriado_nacional": {
+      "escopo_nivel_admitido": [
+        "brasil"
+      ],
+      "efeito_tipico": "dia_nao_util"
+    },
+    "feriado_estadual": {
+      "escopo_nivel_admitido": [
+        "uf"
+      ],
+      "efeito_tipico": "dia_nao_util"
+    },
+    "feriado_municipal": {
+      "escopo_nivel_admitido": [
+        "municipio"
+      ],
+      "efeito_tipico": "dia_nao_util"
+    },
+    "recesso_forense": {
+      "escopo_nivel_admitido": [
+        "tribunal",
+        "esfera"
+      ],
+      "efeito_tipico": "suspensao_prazo"
+    },
+    "suspensao_expediente": {
+      "escopo_nivel_admitido": [
+        "vara",
+        "tribunal"
+      ],
+      "efeito_tipico": "dia_nao_util"
+    },
+    "ponto_facultativo_com_suspensao": {
+      "escopo_nivel_admitido": [
+        "tribunal"
+      ],
+      "efeito_tipico": "suspensao_prazo"
+    },
+    "indisponibilidade_sistema": {
+      "escopo_nivel_admitido": [
+        "sistema"
+      ],
+      "efeito_tipico": "prorrogacao_vencimento"
+    },
+    "_regra_divergencia_efeito": "O `efeito` é campo do REGISTRO, não do tipo: o mesmo evento pode ter leitura diferente (art. 62, I x art. 220 do CPC). O tipo declara apenas o efeito TÍPICO. Registro cujo `efeito` divirja do típico exige `justificativa_efeito` não vazia. O código NÃO escolhe o efeito.",
+    "feriado_forense": {
+      "escopo_nivel_admitido": [
+        "esfera",
+        "tribunal"
+      ],
+      "efeito_tipico": "dia_nao_util",
+      "_leia": "Feriado criado por lei de organizacao judiciaria para um ramo ou tribunal, e nao pela lei de feriados civis. E o caso do art. 62 da Lei 5.010/66. Distinto de `recesso_forense`, cujo efeito tipico e suspensao de prazo."
+    }
+  },
+  "recorrencias": {
+    "unica": {
+      "campos_obrigatorios": [
+        "data_inicio"
+      ],
+      "campos_opcionais": [
+        "data_fim"
+      ],
+      "formato": "AAAA-MM-DD; sem `data_fim`, o evento dura um dia."
+    },
+    "anual_fixa": {
+      "campos_obrigatorios": [
+        "mes_dia_inicio"
+      ],
+      "campos_opcionais": [
+        "mes_dia_fim"
+      ],
+      "formato": "MM-DD; se `mes_dia_fim` for anterior a `mes_dia_inicio`, o intervalo atravessa a virada do ano (ex.: 12-20 a 01-06)."
+    },
+    "anual_movel": {
+      "campos_obrigatorios": [
+        "ancora",
+        "deslocamento_inicio"
+      ],
+      "campos_opcionais": [
+        "deslocamento_fim"
+      ],
+      "formato": "`deslocamento_*` em dias inteiros relativos à âncora (negativo = antes). Ex.: Carnaval seg/ter = -48 a -47; quarta-feira Santa ao Domingo de Páscoa = -4 a 0. QUAIS deslocamentos aplicar é decisão do advogado; o código apenas calcula a âncora."
+    }
+  },
+  "ancoras_moveis": {
+    "pascoa": "Domingo de Páscoa, calculado pelo algoritmo gregoriano da Páscoa. Aritmética, não norma."
+  },
+  "precedencia_camadas": [
+    {
+      "posicao": 1,
+      "camada": "caso",
+      "origem": "parâmetro `--feriado AAAA-MM-DD` do `calcular_prazo.py`",
+      "regra": "É a palavra do advogado e SEMPRE vence as demais camadas. Fica registrada na saída da consulta. O efeito declarado é `dia_nao_util`, espelhando o que o `calcular_prazo.py` faz com o parâmetro (soma ao conjunto de feriados consultado por `util()`).",
+      "quem_aplica": "o `calcular_prazo.py`, na própria contagem; esta base só declara a precedência"
+    },
+    {
+      "posicao": 2,
+      "camada": "base",
+      "origem": "`registros` deste arquivo",
+      "regra": "As camadas da base são CUMULATIVAS, não competem entre si: cada nível contribui o seu próprio efeito e os três efeitos permanecem separados. O código NÃO elege vencedor entre níveis diferentes."
+    }
+  ],
+  "regra_conflito_de_efeito": "Dois registros vigentes no MESMO dia, com o MESMO par (escopo.nivel, escopo.valor) e `efeito` DIFERENTE constituem CONFLITO DE EFEITO. O módulo reporta o conflito, lista os dois registros e escala ao advogado — nunca escolhe. É a forma estrutural da pergunta 4 da pendência (art. 62, I x art. 220 do CPC).",
+  "regra_cobertura": "FAIL-CLOSED. Tribunal, comarca, UF ou sistema sem entrada correspondente em `cobertura_declarada` para o ano consultado devolve COBERTURA_PARCIAL_DECLARADA + escalonamento, nunca 'assume os nacionais e devolve um número'. Nível não informado no escopo da consulta também é cobertura faltante.",
+  "sufixos_oficiais": [
+    ".jus.br",
+    ".gov.br",
+    ".leg.br",
+    ".mp.br",
+    ".def.br"
+  ],
+  "regra_procedencia": "Espelha `skills/dissero-pesquisa-juridica/scripts/fontes_oficiais.json`: host com sufixo oficial IDENTIFICA candidato, nunca confirma automaticamente. Em discussão de tempestividade vale a FONTE, não a base — por isso a procedência é obrigatória em todo registro: ato, número, data do ato, URL da fonte oficial e data de coleta.",
+  "campos_do_registro": {
+    "id": "identificador estável do registro (string)",
+    "tipo": "uma das chaves de `tipos`",
+    "rotulo": "nome do evento, em português",
+    "escopo": "{ nivel: um de `niveis_escopo`, valor: string ('Brasil' para nível brasil) }",
+    "efeito": "um dos três de `efeitos`",
+    "justificativa_efeito": "obrigatória quando `efeito` divergir de `tipos[tipo].efeito_tipico`",
+    "recorrencia": "uma das chaves de `recorrencias`, com os campos que ela exige",
+    "vigencia_inicio": "AAAA-MM-DD — início da vigência DO REGISTRO (da norma), não do evento",
+    "vigencia_fim": "AAAA-MM-DD ou null (ainda vigente)",
+    "base_normativa": "dispositivo invocado, em texto",
+    "procedencia": "{ ato, numero, data, url_fonte_oficial, data_coleta }"
+  },
+  "cobertura_declarada": [
+    {
+      "nivel": "esfera",
+      "valor": "federal",
+      "anos": [
+        2020,
+        2021,
+        2022,
+        2023,
+        2024,
+        2025,
+        2026,
+        2027,
+        2028,
+        2029,
+        2030,
+        2031,
+        2032,
+        2033,
+        2034,
+        2035
+      ],
+      "completo": true,
+      "procedencia": {
+        "ato": "Lei",
+        "numero": "5.010/1966, art. 62 (redacao da Lei 6.741/1979)",
+        "data": "1966-05-30",
+        "url_fonte_oficial": "https://www.planalto.gov.br/ccivil_03/leis/l5010compilado.htm",
+        "data_coleta": "2026-09-05"
+      },
+      "_leia": "Completo QUANTO AO ART. 62, que e a fonte permanente do nao-expediente na Justica Federal e nao depende de calendario anual. Portaria de suspensao e indisponibilidade de sistema NAO estao aqui e continuam faltando por ano — elas nascem depois de qualquer calendario publicado, que e a razao de a base existir."
+    }
+  ],
+  "registros": [
+    {
+      "id": "lei5010-art62-I-recesso-federal",
+      "tipo": "feriado_forense",
+      "rotulo": "Recesso da Justica Federal (20/12 a 06/01) — art. 62, I",
+      "escopo": {
+        "nivel": "esfera",
+        "valor": "federal"
+      },
+      "efeito": "dia_nao_util",
+      "justificativa_efeito": "O art. 62, I trata 20/12 a 06/01 como FERIADO na Justiça Federal: dia que não conta. Não é a suspensão de prazo de 20/12 a 20/01 do art. 220 do CPC, que é outro efeito, outro intervalo e outra norma. As duas CONVIVEM (pergunta 4 da pendência jurídica) e não se colapsam num efeito só.",
+      "recorrencia": "anual_fixa",
+      "mes_dia_inicio": "12-20",
+      "mes_dia_fim": "01-06",
+      "vigencia_inicio": "1979-12-06",
+      "vigencia_fim": null,
+      "base_normativa": "Lei 5.010/1966, art. 62, I, na redacao da Lei 6.741/1979",
+      "procedencia": {
+        "ato": "Lei",
+        "numero": "5.010/1966, art. 62 (redacao da Lei 6.741/1979)",
+        "data": "1966-05-30",
+        "url_fonte_oficial": "https://www.planalto.gov.br/ccivil_03/leis/l5010compilado.htm",
+        "data_coleta": "2026-09-05"
+      }
+    },
+    {
+      "id": "lei5010-art62-II-semana-santa-federal",
+      "tipo": "feriado_forense",
+      "rotulo": "Semana Santa integral, quarta-feira a Domingo de Pascoa — art. 62, II",
+      "escopo": {
+        "nivel": "esfera",
+        "valor": "federal"
+      },
+      "efeito": "dia_nao_util",
+      "recorrencia": "anual_movel",
+      "ancora": "pascoa",
+      "deslocamento_inicio": -4,
+      "deslocamento_fim": 0,
+      "vigencia_inicio": "1979-12-06",
+      "vigencia_fim": null,
+      "base_normativa": "Lei 5.010/1966, art. 62, II — 'os dias da Semana Santa, compreendidos entre a quarta-feira e o Domingo de Páscoa'. Os deslocamentos -4 a 0 são a leitura literal desse intervalo; a Páscoa vem do algoritmo gregoriano, que é aritmética e não norma. O padrão do `calcular_prazo.py` não conta nenhum dia da Semana Santa: a quarta, a quinta e a Sexta-feira Santa entram no cálculo por `--feriado`, lidas do ato do tribunal, e este registro as aponta na conferência em modo aviso.",
+      "procedencia": {
+        "ato": "Lei",
+        "numero": "5.010/1966, art. 62 (redacao da Lei 6.741/1979)",
+        "data": "1966-05-30",
+        "url_fonte_oficial": "https://www.planalto.gov.br/ccivil_03/leis/l5010compilado.htm",
+        "data_coleta": "2026-09-05"
+      }
+    },
+    {
+      "id": "lei5010-art62-III-carnaval-federal",
+      "tipo": "feriado_forense",
+      "rotulo": "Segunda e terca-feira de Carnaval — art. 62, III",
+      "escopo": {
+        "nivel": "esfera",
+        "valor": "federal"
+      },
+      "efeito": "dia_nao_util",
+      "recorrencia": "anual_movel",
+      "ancora": "pascoa",
+      "deslocamento_inicio": -48,
+      "deslocamento_fim": -47,
+      "vigencia_inicio": "1979-12-06",
+      "vigencia_fim": null,
+      "base_normativa": "Lei 5.010/1966, art. 62, III",
+      "procedencia": {
+        "ato": "Lei",
+        "numero": "5.010/1966, art. 62 (redacao da Lei 6.741/1979)",
+        "data": "1966-05-30",
+        "url_fonte_oficial": "https://www.planalto.gov.br/ccivil_03/leis/l5010compilado.htm",
+        "data_coleta": "2026-09-05"
+      }
+    },
+    {
+      "id": "lei5010-art62-IV-11-08-federal",
+      "tipo": "feriado_forense",
+      "rotulo": "11 de agosto — Dia do Advogado (art. 62, IV)",
+      "escopo": {
+        "nivel": "esfera",
+        "valor": "federal"
+      },
+      "efeito": "dia_nao_util",
+      "recorrencia": "anual_fixa",
+      "mes_dia_inicio": "08-11",
+      "vigencia_inicio": "1979-12-06",
+      "vigencia_fim": null,
+      "base_normativa": "Lei 5.010/1966, art. 62, IV",
+      "procedencia": {
+        "ato": "Lei",
+        "numero": "5.010/1966, art. 62 (redacao da Lei 6.741/1979)",
+        "data": "1966-05-30",
+        "url_fonte_oficial": "https://www.planalto.gov.br/ccivil_03/leis/l5010compilado.htm",
+        "data_coleta": "2026-09-05"
+      }
+    },
+    {
+      "id": "lei5010-art62-IV-01-11-federal",
+      "tipo": "feriado_forense",
+      "rotulo": "1o de novembro (art. 62, IV)",
+      "escopo": {
+        "nivel": "esfera",
+        "valor": "federal"
+      },
+      "efeito": "dia_nao_util",
+      "recorrencia": "anual_fixa",
+      "mes_dia_inicio": "11-01",
+      "vigencia_inicio": "1979-12-06",
+      "vigencia_fim": null,
+      "base_normativa": "Lei 5.010/1966, art. 62, IV",
+      "procedencia": {
+        "ato": "Lei",
+        "numero": "5.010/1966, art. 62 (redacao da Lei 6.741/1979)",
+        "data": "1966-05-30",
+        "url_fonte_oficial": "https://www.planalto.gov.br/ccivil_03/leis/l5010compilado.htm",
+        "data_coleta": "2026-09-05"
+      }
+    },
+    {
+      "id": "lei5010-art62-IV-02-11-federal",
+      "tipo": "feriado_forense",
+      "rotulo": "2 de novembro (art. 62, IV)",
+      "escopo": {
+        "nivel": "esfera",
+        "valor": "federal"
+      },
+      "efeito": "dia_nao_util",
+      "recorrencia": "anual_fixa",
+      "mes_dia_inicio": "11-02",
+      "vigencia_inicio": "1979-12-06",
+      "vigencia_fim": null,
+      "base_normativa": "Lei 5.010/1966, art. 62, IV. Coincide com Finados, feriado nacional — o registro existe assim mesmo porque a FONTE do nao-expediente na Justica Federal e o art. 62, e revogacao do feriado nacional nao alcancaria este dispositivo.",
+      "procedencia": {
+        "ato": "Lei",
+        "numero": "5.010/1966, art. 62 (redacao da Lei 6.741/1979)",
+        "data": "1966-05-30",
+        "url_fonte_oficial": "https://www.planalto.gov.br/ccivil_03/leis/l5010compilado.htm",
+        "data_coleta": "2026-09-05"
+      }
+    },
+    {
+      "id": "lei5010-art62-IV-08-12-federal",
+      "tipo": "feriado_forense",
+      "rotulo": "8 de dezembro — Dia da Justica (art. 62, IV)",
+      "escopo": {
+        "nivel": "esfera",
+        "valor": "federal"
+      },
+      "efeito": "dia_nao_util",
+      "recorrencia": "anual_fixa",
+      "mes_dia_inicio": "12-08",
+      "vigencia_inicio": "1979-12-06",
+      "vigencia_fim": null,
+      "base_normativa": "Lei 5.010/1966, art. 62, IV",
+      "procedencia": {
+        "ato": "Lei",
+        "numero": "5.010/1966, art. 62 (redacao da Lei 6.741/1979)",
+        "data": "1966-05-30",
+        "url_fonte_oficial": "https://www.planalto.gov.br/ccivil_03/leis/l5010compilado.htm",
+        "data_coleta": "2026-09-05"
+      }
+    }
+  ],
+  "valores_esfera": {
+    "_leia": "O art. 62 da Lei 5.010/66 vale 'na Justiça Federal, inclusive nos Tribunais Superiores': escopo de RAMO. Enumerar tribunal por tribunal seria infiel à norma e criaria omissão a cada órgão novo. A esfera do processo sai do 6º dígito do número CNJ (Res. CNJ 65/2008); `calcular_prazo.py --processo <CNJ>` a deriva.",
+    "federal": "Justica Federal e Tribunais Superiores (art. 62 da Lei 5.010/66)",
+    "estadual": "Justicas Estaduais",
+    "trabalhista": "Justica do Trabalho",
+    "eleitoral": "Justica Eleitoral",
+    "militar_estadual": "Justica Militar Estadual (a Justica Militar da Uniao fica em federal)"
+  }
+}

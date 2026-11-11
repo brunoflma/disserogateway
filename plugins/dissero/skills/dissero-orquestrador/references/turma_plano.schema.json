@@ -1,0 +1,464 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "dsr:turma_plano.v1",
+  "title": "Plano da turma Dissero (nivel do CASO)",
+  "description": "Contrato do plano de turma produzido por planejar_turma.py. CARREGADO E APLICADO na fronteira do CLI (schema_mini) antes de o plano sair. `fatias[]` cobre TODA pagina de TODO documento do inventario; documento nao lido nao vira fatia e obriga `acao: escalar`.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "caso",
+    "gerado_em",
+    "acao",
+    "total_fatias",
+    "total_agentes",
+    "ondas",
+    "bloco_paginas",
+    "overlap",
+    "espinha",
+    "fatias",
+    "oficios",
+    "cobertura",
+    "aval_subagentes",
+    "avisos",
+    "motivo"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": "dsr.turma_plano.v1"
+    },
+    "caso": {
+      "type": "string"
+    },
+    "gerado_em": {
+      "type": "string",
+      "minLength": 1
+    },
+    "acao": {
+      "enum": [
+        "planejada",
+        "escalar"
+      ]
+    },
+    "total_fatias": {
+      "type": "integer"
+    },
+    "total_agentes": {
+      "type": "integer"
+    },
+    "agentes_apos_checkpoint": {
+      "type": "integer"
+    },
+    "ondas": {
+      "type": "integer"
+    },
+    "bloco_paginas": {
+      "type": "integer"
+    },
+    "overlap": {
+      "type": "integer"
+    },
+    "espinha": {
+      "$ref": "#/definitions/espinha"
+    },
+    "fatias": {
+      "type": "array",
+      "items": {
+        "$ref": "#/definitions/fatia"
+      }
+    },
+    "oficios": {
+      "type": "array",
+      "items": {
+        "$ref": "#/definitions/oficio"
+      }
+    },
+    "cobertura": {
+      "$ref": "#/definitions/cobertura"
+    },
+    "aval_subagentes": {
+      "$ref": "#/definitions/aval"
+    },
+    "avisos": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "motivo": {
+      "type": "string"
+    },
+    "erro": {
+      "type": "string",
+      "minLength": 1
+    },
+    "comando_aval": {
+      "type": "string",
+      "minLength": 1
+    }
+  },
+  "definitions": {
+    "nullable_int": {
+      "type": [
+        "integer",
+        "null"
+      ]
+    },
+    "nullable_string": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "espinha": {
+      "description": "Contexto minimo que acompanha TODA fatia. Sem ele, troca-se diluicao de atencao por cegueira lateral - e a segunda e pior, porque nao aparece. `faltando` NOMEIA o contexto que o CONFERENCIA.json nao trouxe, em vez de omiti-lo.",
+      "type": "object",
+      "required": [
+        "ref",
+        "caso",
+        "documentos",
+        "paginas_totais",
+        "faltando"
+      ],
+      "properties": {
+        "ref": {
+          "type": "string",
+          "minLength": 64
+        },
+        "caso": {
+          "type": "string"
+        },
+        "documentos": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/espinha_documento"
+          }
+        },
+        "paginas_totais": {
+          "type": "integer"
+        },
+        "faltando": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "espinha_documento": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "doc_id",
+        "arquivo",
+        "paginas_total",
+        "leitura_status"
+      ],
+      "properties": {
+        "doc_id": {
+          "type": "string"
+        },
+        "arquivo": {
+          "type": "string"
+        },
+        "paginas_total": {
+          "$ref": "#/definitions/nullable_int"
+        },
+        "leitura_status": {
+          "type": "string"
+        },
+        "numeracao": {
+          "type": "string"
+        },
+        "pagina_inicial": {
+          "$ref": "#/definitions/nullable_int"
+        }
+      }
+    },
+    "fatia": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "fatia_id",
+        "doc_id",
+        "arquivo",
+        "sha256_arquivo",
+        "pagina_inicial",
+        "pagina_final",
+        "total_paginas",
+        "sigiloso",
+        "rota",
+        "rota_rebaixada",
+        "oficio",
+        "espinha_ref"
+      ],
+      "properties": {
+        "fatia_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "doc_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "arquivo": {
+          "type": "string"
+        },
+        "sha256_arquivo": {
+          "type": "string"
+        },
+        "pagina_inicial": {
+          "type": "integer"
+        },
+        "pagina_final": {
+          "type": "integer"
+        },
+        "total_paginas": {
+          "type": "integer"
+        },
+        "numeracao": {
+          "type": "string"
+        },
+        "pagina_inicial_documento": {
+          "type": "integer"
+        },
+        "sigiloso": {
+          "type": "boolean"
+        },
+        "sensibilidade_declarada": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "enum": [
+            null,
+            "publico",
+            "restrito",
+            "sigiloso"
+          ]
+        },
+        "rota": {
+          "enum": [
+            "read_nativo",
+            "local",
+            "nuvem",
+            "visual",
+            "eluxi"
+          ]
+        },
+        "rota_rebaixada": {
+          "type": "boolean"
+        },
+        "oficio": {
+          "$ref": "#/definitions/nullable_string"
+        },
+        "espinha_ref": {
+          "type": "string",
+          "minLength": 64
+        },
+        "leitura": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "ferramenta",
+            "processo",
+            "instrucao"
+          ],
+          "properties": {
+            "ferramenta": {
+              "enum": [
+                "ler_markdown",
+                "Read"
+              ]
+            },
+            "processo": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "instrucao": {
+              "type": "string",
+              "minLength": 8
+            }
+          },
+          "description": "como o leitor obtem o teor da fatia: eluxi -> ler_markdown direto do artefato publicado; demais -> Read por faixa"
+        }
+      }
+    },
+    "oficio": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "titulo",
+        "model",
+        "camada",
+        "agentes"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "titulo": {
+          "type": "string"
+        },
+        "model": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "enum": [
+            null,
+            "opus",
+            "sonnet",
+            "haiku"
+          ]
+        },
+        "camada": {
+          "enum": [
+            "leitor",
+            "especialista"
+          ]
+        },
+        "agentes": {
+          "type": "integer"
+        }
+      }
+    },
+    "cobertura": {
+      "description": "DERIVADA das proprias fatias, nunca declarada: `completa` e `faltando` saem de refazer o conjunto de paginas de cada documento a partir de fatias[]. Cobertura que o planejador escreve por otimismo prova o que ele acha que fez.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "paginas_planejadas",
+        "documentos_planejados",
+        "nao_lidos",
+        "sem_paginacao",
+        "completa",
+        "faltando"
+      ],
+      "properties": {
+        "paginas_planejadas": {
+          "type": "integer"
+        },
+        "documentos_planejados": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "nao_lidos": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "sem_paginacao": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "sem_paginacao_autorizado": {
+          "type": "boolean"
+        },
+        "entradas_invalidas": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/entrada_invalida"
+          }
+        },
+        "nao_declarados": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "completa": {
+          "type": "boolean"
+        },
+        "faltando": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/buraco"
+          }
+        }
+      }
+    },
+    "entrada_invalida": {
+      "description": "Entrada da lista `documentos` do inventario que nao e objeto. Registra-se POSICAO e TIPO, nunca o conteudo - ele pode ser sigiloso. Descartar em silencio faria o documento sumir antes de qualquer contagem, e o plano sairia `completa: true`.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "posicao",
+        "tipo"
+      ],
+      "properties": {
+        "posicao": {
+          "type": "integer"
+        },
+        "tipo": {
+          "type": "string"
+        }
+      }
+    },
+    "buraco": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "doc_id",
+        "paginas",
+        "total_faltando"
+      ],
+      "properties": {
+        "doc_id": {
+          "type": "string"
+        },
+        "paginas": {
+          "type": "array",
+          "items": {
+            "type": "integer"
+          }
+        },
+        "total_faltando": {
+          "type": "integer"
+        }
+      }
+    },
+    "aval": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "teto_autorizado",
+        "max_simultaneos_considerado",
+        "origem_do_simultaneo",
+        "detalhe"
+      ],
+      "properties": {
+        "teto_autorizado": {
+          "type": "integer"
+        },
+        "ja_disparados": {
+          "$ref": "#/definitions/nullable_int"
+        },
+        "restante": {
+          "type": "integer"
+        },
+        "origem_da_contagem": {
+          "type": "string"
+        },
+        "max_simultaneos_considerado": {
+          "type": "integer"
+        },
+        "origem_do_simultaneo": {
+          "type": "string"
+        },
+        "detalhe": {
+          "type": "object"
+        }
+      }
+    }
+  }
+}

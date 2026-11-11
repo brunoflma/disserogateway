@@ -1,0 +1,32 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "dsr:datajud:coverage:v1",
+  "title": "Contrato de cobertura DataJud Dissero v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version", "tribunal", "indice", "query", "shards_esperados",
+    "shards_recebidos", "paginas_esperadas", "paginas_recebidas", "timed_out",
+    "shards_failed", "shards_failed_count", "hits", "timestamp", "state", "warnings"
+  ],
+  "properties": {
+    "schema_version": { "const": "dsr.datajud.coverage.v1" },
+    "tribunal": { "type": "string", "minLength": 1 },
+    "indice": { "type": "string", "minLength": 1 },
+    "query": { "type": ["object", "array"] },
+    "shards_esperados": { "type": ["integer", "null"], "minimum": 0 },
+    "shards_recebidos": { "type": ["integer", "null"], "minimum": 0 },
+    "paginas_esperadas": { "type": ["integer", "null"], "minimum": 0 },
+    "paginas_recebidas": { "type": ["integer", "null"], "minimum": 0 },
+    "timed_out": { "type": "boolean" },
+    "shards_failed": {
+      "type": ["integer", "array", "object", "null"],
+      "minimum": 0
+    },
+    "shards_failed_count": { "type": "integer", "minimum": 0 },
+    "hits": { "type": ["integer", "null"], "minimum": 0 },
+    "timestamp": { "type": "string", "minLength": 1 },
+    "state": { "enum": ["completo", "parcial", "indeterminado"] },
+    "warnings": { "type": "array", "items": { "type": "string" } }
+  }
+}

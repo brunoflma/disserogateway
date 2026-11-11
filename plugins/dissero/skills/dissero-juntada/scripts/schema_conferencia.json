@@ -1,0 +1,243 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "dsr:conferencia:v1",
+  "title": "Contrato de conferência de ingestão Dissero v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "documentos"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": "dsr.conferencia.v1"
+    },
+    "caso": {
+      "type": "string"
+    },
+    "gerado_em": {
+      "type": "string"
+    },
+    "documentos": {
+      "type": "array",
+      "items": {
+        "$ref": "#/definitions/documento"
+      }
+    }
+  },
+  "definitions": {
+    "nullable_string": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "nullable_int": {
+      "type": [
+        "integer",
+        "null"
+      ]
+    },
+    "documento": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "doc_id",
+        "arquivo",
+        "sha256_arquivo",
+        "origem",
+        "rota",
+        "motor",
+        "confianca",
+        "detector",
+        "paginas_total",
+        "sentinela",
+        "cobertura",
+        "trechos",
+        "leitura_status"
+      ],
+      "properties": {
+        "doc_id": {
+          "type": "string",
+          "minLength": 6
+        },
+        "arquivo": {
+          "type": "string",
+          "minLength": 1
+        },
+        "sha256_arquivo": {
+          "type": "string",
+          "minLength": 64
+        },
+        "origem": {
+          "enum": [
+            "eluxi",
+            "local"
+          ]
+        },
+        "rota": {
+          "enum": [
+            "read_nativo",
+            "local",
+            "nuvem",
+            "visual",
+            "eluxi"
+          ]
+        },
+        "motor": {
+          "type": "string",
+          "minLength": 2
+        },
+        "confianca": {
+          "enum": [
+            "alta",
+            "media",
+            "baixa"
+          ]
+        },
+        "detector": {
+          "enum": [
+            "processar",
+            "revisar",
+            "escalar"
+          ]
+        },
+        "paginas_total": {
+          "$ref": "#/definitions/nullable_int"
+        },
+        "numeracao": {
+          "enum": [
+            "autos",
+            "arquivo"
+          ]
+        },
+        "pagina_inicial": {
+          "$ref": "#/definitions/nullable_int"
+        },
+        "sentinela": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "enum": [
+            null,
+            "PDF_SEM_TEXTO_EXTRAIVEL",
+            "TIPO_NAO_SUPORTADO"
+          ]
+        },
+        "cobertura": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "paginas_com_teor",
+            "faltando"
+          ],
+          "properties": {
+            "paginas_com_teor": {
+              "type": "integer"
+            },
+            "faltando": {
+              "type": "array",
+              "items": {
+                "type": "integer"
+              }
+            }
+          }
+        },
+        "trechos": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/trecho"
+          }
+        },
+        "leitura_status": {
+          "enum": [
+            "lido",
+            "parcial",
+            "nao_lido",
+            "indexado"
+          ]
+        },
+        "processo": {
+          "type": "string",
+          "minLength": 1,
+          "description": "identificador do processo no eluxi (argumento obrigatório de ler_markdown/buscar_trechos)"
+        },
+        "indice_eluxi": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "processo",
+            "total_paginas",
+            "total_segmentos"
+          ],
+          "properties": {
+            "processo": {
+              "type": "string",
+              "minLength": 1
+            },
+            "total_paginas": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "total_segmentos": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "modo_geracao": {
+              "type": "string"
+            }
+          },
+          "description": "resumo do consultar_indice do eluxi; presente ⇒ leitura_status pode ser `indexado`"
+        },
+        "paginas_lidas": {
+          "type": "array",
+          "items": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "description": "páginas efetivamente lidas pela turma (ler_markdown por fatia), acumuladas por --acrescentar-leitura"
+        },
+        "paginas_sem_texto": {
+          "type": "array",
+          "items": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "description": "páginas do PDF sem camada de texto extraível, medidas pelo gerador fora da rota de imagem (regra 9): o teor delas veio da vista e não serve de fonte literal"
+        },
+        "camada_nao_medida": {
+          "type": "boolean",
+          "description": "true quando o gerador devia medir a camada de texto do PDF (regra 9) e não havia medidor no ambiente (nem PyMuPDF nem pdftotext): a origem textual do teor ficou sem conferência"
+        }
+      }
+    },
+    "trecho": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "evidence_id",
+        "pagina",
+        "sha256_trecho",
+        "trecho_literal"
+      ],
+      "properties": {
+        "evidence_id": {
+          "type": "string",
+          "minLength": 12
+        },
+        "pagina": {
+          "$ref": "#/definitions/nullable_int"
+        },
+        "sha256_trecho": {
+          "type": "string",
+          "minLength": 64
+        },
+        "trecho_literal": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    }
+  }
+}

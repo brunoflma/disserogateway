@@ -1,0 +1,32 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "dsr:juntada:v1",
+  "title": "Ledger da juntada Dissero v1 (numeração por ordem de 1ª citação)",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "contador", "documentos"],
+  "properties": {
+    "schema_version": { "const": "dsr.juntada.v1" },
+    "caso": { "type": "string" },
+    "gerado_em": { "type": "string" },
+    "conferencia": { "type": ["string", "null"] },
+    "contador": { "type": "integer" },
+    "documentos": { "type": "array", "items": { "$ref": "#/definitions/documento" } }
+  },
+  "definitions": {
+    "documento": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["numero", "descricao", "arquivo", "sha256_arquivo", "evidence_ids", "cap_1a_citacao", "status"],
+      "properties": {
+        "numero": { "type": "integer" },
+        "descricao": { "type": "string", "minLength": 3 },
+        "arquivo": { "type": "string" },
+        "sha256_arquivo": { "type": ["string", "null"] },
+        "evidence_ids": { "type": "array", "items": { "type": "string", "minLength": 12 } },
+        "cap_1a_citacao": { "type": ["string", "null"] },
+        "status": { "enum": ["curado", "a_curar", "ilegivel", "gerado"] }
+      }
+    }
+  }
+}

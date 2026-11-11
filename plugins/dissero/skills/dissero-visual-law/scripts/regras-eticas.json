@@ -1,0 +1,364 @@
+{
+  "schema_version": "dsr.lint_etico.v1",
+
+  "_leia": "TABELA DO ADVOGADO, nao do programador. Diz quais dispositivos do Codigo de Etica e Disciplina da OAB e do Provimento 205/2021 do CFOAB o plugin MEDE na comunicacao externa, e por qual trecho de texto cada um se acende. Quem a le e o `lint_etico.py`, que roda avulso e fica fora do gate de entrega da peca. Cada regra guarda COPIA LOCAL do texto normativo em fontes-eticas/, e o validador confere o SHA-256 dessa copia: qualquer edicao no texto derruba a tabela inteira. O SHA guarda a copia contra adulteracao, mas nao prova que a URL oficial responde esse texto: esse elo e humano, e `procedencia.fonte_oficial_conferida` registra que o advogado o conferiu.",
+
+  "_leia_o_que_este_lint_nao_e": "O lint APONTA e nada mais. (1) Nao reescreve: nao ha funcao de reescrita no modulo, e ha teste que le o proprio fonte para provar. (2) Nao conclui infracao etica: cada apontamento sai rotulado como trecho A CONFERIR contra a norma invocada, e quem conclui e o advogado. (3) Nao aprova por ausencia de regra: com a tabela vazia a saida e INCONCLUSIVO, e o texto da saida distingue em palavras 'nada a apontar porque nao ha regra carregada' de 'esta em conformidade' - o primeiro e silencio do instrumento, o segundo e juizo humano que este modulo nunca emite.",
+
+  "habilitado": true,
+  "_leia_habilitado": "Com `habilitado` false o modulo devolve estado `inconclusivo` e nao emite apontamento algum. Para ligar, a `pendencia` tem de estar desbloqueada, `dominios` e `regras` preenchidos e a `revisao` completa: revisor identificado, papel advogado e o par review_valid_from/review_valid_to. O par de vigencia vem inteiro ou nulo dos dois lados; meio par e MALFORMADO, e o build/vigencia_fontes.py reprova a arvore. A vigencia de cada dispositivo em `regras[].fonte` usa os mesmos nomes, valid_from/valid_to, para que norma revogada vire alarme da mesma varredura.",
+
+  "_leia_revisao": "A assinatura tem prazo. O build/vigencia_fontes.py avisa nos 60 dias anteriores a `review_valid_to`, tempo para caber a releitura juridica, e, vencido o prazo, reprova a arvore inteira ate alguem reconferir e reassinar; o proprio validador da tabela passa a recusa-la. Para reassinar, troque `revisado_em` e o par de vigencia por datas novas. O build/monitorar_fontes.py vigia a outra ponta: confere as `url_oficial` das regras e avisa quando a norma muda antes do prazo (`python build/monitorar_fontes.py --online`).",
+  "revisao": {
+    "revisor": "advogado titular",
+    "papel": "advogado",
+    "revisado_em": "2026-08-25",
+    "review_valid_from": "2026-08-25",
+    "review_valid_to": "2026-12-31"
+  },
+
+  "procedencia": {
+    "origem": "Regras proprias do plugin, escritas sobre o texto oficial do Codigo de Etica e Disciplina da OAB (Resolucao 02/2015 do CFOAB) e do Provimento 205/2021 do CFOAB. Cada regra declara em `fonte` a URL oficial, a data de extracao e o SHA-256 da copia local guardada em fontes-eticas/.",
+    "adaptacao": "Cada regra converte um dispositivo que veda conduta na publicidade da advocacia em padrao de texto, com o exemplo que o padrao TEM de casar e a prosa legitima que ele NAO PODE casar. O `motivo` de cada regra parafraseia o dispositivo e cita o artigo; o texto normativo fica nas copias de fontes-eticas/, transcrito das URLs oficiais.",
+    "fonte_oficial_conferida": true,
+    "_leia_fonte_oficial": "`true` registra que o advogado conferiu que a URL oficial de cada regra responde o texto guardado em fontes-eticas/; marca-lo e ato do advogado, junto com a revisao. O SHA-256, conferido pelo validador a cada carga, guarda a copia contra adulteracao, mas nao atesta procedencia: o modulo nao baixa nada. Cada regra carrega a propria procedencia em `fonte` (norma, dispositivo, url_oficial, data_extracao, sha256, valid_from, valid_to) e REGRA SEM FONTE COMPLETA NAO CARREGA: o modulo recusa a tabela inteira e devolve inconclusivo. Quando `fonte.arquivo_local` e declarado, o SHA-256 do arquivo apontado tem de bater."
+  },
+
+  "pendencia": {
+    "bloqueada": false,
+    "bloqueada_desde": "2026-08-23",
+    "motivo": "O CONTEUDO das regras - o que o Codigo de Etica e Disciplina da OAB e o Provimento 205/2021 do CFOAB vedam na comunicacao externa - e materia juridica que exige fonte oficial versionada e revisao humana. Regra escrita de cabeca seria juizo juridico disfarcado de lint: o advogado leria 'apontamento etico' onde ha palpite de programador, e a ferramenta que existe para proteger a banca passaria a ser a fonte do risco. Por isso cada regra cita o dispositivo, com URL oficial, copia local e SHA-256, e a tabela so mede depois que o advogado le regra por regra e assina a `revisao`. Com `bloqueada` true, o modulo recusa medir.",
+    "alerta_falso_positivo": "ATENCAO - O FALSO POSITIVO AQUI E ESPECIALMENTE CARO. A peca processual legitimamente PEDE PROVIMENTO e sustenta tese com firmeza: 'requer-se a total procedencia dos pedidos', 'o direito da parte autora e liquido e certo', 'a condenacao e consequencia necessaria da prova produzida'. Nada disso e promessa de resultado a cliente: e o oficio. Um lint que confunda sustentacao de tese com promessa de resultado repreende o advogado por advogar, e um gate assim e desligado no terceiro dia - depois disso ele nao protege mais nada. Duas travas de forma existem para isso e sao OBRIGATORIAS em cada regra: `exemplo_apontavel`, que o padrao TEM de casar, e `exemplo_legitimo`, prosa legitima que o padrao NAO PODE casar; regra que aponta o proprio exemplo legitimo nao carrega e derruba a tabela. Alem delas, `controle_prosa_legitima` guarda a prosa de controle da banca, e NENHUMA regra pode acender nela.",
+    "decisoes_do_advogado": [
+      {
+        "pergunta": "Quais dispositivos do Codigo de Etica e Disciplina da OAB entram, e com que URL oficial?",
+        "decisao": "CED/2015 (Resolucao 02/2015 do CFOAB), arts. 40, 41 e 42, pela URL oficial do CFOAB declarada em cada regra, com copia local em fontes-eticas/ced-2015.md.",
+        "quem_decide": "advogado"
+      },
+      {
+        "pergunta": "Quais dispositivos do Provimento 205/2021 do CFOAB entram, e com que URL oficial?",
+        "decisao": "Arts. 3o, 4o e 6o, pela URL oficial da OAB declarada em cada regra, com copia local em fontes-eticas/provimento-205-2021.md. A regra do art. 3o, III foi recusada e esta registrada em `_leia_regras_recusadas`.",
+        "quem_decide": "advogado"
+      },
+      {
+        "pergunta": "Qual e o ALCANCE de cada regra?",
+        "decisao": "Os seis alcances de `dominios.alcance`, todos de publicidade e comunicacao externa do escritorio. peca_processual e comunicacao_cliente ficam fora do dominio. O modulo nao infere alcance: quem chama declara, e alcance fora de `dominios.alcance` devolve INCONCLUSIVO.",
+        "quem_decide": "advogado"
+      },
+      {
+        "pergunta": "Para cada regra: qual texto a aciona, qual prosa legitima ela NAO pode apontar, e que contextos a escusam?",
+        "decisao": "Cada regra traz `exemplo_apontavel` e `exemplo_legitimo`, conferidos pelo validador contra o proprio padrao, e `excecoes` quando preciso: a excecao casa na mesma linha da ocorrencia, e toda escusa aplicada sai impressa. Os padroes preferem formulas estaveis de compromisso a palavras de merito, que variam com o caso.",
+        "quem_decide": "advogado"
+      },
+      {
+        "pergunta": "Quais hosts contam como fonte oficial?",
+        "decisao": "Os de `dominios.host_oficial`, portais do CFOAB. URL de outro host reprova a tabela: e o que impede citar norma por reproducao de terceiro, onde a numeracao desatualizada circula.",
+        "quem_decide": "advogado"
+      },
+      {
+        "pergunta": "Este lint deve ser fiado em algum gate de entrega?",
+        "decisao": "Nenhum gate de entrega o chama: roda avulso, pela linha de comando, quando a skill manda conferir comunicacao externa. Fiar em gate e decisao do advogado depois de medir o falso positivo em comunicacao real do escritorio.",
+        "quem_decide": "advogado"
+      }
+    ],
+    "como_alterar": [
+      "1. Editar `regras` (e, se preciso, `dominios` e `controle_prosa_legitima`): cada regra com fonte completa, exemplo_apontavel e exemplo_legitimo; regra retirada vai para `_leia_regras_recusadas` com o motivo. Copia de fontes-eticas/ alterada exige o novo SHA-256 em toda regra que a aponta.",
+      "2. Rodar `python skills/dissero-visual-law/scripts/lint_etico.py --validar` ate sair sem impedimento.",
+      "3. Reassinar a `revisao`: revisor identificado, papel advogado, `revisado_em` e o par review_valid_from/review_valid_to com datas novas.",
+      "4. Rodar `python skills/dissero-visual-law/scripts/test_lint_etico.py` e `python build/vigencia_fontes.py`."
+    ]
+  },
+
+  "_leia_dominios": "Vocabulario fechado dos eixos. O valor declarado por cada regra tem de existir aqui: valor fora do dominio reprova a tabela, em vez de virar categoria nova em silencio. `host_oficial` e o unico opcional: vazio significa 'so exijo https com host', preenchido significa 'so aceito estes hosts'.",
+  "dominios": {
+    "alcance": ["publicidade_ativa", "publicidade_passiva", "site_perfil", "rede_social", "material_escritorio", "midia_entrevista"],
+    "norma": ["CED/2015", "Provimento 205/2021 CFOAB", "EOAB (Lei 8.906/1994)"],
+    "host_oficial": ["s.oab.org.br", "www.oab.org.br"]
+  },
+
+  "_leia_regras_recusadas": [{"id": "anuncio_de_especialidade_sem_titulo", "rotulo": "Anuncio de especialidade sem titulo certificado", "norma": "Provimento 205/2021 CFOAB, art. 3o, inciso III", "removida_em": "2026-08-25", "removida_por": "advogado titular", "motivo": "A norma NAO proibe anunciar especialidade - proibe anunciar aquela para a qual nao se tem titulo certificado ou notoria especializacao. O lint nao sabe quais titulos o escritorio detem, e por isso apontava TODAS as mencoes a especialidade, pedindo conferencia caso a caso. Sobre um escritorio que detem os titulos das areas que anuncia, isso e ruido puro - e ruido e o que faz um gate ser desligado, o que custaria as outras dez regras junto. A vedacao continua valendo como norma; o que nao se sustenta e medi-la por expressao regular sem conhecer o cadastro de titulos.", "para_voltar": "so faz sentido com uma tabela de titulos efetivamente detidos, declarada pelo advogado, contra a qual a mencao possa ser conferida. Sem ela, a regra volta a apontar tudo."}],
+  "_leia_regras": "Formato de cada item: {\"id\": \"identificador_estavel\", \"rotulo\": \"Nome que o advogado le\", \"alcances\": [\"<valores de dominios.alcance>\"], \"padrao\": \"expressao regular, avaliada sem diferenciar maiusculas de minusculas\", \"motivo\": \"por que este dispositivo alcanca este trecho, em portugues de advogado - este texto e interpolado no apontamento\", \"fonte\": {\"norma\": \"<valor de dominios.norma>\", \"dispositivo\": \"art. X, inciso Y\", \"url_oficial\": \"https://...\", \"data_extracao\": \"AAAA-MM-DD\", \"sha256\": \"64 caracteres hexadecimais minusculos do texto extraido\", \"valid_from\": \"AAAA-MM-DD\", \"valid_to\": \"AAAA-MM-DD\", \"arquivo_local\": \"caminho relativo a este JSON (opcional; se declarado, o SHA-256 do arquivo TEM de bater)\"}, \"exemplo_apontavel\": \"frase sintetica que o padrao TEM de casar\", \"exemplo_legitimo\": \"prosa legitima que o padrao NAO PODE casar\", \"excecoes\": [\"padrao que, casando na mesma linha, escusa a ocorrencia\"], \"observacao\": \"...\"}. Os dois ultimos sao opcionais. id duplicado, padrao que nao compila, alcance ou norma fora do dominio, fonte incompleta, vigencia vencida ou malformada, exemplo_apontavel que o padrao nao casa e exemplo_legitimo que o padrao casa sao todos IMPEDIMENTO - a tabela inteira passa a ser inutilizavel, e nao so o item defeituoso. LIMITE CONHECIDO: o padrao varre o documento inteiro, sem peso de posicao e sem descontar trecho transcrito ou citado; peca que reproduz outra dentro de si casa tambem os padroes da transcrita.",
+  "regras": [
+    {
+      "id": "promessa_de_resultado",
+      "rotulo": "Promessa de resultado",
+      "alcances": [
+        "publicidade_ativa",
+        "publicidade_passiva",
+        "site_perfil",
+        "rede_social",
+        "material_escritorio",
+        "midia_entrevista"
+      ],
+      "padrao": "(?:garant\\w+|assegur\\w+|prometemos|prometo)\\s+(?:\\w+\\s+){0,3}(?:resultado|[êe]xito|ganho|vit[óo]ria|aprova[çc][ãa]o|indeniza[çc][ãa]o|absolvi[çc][ãa]o|benef[íi]cio)|(?:resultado|[êe]xito|sucesso|aprova[çc][ãa]o)\\s+garantid",
+      "motivo": "O Provimento 205/2021, art. 6º, veda expressamente a menção a promessa de resultados, tanto na publicidade ativa (caput) quanto em qualquer publicidade (parágrafo único). Prometer desfecho a quem ainda não é cliente é a conduta que o dispositivo nomeia.",
+      "fonte": {
+        "norma": "Provimento 205/2021 CFOAB",
+        "dispositivo": "art. 6º, caput e parágrafo único",
+        "url_oficial": "https://www.oab.org.br/leisnormas/legislacao/provimentos/205-2021",
+        "data_extracao": "2026-08-24",
+        "sha256": "2c3bb392b7278c3517ddad9a81322ef3fe63b2d37efaae3673b9ca7bac8e5309",
+        "valid_from": "2021-08-15",
+        "valid_to": "2027-08-25",
+        "arquivo_local": "fontes-eticas/provimento-205-2021.md"
+      },
+      "exemplo_apontavel": "Garantimos a aprovação do seu benefício em até 90 dias.",
+      "exemplo_legitimo": "O desfecho depende da prova produzida e não pode ser antecipado nesta fase.",
+      "excecoes": [
+        "n[ãa]o\\s+(?:se\\s+)?(?:garant\\w+|assegur\\w+|promet\\w+)",
+        "nenhum\\w*\\s+(?:advogad\\w+|escrit[óo]rio)\\s+(?:pode|deve)\\s+(?:garant|promet)"
+      ]
+    },
+    {
+      "id": "uso_de_caso_concreto_na_oferta",
+      "rotulo": "Uso de caso concreto para ofertar serviço",
+      "alcances": [
+        "publicidade_ativa"
+      ],
+      "padrao": "(?:consegui\\w*|obtive\\w*|ganhamos|ganhei|conquistamos)\\s+(?:\\w+\\s+){0,4}(?:R\\$|indeniza[çc][ãa]o|absolvi[çc][ãa]o|liminar|senten[çc]a favor[áa]vel)|mais\\s+um\\s+(?:caso|processo)\\s+(?:ganho|vencido)|(?:cliente|client\\w+)\\s+(?:que\\s+)?receb\\w+\\s+R\\$",
+      "motivo": "O Provimento 205/2021, art. 6º, veda a utilização de casos concretos para oferta de atuação profissional; e o art. 4º, § 2º veda a referência a decisões judiciais e a resultados de qualquer natureza obtidos em procedimentos que o advogado patrocina.",
+      "fonte": {
+        "norma": "Provimento 205/2021 CFOAB",
+        "dispositivo": "art. 6º, caput; art. 4º, § 2º",
+        "url_oficial": "https://www.oab.org.br/leisnormas/legislacao/provimentos/205-2021",
+        "data_extracao": "2026-08-24",
+        "sha256": "2c3bb392b7278c3517ddad9a81322ef3fe63b2d37efaae3673b9ca7bac8e5309",
+        "valid_from": "2021-08-15",
+        "valid_to": "2027-08-25",
+        "arquivo_local": "fontes-eticas/provimento-205-2021.md"
+      },
+      "exemplo_apontavel": "Conseguimos R$ 250.000,00 de indenização para um cliente no mês passado.",
+      "exemplo_legitimo": "A tese sobre dano moral em acidente de trabalho é discutida no artigo publicado abaixo."
+    },
+    {
+      "id": "honorarios_como_captacao",
+      "rotulo": "Honorário, desconto ou gratuidade como isca",
+      "alcances": [
+        "publicidade_ativa",
+        "publicidade_passiva",
+        "site_perfil",
+        "rede_social"
+      ],
+      "padrao": "(?:primeira\\s+)?consulta\\s+(?:gr[áa]tis|gratuita|sem\\s+custo)|(?:s[óo]\\s+)?(?:cobra\\w*|paga)\\s+(?:se|caso|quando)\\s+(?:voc[êe]\\s+)?ganh|honor[áa]rios?\\s+(?:a\\s+partir\\s+de|por\\s+apenas|promocional)|desconto\\s+(?:de\\s+)?\\d+\\s*%|parcelamos?\\s+(?:em|seus)\\s+honor",
+      "motivo": "O Provimento 205/2021, art. 3º, I, veda a referência, direta ou indireta, a valores de honorários, forma de pagamento, gratuidade ou descontos e reduções de preços como forma de captação de clientes.",
+      "fonte": {
+        "norma": "Provimento 205/2021 CFOAB",
+        "dispositivo": "art. 3º, caput e inciso I",
+        "url_oficial": "https://www.oab.org.br/leisnormas/legislacao/provimentos/205-2021",
+        "data_extracao": "2026-08-24",
+        "sha256": "2c3bb392b7278c3517ddad9a81322ef3fe63b2d37efaae3673b9ca7bac8e5309",
+        "valid_from": "2021-08-15",
+        "valid_to": "2027-08-25",
+        "arquivo_local": "fontes-eticas/provimento-205-2021.md"
+      },
+      "exemplo_apontavel": "Primeira consulta grátis e desconto de 50% nos honorários para quem fechar hoje.",
+      "exemplo_legitimo": "Os honorários são ajustados em contrato escrito, na forma da tabela da OAB/SP."
+    },
+    {
+      "id": "expressao_persuasiva_ou_autoengrandecimento",
+      "rotulo": "Expressão persuasiva, de autoengrandecimento ou de comparação",
+      "alcances": [
+        "publicidade_ativa",
+        "publicidade_passiva",
+        "site_perfil",
+        "rede_social",
+        "material_escritorio",
+        "midia_entrevista"
+      ],
+      "padrao": "\\b(?:o|a)\\s+(?:melhor|maior|n[ºo°]?\\s*1|l[íi]der)\\s+(?:escrit[óo]rio|advogad\\w+|banca)|(?:melhor|maior)\\s+(?:escrit[óo]rio|banca)\\s+d(?:o|a|e)\\s|refer[êe]ncia\\s+(?:nacional|absoluta)\\s+em|(?:somos|sou)\\s+(?:os\\s+)?(?:melhores|imbat[íi]ve)|melhor\\s+que\\s+(?:os\\s+)?(?:outros|concorrentes|demais)\\s+(?:escrit[óo]rios|advogad)",
+      "motivo": "O Provimento 205/2021, art. 3º, IV, veda a utilização de orações ou expressões persuasivas, de autoengrandecimento ou de comparação; e o § 1º define a publicidade admitida como a que torna público o perfil profissional SEM OSTENTAÇÃO.",
+      "fonte": {
+        "norma": "Provimento 205/2021 CFOAB",
+        "dispositivo": "art. 3º, inciso IV, e § 1º",
+        "url_oficial": "https://www.oab.org.br/leisnormas/legislacao/provimentos/205-2021",
+        "data_extracao": "2026-08-24",
+        "sha256": "2c3bb392b7278c3517ddad9a81322ef3fe63b2d37efaae3673b9ca7bac8e5309",
+        "valid_from": "2021-08-15",
+        "valid_to": "2027-08-25",
+        "arquivo_local": "fontes-eticas/provimento-205-2021.md"
+      },
+      "exemplo_apontavel": "Somos o melhor escritório de direito trabalhista da região.",
+      "exemplo_legitimo": "O escritório atua em direito do trabalho desde 2009, com sede em São Bernardo do Campo."
+    },
+    {
+      "id": "meio_de_publicidade_vedado",
+      "rotulo": "Meio de publicidade vedado pelo CED",
+      "alcances": [
+        "publicidade_ativa",
+        "publicidade_passiva",
+        "site_perfil",
+        "rede_social",
+        "material_escritorio",
+        "midia_entrevista"
+      ],
+      "padrao": "(?:an[úu]ncio|campanha|publicidade|comercial|spot)\\s+(?:n[ao]s?\\s+)?(?:r[áa]dio|televis[ãa]o|\\bTV\\b|cinema)|\\boutdoor\\w*|painel\\s+luminoso|busdoor|mala\\s+direta|panfletagem|distribui[çc][ãa]o\\s+de\\s+panfletos",
+      "motivo": "O CED, art. 40, veda a veiculação de publicidade por rádio, cinema e televisão (I), o uso de outdoors, painéis luminosos ou formas assemelhadas (II) e a inscrição em muros, paredes, veículos e espaços públicos (III).",
+      "fonte": {
+        "norma": "CED/2015",
+        "dispositivo": "art. 40, incisos I a III",
+        "url_oficial": "https://s.oab.org.br/pdf/cfoab-ced.pdf",
+        "data_extracao": "2026-08-24",
+        "sha256": "fa4b23b11356fbce869aab1da3504781ad8cfbbcc7bbc1c1e2729fe88b784c65",
+        "valid_from": "2016-09-01",
+        "valid_to": "2027-08-25",
+        "arquivo_local": "fontes-eticas/ced-2015.md"
+      },
+      "exemplo_apontavel": "Vamos fechar o outdoor na avenida e o spot de rádio para o mês que vem.",
+      "exemplo_legitimo": "O boletim é enviado por e-mail apenas a clientes e a interessados do meio jurídico."
+    },
+    {
+      "id": "divulgacao_conjunta_com_outra_atividade",
+      "rotulo": "Divulgação da advocacia junto com outra atividade",
+      "alcances": [
+        "publicidade_ativa",
+        "publicidade_passiva",
+        "site_perfil",
+        "rede_social",
+        "material_escritorio",
+        "midia_entrevista"
+      ],
+      "padrao": "advocacia\\s+e\\s+(?:contabilidade|consultoria\\s+financeira|corretagem|despachante|seguros|imobili[áa]ria)|(?:contabilidade|despachante|corretora)\\s+e\\s+advocacia|escrit[óo]rio\\s+de\\s+advocacia\\s+e\\s+(?:contabilidade|corretagem)",
+      "motivo": "O CED, art. 40, IV, veda a divulgação de serviços de advocacia juntamente com a de outras atividades ou a indicação de vínculos entre umas e outras. A vedação é da DIVULGAÇÃO CONJUNTA, e alcança o material que apresenta os dois serviços como um só.",
+      "fonte": {
+        "norma": "CED/2015",
+        "dispositivo": "art. 40, inciso IV",
+        "url_oficial": "https://s.oab.org.br/pdf/cfoab-ced.pdf",
+        "data_extracao": "2026-08-24",
+        "sha256": "fa4b23b11356fbce869aab1da3504781ad8cfbbcc7bbc1c1e2729fe88b784c65",
+        "valid_from": "2016-09-01",
+        "valid_to": "2027-08-25",
+        "arquivo_local": "fontes-eticas/ced-2015.md"
+      },
+      "exemplo_apontavel": "Advocacia e contabilidade sob o mesmo teto: resolvemos tudo para a sua empresa.",
+      "exemplo_legitimo": "O escritório trabalha com contador externo quando a causa exige perícia contábil."
+    },
+    {
+      "id": "lista_de_clientes_ou_demandas",
+      "rotulo": "Divulgação de lista de clientes ou de demandas",
+      "alcances": [
+        "publicidade_ativa",
+        "publicidade_passiva",
+        "site_perfil",
+        "rede_social",
+        "material_escritorio",
+        "midia_entrevista"
+      ],
+      "padrao": "(?:nossos|meus)\\s+clientes\\s+(?:incluem|s[ãa]o|:)|(?:carteira|lista)\\s+de\\s+clientes|atendemos\\s+(?:as\\s+)?(?:empresas|marcas)\\s*:",
+      "motivo": "O CED, art. 42, IV, veda divulgar ou deixar que sejam divulgadas listas de clientes e demandas. A vedação alcança o nome do cliente e o processo, ainda que públicos.",
+      "fonte": {
+        "norma": "CED/2015",
+        "dispositivo": "art. 42, inciso IV",
+        "url_oficial": "https://s.oab.org.br/pdf/cfoab-ced.pdf",
+        "data_extracao": "2026-08-24",
+        "sha256": "fa4b23b11356fbce869aab1da3504781ad8cfbbcc7bbc1c1e2729fe88b784c65",
+        "valid_from": "2016-09-01",
+        "valid_to": "2027-08-25",
+        "arquivo_local": "fontes-eticas/ced-2015.md"
+      },
+      "exemplo_apontavel": "Nossos clientes incluem três das maiores transportadoras do ABC.",
+      "exemplo_legitimo": "As referências profissionais são fornecidas a quem contrata, mediante autorização."
+    },
+    {
+      "id": "inducao_a_litigar",
+      "rotulo": "Texto que induz o leitor a litigar",
+      "alcances": [
+        "publicidade_ativa",
+        "publicidade_passiva",
+        "site_perfil",
+        "rede_social",
+        "material_escritorio",
+        "midia_entrevista"
+      ],
+      "padrao": "(?:entre|entrar)\\s+com\\s+(?:a\\s+sua|sua|seu)\\s+(?:a[çc][ãa]o|processo)\\s+(?:agora|j[áa]|hoje)|(?:processe|acione)\\s+(?:j[áa]|agora|a\\s+empresa|seu\\s+patr[ãa]o)|voc[êe]\\s+tem\\s+direito\\s+a\\s+receber\\s+R\\$|n[ãa]o\\s+perca\\s+(?:essa\\s+)?(?:chance|oportunidade)\\s+de\\s+(?:processar|receber)",
+      "motivo": "O CED, art. 41, determina que as colunas e os textos que o advogado divulgar não devem induzir o leitor a litigar nem promover captação de clientela; e o Provimento 205/2021, art. 3º, § 1º, veda incitar diretamente ao litígio ou à contratação de serviços.",
+      "fonte": {
+        "norma": "CED/2015",
+        "dispositivo": "art. 41",
+        "url_oficial": "https://s.oab.org.br/pdf/cfoab-ced.pdf",
+        "data_extracao": "2026-08-24",
+        "sha256": "fa4b23b11356fbce869aab1da3504781ad8cfbbcc7bbc1c1e2729fe88b784c65",
+        "valid_from": "2016-09-01",
+        "valid_to": "2027-08-25",
+        "arquivo_local": "fontes-eticas/ced-2015.md"
+      },
+      "exemplo_apontavel": "Você tem direito a receber R$ 30.000: entre com sua ação agora!",
+      "exemplo_legitimo": "O prazo prescricional é de dois anos; quem pretende discutir a verba deve observá-lo."
+    },
+    {
+      "id": "ostentacao_de_bens",
+      "rotulo": "Ostentação de bens na publicidade",
+      "alcances": [
+        "publicidade_ativa",
+        "publicidade_passiva",
+        "site_perfil",
+        "rede_social",
+        "material_escritorio",
+        "midia_entrevista"
+      ],
+      "padrao": "(?:nosso|meu)\\s+(?:novo\\s+)?(?:carro|carr[ãa]o|i?[Pp]hone|rel[óo]gio)|(?:mais\\s+um|comprei\\s+(?:o|a))\\s+(?:carro|apartamento|rel[óo]gio)|escrit[óo]rio\\s+(?:de|com)\\s+\\d+\\s*m[²2]|(?:cobertura|iate|jatinho|primeira\\s+classe)\\s+(?:do|da|no)\\s+escrit",
+      "motivo": "O Provimento 205/2021, art. 6º, parágrafo único, veda em qualquer publicidade a ostentação de bens relativos ao exercício ou não da profissão, como uso de veículos, viagens, hospedagens e bens de consumo; e o caput veda informação sobre as dimensões, qualidades ou estrutura física do escritório.",
+      "fonte": {
+        "norma": "Provimento 205/2021 CFOAB",
+        "dispositivo": "art. 6º, caput e parágrafo único",
+        "url_oficial": "https://www.oab.org.br/leisnormas/legislacao/provimentos/205-2021",
+        "data_extracao": "2026-08-24",
+        "sha256": "2c3bb392b7278c3517ddad9a81322ef3fe63b2d37efaae3673b9ca7bac8e5309",
+        "valid_from": "2021-08-15",
+        "valid_to": "2027-08-25",
+        "arquivo_local": "fontes-eticas/provimento-205-2021.md"
+      },
+      "exemplo_apontavel": "Mais um carro na garagem, resultado de um ano de vitórias no escritório de 400 m².",
+      "exemplo_legitimo": "O atendimento é presencial na sede e por videoconferência para quem mora longe."
+    },
+    {
+      "id": "consulta_habitual_em_midia",
+      "rotulo": "Resposta habitual a consulta jurídica em mídia",
+      "alcances": [
+        "midia_entrevista",
+        "rede_social"
+      ],
+      "padrao": "(?:tire|tira)\\s+(?:sua|suas)\\s+d[úu]vidas?\\s+(?:jur[íi]dicas?\\s+)?(?:aqui|comigo|toda\\s+(?:semana|ter[çc]a|quinta))|(?:plant[ãa]o|coluna)\\s+de\\s+d[úu]vidas\\s+jur[íi]dicas|respondo\\s+(?:suas\\s+)?d[úu]vidas\\s+(?:jur[íi]dicas\\s+)?(?:toda|todo)\\s",
+      "motivo": "O CED, art. 42, I, veda responder com habitualidade a consulta sobre matéria jurídica nos meios de comunicação social. O que a norma alcança é a HABITUALIDADE, não a manifestação isolada de caráter educativo, que o art. 43 admite.",
+      "fonte": {
+        "norma": "CED/2015",
+        "dispositivo": "art. 42, inciso I",
+        "url_oficial": "https://s.oab.org.br/pdf/cfoab-ced.pdf",
+        "data_extracao": "2026-08-24",
+        "sha256": "fa4b23b11356fbce869aab1da3504781ad8cfbbcc7bbc1c1e2729fe88b784c65",
+        "valid_from": "2016-09-01",
+        "valid_to": "2027-08-25",
+        "arquivo_local": "fontes-eticas/ced-2015.md"
+      },
+      "exemplo_apontavel": "Plantão de dúvidas jurídicas: tire suas dúvidas comigo toda terça no direct!",
+      "exemplo_legitimo": "A live desta semana explica, em termos gerais, como funciona o prazo de prescrição."
+    }
+  ],
+
+  "_leia_controle": "PROSA DE CONTROLE DA BANCA - o freio de falso positivo que vale para a tabela toda, e nao regra por regra. Cada item e prosa legitima que NENHUMA regra carregada pode apontar; se qualquer uma acender aqui, a tabela nao carrega e o impedimento nomeia a regra e o trecho. Escolher o que e prosa legitima da casa e decisao do advogado. Formato: {\"texto\": \"...\", \"por_que_e_legitima\": \"...\"}.",
+  "controle_prosa_legitima": [
+    {
+      "texto": "Requer-se a total procedência dos pedidos, com a condenação do réu ao pagamento das verbas rescisórias e dos honorários sucumbenciais.",
+      "por_que_e_legitima": "Pedido de peça processual. Sustentar tese com firmeza e pedir provimento é o ofício, e não promessa de resultado a cliente. Nenhuma regra pode acender aqui."
+    },
+    {
+      "texto": "O direito da parte impetrante é líquido e certo, na forma do art. 1º da Lei 12.016/2009, e a concessão da segurança é consequência necessária da prova pré-constituída.",
+      "por_que_e_legitima": "Afirmação de direito em mandado de segurança. A firmeza é exigida pela própria lei, que condiciona o writ a direito líquido e certo."
+    },
+    {
+      "texto": "Requer-se a absolvição do acusado, na forma do art. 386, VII, do Código de Processo Penal, por não existir prova suficiente para a condenação.",
+      "por_que_e_legitima": "Pedido de alegações finais criminais. Pedir absolvição é o dever do defensor."
+    },
+    {
+      "texto": "O escritório atua em direito do trabalho, direito previdenciário e defesa criminal, com sede em São Bernardo do Campo e atendimento em Guarulhos e na capital.",
+      "por_que_e_legitima": "Perfil profissional objetivo, expressamente admitido pelo art. 44, § 1º, do CED e pelo art. 3º, § 1º, do Provimento 205/2021."
+    },
+    {
+      "texto": "O desfecho depende da prova a ser produzida; nenhum cenário pode ser antecipado com certeza nesta fase.",
+      "por_que_e_legitima": "Advertência de risco ao cliente, que o CED impõe como DEVER (art. 2º, parágrafo único, VIII, e art. 48, § 6º). Um lint que apontasse isso puniria o cumprimento do dever."
+    },
+    {
+      "texto": "Os honorários serão ajustados em contrato escrito, observada a tabela da Seccional.",
+      "por_que_e_legitima": "Informação contratual dirigida a quem já contrata, e não valor anunciado como isca."
+    }
+  ]
+}

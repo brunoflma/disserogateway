@@ -1,0 +1,685 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "dsr:analise_autos.v1",
+  "title": "ANALISE_AUTOS DISSERO",
+  "description": "Contrato da analise de autos (cenario 6, metodo analise-autos.md) como artefato com estado. APLICADO por scripts/validar_analise_autos.py, que acrescenta as regras que o schema nao exprime e nomeia cada recusa por codigo: campo sem dado leva a formula exata 'não consta no material enviado'; peca-chave ausente obriga a conclusao interditada; prazo so com origem na calculadora; todo ponto controvertido tem resposta; CNJ com digito verificador conferido.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "finalidade",
+    "escopo",
+    "completa",
+    "lido",
+    "faltou",
+    "pecas_chave",
+    "conclusoes_interditadas",
+    "prazos",
+    "ficha",
+    "fatos",
+    "direito",
+    "fora_dos_autos",
+    "pontos_controvertidos",
+    "questao_central",
+    "respostas",
+    "providencia"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": "dsr.analise_autos.v1"
+    },
+    "finalidade": {
+      "description": "A pergunta unica de finalidade. A tabela fixa do metodo (bloco a por primeiro e rota complementar) vive no validador e no analise-autos.md; nao ha opcao configuravel.",
+      "enum": [
+        "assumir_causa",
+        "memoriais_ou_sustentacao",
+        "avaliar_risco",
+        "aceitar_caso",
+        "segunda_opiniao",
+        "fichamento"
+      ]
+    },
+    "escopo": {
+      "enum": [
+        "autos_integrais",
+        "copia_parcial",
+        "pecas_avulsas",
+        "so_decisao"
+      ]
+    },
+    "completa": {
+      "description": "Escopo diferente de autos_integrais nao se declara completo.",
+      "type": "boolean"
+    },
+    "lido": {
+      "description": "Pecas, folhas ou paginas efetivamente lidas. Nao pode ser vazio.",
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      }
+    },
+    "faltou": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      }
+    },
+    "pecas_chave": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "certidao_intimacao",
+        "contestacao",
+        "decisao_saneamento"
+      ],
+      "properties": {
+        "certidao_intimacao": {
+          "description": "Folha onde esta (fl., fls., Id ou evento seguido do numero), ou a formula de lacuna. Outra redacao (ausente, nao juntada) e recusada como PECA_CHAVE_INDEFINIDA e conta como ausente. Ausente obriga a conclusao interditada correspondente.",
+          "type": "string",
+          "minLength": 1
+        },
+        "contestacao": {
+          "description": "Folha onde esta (fl., fls., Id ou evento seguido do numero), ou a formula de lacuna. Outra redacao (ausente, nao juntada) e recusada como PECA_CHAVE_INDEFINIDA e conta como ausente. Ausente obriga a conclusao interditada correspondente.",
+          "type": "string",
+          "minLength": 1
+        },
+        "decisao_saneamento": {
+          "description": "Folha onde esta (fl., fls., Id ou evento seguido do numero), ou a formula de lacuna. Outra redacao (ausente, nao juntada) e recusada como PECA_CHAVE_INDEFINIDA e conta como ausente. Ausente obriga a conclusao interditada correspondente.",
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "conclusoes_interditadas": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "peca_ausente",
+          "conclusao"
+        ],
+        "properties": {
+          "peca_ausente": {
+            "type": "string",
+            "minLength": 1
+          },
+          "conclusao": {
+            "enum": [
+              "tempestividade_e_prazo",
+              "art341_e_revelia",
+              "pontos_controvertidos_oficiais",
+              "outra"
+            ]
+          },
+          "descricao": {
+            "type": "string",
+            "minLength": 1
+          }
+        }
+      }
+    },
+    "prazos": {
+      "description": "Vazio quando a tempestividade esta interditada: sem certidao de intimacao, o prazo vai para conclusoes_interditadas.",
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "ato",
+          "termo_final",
+          "origem",
+          "urgente"
+        ],
+        "properties": {
+          "ato": {
+            "type": "string",
+            "minLength": 1
+          },
+          "termo_final": {
+            "description": "AAAA-MM-DD, como a calculadora devolve.",
+            "type": "string",
+            "minLength": 1
+          },
+          "origem": {
+            "const": "calcular_prazo.py"
+          },
+          "urgente": {
+            "description": "A marca que a propria calculadora imprime, nunca juizo de quem le.",
+            "type": "boolean"
+          },
+          "ato_cabivel_origem": {
+            "enum": [
+              "recurso_cabivel.py",
+              "prazos-processuais.md"
+            ]
+          }
+        }
+      }
+    },
+    "ficha": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "cnj",
+        "partes",
+        "juizo",
+        "magistrado",
+        "classe",
+        "rito",
+        "valor_causa",
+        "data_distribuicao",
+        "ultimo_ato",
+        "fase",
+        "decisoes_proferidas"
+      ],
+      "properties": {
+        "cnj": {
+          "description": "Numero CNJ conferido por numero_cnj.py, ou a formula de lacuna.",
+          "type": "string",
+          "minLength": 1
+        },
+        "partes": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "nome",
+              "polo",
+              "patronos"
+            ],
+            "properties": {
+              "nome": {
+                "type": "string",
+                "minLength": 1
+              },
+              "polo": {
+                "type": "string",
+                "minLength": 1
+              },
+              "patronos": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": [
+                    "nome",
+                    "oab"
+                  ],
+                  "properties": {
+                    "nome": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "oab": {
+                      "type": "string",
+                      "minLength": 1
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "juizo": {
+          "type": "string",
+          "minLength": 1
+        },
+        "magistrado": {
+          "type": "string",
+          "minLength": 1
+        },
+        "classe": {
+          "type": "string",
+          "minLength": 1
+        },
+        "rito": {
+          "type": "string",
+          "minLength": 1
+        },
+        "valor_causa": {
+          "type": "string",
+          "minLength": 1
+        },
+        "data_distribuicao": {
+          "type": "string",
+          "minLength": 1
+        },
+        "ultimo_ato": {
+          "type": "string",
+          "minLength": 1
+        },
+        "fase": {
+          "enum": [
+            "postulatoria",
+            "saneamento",
+            "instrucao",
+            "sentenciado",
+            "recursal",
+            "cumprimento_ou_execucao",
+            "suspenso",
+            "arquivado",
+            "não consta no material enviado"
+          ]
+        },
+        "decisoes_proferidas": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "data",
+              "teor",
+              "recurso",
+              "efeito_suspensivo",
+              "folha"
+            ],
+            "properties": {
+              "data": {
+                "type": "string",
+                "minLength": 1
+              },
+              "teor": {
+                "type": "string",
+                "minLength": 1
+              },
+              "recurso": {
+                "type": "string",
+                "minLength": 1
+              },
+              "efeito_suspensivo": {
+                "type": "string",
+                "minLength": 1
+              },
+              "folha": {
+                "type": "string",
+                "minLength": 1
+              }
+            }
+          }
+        }
+      }
+    },
+    "fatos": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "teor",
+          "estatuto"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "teor": {
+            "type": "string",
+            "minLength": 1
+          },
+          "estatuto": {
+            "enum": [
+              "alegado",
+              "provado",
+              "incontroverso",
+              "inferencia"
+            ]
+          },
+          "fonte": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "tipo",
+              "descricao",
+              "folha"
+            ],
+            "properties": {
+              "tipo": {
+                "enum": [
+                  "peca",
+                  "documento",
+                  "prova_produzida"
+                ]
+              },
+              "descricao": {
+                "type": "string",
+                "minLength": 1
+              },
+              "folha": {
+                "type": "string",
+                "minLength": 1
+              }
+            }
+          },
+          "fundamento": {
+            "description": "So no incontroverso, e obrigatorio nele.",
+            "enum": [
+              "admissao_expressa",
+              "art341_filtrado_345",
+              "art374",
+              "art436_documento_nao_impugnado"
+            ]
+          },
+          "deduzido_de": {
+            "description": "So na inferencia: ids dos fatos de que ela parte.",
+            "type": "array",
+            "items": {
+              "type": "string",
+              "minLength": 1
+            }
+          }
+        }
+      }
+    },
+    "direito": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "referencia",
+          "citado_em",
+          "estado"
+        ],
+        "properties": {
+          "referencia": {
+            "type": "string",
+            "minLength": 1
+          },
+          "invocado_por": {
+            "type": "string",
+            "minLength": 1
+          },
+          "citado_em": {
+            "description": "Peca e folha em que os autos o citam; null se veio de fora. No fichamento, so entra o citado nos autos.",
+            "type": [
+              "string",
+              "null"
+            ],
+            "minLength": 1
+          },
+          "estado": {
+            "enum": [
+              "a_conferir",
+              "confirmado"
+            ]
+          }
+        }
+      }
+    },
+    "fora_dos_autos": {
+      "description": "Enquadramento sugerido que os autos nao citam, separado do que foi extraido.",
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      }
+    },
+    "pontos_controvertidos": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "fato",
+          "origem",
+          "alegado_em",
+          "onus",
+          "estado_prova",
+          "inferencia"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "fato": {
+            "type": "string",
+            "minLength": 1
+          },
+          "origem": {
+            "enum": [
+              "saneamento",
+              "confronto"
+            ]
+          },
+          "folha_saneamento": {
+            "type": "string",
+            "minLength": 1
+          },
+          "alegado_em": {
+            "type": "string",
+            "minLength": 1
+          },
+          "onus": {
+            "enum": [
+              "autor_373_I",
+              "reu_373_II",
+              "redistribuido_373_1",
+              "invertido_cdc_6_VIII",
+              "convencional_373_3",
+              "clt_818"
+            ]
+          },
+          "estado_prova": {
+            "enum": [
+              "produzida",
+              "requerida_sem_decisao",
+              "deferida_nao_realizada",
+              "indeferida",
+              "nao_requerida"
+            ]
+          },
+          "folha_prova": {
+            "type": "string",
+            "minLength": 1
+          },
+          "inferencia": {
+            "description": "Quem prevalece e por que, com a marca de inferencia.",
+            "type": "string",
+            "minLength": 1
+          }
+        }
+      }
+    },
+    "questao_central": {
+      "description": "Pergunta fechada (sim ou nao), terminada em '?'. A formula de lacuna so sem ponto controvertido.",
+      "type": "string",
+      "minLength": 1
+    },
+    "respostas": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "ponto",
+          "resposta"
+        ],
+        "properties": {
+          "ponto": {
+            "type": "string",
+            "minLength": 1
+          },
+          "resposta": {
+            "type": "string",
+            "minLength": 1
+          }
+        }
+      }
+    },
+    "integridade": {
+      "description": "Bloco 1 (INTEGRIDADE): achados da blindagem, com rótulo e página. Lista vazia quando a blindagem não achou nada.",
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "achado",
+          "folha"
+        ],
+        "properties": {
+          "achado": {
+            "type": "string",
+            "minLength": 1
+          },
+          "rotulo": {
+            "type": "string",
+            "minLength": 1
+          },
+          "folha": {
+            "type": "string",
+            "minLength": 1
+          }
+        }
+      }
+    },
+    "pedidos": {
+      "description": "Bloco 4 (PEDIDOS): rótulo, valor e o que falta.",
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "rotulo"
+        ],
+        "properties": {
+          "rotulo": {
+            "type": "string",
+            "minLength": 1
+          },
+          "valor": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "minLength": 1
+          },
+          "falta": {
+            "type": "string",
+            "minLength": 1
+          }
+        }
+      }
+    },
+    "defesas": {
+      "description": "Bloco 5 (DEFESAS): processuais, prejudiciais, mérito direto e indireto, reconvenção.",
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "tipo",
+          "descricao"
+        ],
+        "properties": {
+          "tipo": {
+            "enum": [
+              "processual",
+              "prejudicial",
+              "merito_direto",
+              "merito_indireto",
+              "reconvencao"
+            ]
+          },
+          "descricao": {
+            "type": "string",
+            "minLength": 1
+          },
+          "folha": {
+            "type": "string",
+            "minLength": 1
+          }
+        }
+      }
+    },
+    "riscos": {
+      "description": "Bloco 7 (RISCOS): o que pode extinguir, anular ou precluir. Com a finalidade avaliar_risco o bloco é obrigatório (abre a entrega); lista vazia diz que não há risco desse tipo.",
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "risco",
+          "efeito"
+        ],
+        "properties": {
+          "risco": {
+            "type": "string",
+            "minLength": 1
+          },
+          "efeito": {
+            "enum": [
+              "extincao",
+              "nulidade",
+              "preclusao"
+            ]
+          },
+          "fundamento": {
+            "type": "string",
+            "minLength": 1
+          },
+          "folha": {
+            "type": "string",
+            "minLength": 1
+          }
+        }
+      }
+    },
+    "providencia": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "proximo_ato",
+        "quem_decide",
+        "ate_quando",
+        "antes_de_protocolar"
+      ],
+      "properties": {
+        "proximo_ato": {
+          "type": "string",
+          "minLength": 1
+        },
+        "quem_decide": {
+          "type": "string",
+          "minLength": 1
+        },
+        "ate_quando": {
+          "description": "null sem prazo processual ou com a tempestividade interditada; objeto sempre com origem na calculadora.",
+          "type": [
+            "object",
+            "null"
+          ],
+          "additionalProperties": false,
+          "required": [
+            "termo_final",
+            "origem"
+          ],
+          "properties": {
+            "termo_final": {
+              "type": "string",
+              "minLength": 1
+            },
+            "origem": {
+              "const": "calcular_prazo.py"
+            }
+          }
+        },
+        "antes_de_protocolar": {
+          "description": "Cada item no formato ==[...]==, sem emoji.",
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        }
+      }
+    }
+  }
+}

@@ -1,0 +1,115 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "dsr:contradicao_proposta:v1",
+  "title": "Proposta de contradicao Dissero v1 - o que o detector PODE dizer, e so isso",
+  "description": "Artefato de SAIDA do detector_contradicao.py. Nao e uma contradicao afirmada e nao pode virar uma sem ato humano. Duas propriedades do FORMATO garantem isso, e nenhuma delas depende da disciplina de quem escreve o codigo: (1) `juizo` e um const com um unico valor possivel, 'a_confirmar' - nao existe no vocabulario deste artefato uma palavra que signifique 'confirmado'; (2) NAO HA CAMPO `tese`, e `tese` e obrigatorio (minLength 1) em dsr.contradicao.v1 - entao a conversao para o contrato so acontece quando alguem ESCREVER o que se contradiz. A lacuna e o portao. Como em schema_contradicao.json, a contagem de lados NAO esta aqui: schema_mini.py implementa apenas $ref, const, enum, type, minLength, required, additionalProperties e items, e minItems/maxItems seriam ignorados EM SILENCIO - regra que parece existir e nao existe e pior que regra nenhuma. A contagem vive em detector_contradicao.validar_documento.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "limiares", "intra_peca", "frases", "pares_avaliados", "truncado", "propostas"],
+  "properties": {
+    "schema_version": { "const": "dsr.contradicao_proposta.v1" },
+    "caso": { "type": "string" },
+    "gerado_em": { "type": "string" },
+    "conferencia": {
+      "type": ["string", "null"],
+      "description": "Caminho do CONFERENCIA.json varrido. Informativo: o teor que vale e o que o validador do contrato recebe carregado."
+    },
+    "limiares": {
+      "$ref": "#/definitions/limiares",
+      "description": "Os numeros que produziram ESTA varredura. Obrigatorios no artefato porque quem le uma lista de propostas tem direito de saber sob que piso ela foi gerada - o mesmo acervo com minimo_nucleo diferente devolve outra lista."
+    },
+    "intra_peca": {
+      "type": "boolean",
+      "description": "true quando a varredura tambem cruzou frases do MESMO documento (autocontradicao). Padrao false: o detector procura contradicao ENTRE pecas, e o cruzamento interno tem outra taxa de ruido."
+    },
+    "frases": {
+      "type": "integer",
+      "description": "Frases que passaram o piso de conferencia e portanto podiam ser lastro."
+    },
+    "pares_avaliados": {
+      "type": "integer",
+      "description": "Pares efetivamente comparados. Junto com `truncado`, e o que permite distinguir 'varri tudo e nao achei' de 'parei no teto'."
+    },
+    "truncado": {
+      "type": "boolean",
+      "description": "true quando a varredura parou no teto e HA PARES NAO AVALIADOS. Existe para que corte nunca saia calado: varredura parcial que parece completa e falso negativo disfarcado de conclusao."
+    },
+    "propostas": { "type": "array", "items": { "$ref": "#/definitions/proposta" } }
+  },
+  "definitions": {
+    "limiares": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["minimo_nucleo", "minimo", "minimo_parte", "teto"],
+      "properties": {
+        "minimo_nucleo": {
+          "type": "integer",
+          "description": "Tokens de conteudo compartilhados exigidos para o par ser considerado. O efeito deste numero esta na docstring de detector_contradicao.py."
+        },
+        "minimo": {
+          "type": "integer",
+          "description": "Piso do total normalizado da frase para ela poder ser lastro. Herdado de contradicao_contract.MINIMO_CONFERIVEL - nao e numero novo."
+        },
+        "minimo_parte": {
+          "type": "integer",
+          "description": "Piso de cada parte separada por elipse. Herdado de contradicao_contract.MINIMO_PARTE_CONFERIVEL - nao e numero novo."
+        },
+        "teto": {
+          "type": "integer",
+          "description": "Maximo de propostas desta varredura."
+        }
+      }
+    },
+    "proposta": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "juizo", "eixo", "motivo", "lados"],
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Identificador da proposta dentro do dataset. E a chave que a tese humana usa na conversao."
+        },
+        "juizo": {
+          "const": "a_confirmar",
+          "description": "CONST, e este e o ponto do schema inteiro. O detector nao tem como escrever outro valor porque nao existe outro valor. 'confirmado' se escreve por mao humana, noutro artefato, com tese - nunca aqui."
+        },
+        "eixo": {
+          "enum": ["negacao", "valor", "data"],
+          "description": "Que propriedade OBJETIVA do texto divergiu. NAO e a contradicao: e o motivo de alguem ter de olhar. 'negacao' = mesmo nucleo, exatamente uma passagem nega. 'valor' = mesmo nucleo, nenhum numero em comum. 'data' = mesmo nucleo, nenhuma data em comum."
+        },
+        "motivo": {
+          "type": "string",
+          "minLength": 1,
+          "description": "O eixo explicado em portugues, com o nucleo compartilhado e os valores/datas que divergiram. Existe para que o advogado decida sem abrir o codigo."
+        },
+        "lados": {
+          "type": "array",
+          "items": { "$ref": "#/definitions/lado" },
+          "description": "Exatamente DOIS, com evidence_id distintos. Contagem e distincao verificadas em codigo."
+        }
+      }
+    },
+    "lado": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["peca", "doc_id", "evidence_id", "trecho_literal", "sha256_trecho"],
+      "description": "MESMA forma do `lado` de schema_contradicao.json, de proposito: a proposta ja nasce no formato que o contrato confere. Quem trava a equivalencia nao e a semelhanca dos dois arquivos - e teste_proposta_sempre_lastreada, que converte a proposta e exige status derivado 'lastreada'. Se as formas divergirem, aquele teste cai.",
+    "properties": {
+        "peca": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Rotulo legivel do documento. BASENAME do arquivo, nunca o caminho: caminho de pasta de cliente nao entra em artefato que circula."
+        },
+        "doc_id": { "type": "string", "minLength": 6 },
+        "evidence_id": { "type": "string", "minLength": 12 },
+        "trecho_literal": {
+          "type": "string",
+          "minLength": 1,
+          "description": "RECORTE VERBATIM do teor lido. O detector nao tem outra fonte de texto senao o CONFERENCIA.json - ele nao consegue fabricar citacao."
+        },
+        "sha256_trecho": { "type": "string", "minLength": 64 }
+      }
+    }
+  }
+}

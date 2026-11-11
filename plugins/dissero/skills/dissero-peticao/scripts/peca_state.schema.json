@@ -1,0 +1,83 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "dsr:peca_state",
+  "title": "PECA_STATE — run-state da máquina de estados da peça",
+  "description": "Contrato declarativo do estado em disco de uma peça em produção pela skill dissero-peticao. estado_peca.py valida à mão em stdlib (NÃO importa jsonschema) e grava as chaves descritas aqui. Códigos de saída: 0 ok · 1 bloqueio de regra de negócio · 2 contrato/uso inválido.",
+  "type": "object",
+  "additionalProperties": true,
+  "required": ["peca", "risco", "modo_execucao", "fase_atual", "is_minuta", "pendencias_jurisprudencia", "fases"],
+  "properties": {
+    "peca": {"type": "string", "minLength": 1, "description": "Nome/identificação da minuta."},
+    "risco": {"enum": ["alto", "baixo"], "description": "Nível de risco; governa a exigência do conselho (igual ao conselho_status)."},
+    "modo_execucao": {"enum": ["cowork", "code", "chat"], "description": "Ambiente de execução. 'chat' é nome legado: sem ferramenta de subagente, em qualquer superfície; não nomeia uma superfície. Nele o LINT só pode ficar PENDENTE, nunca APROVADO (peça sai como minuta)."},
+    "fase_atual": {"$ref": "#/definitions/nomeFase", "description": "Ponteiro para a última fase concluída (ou 'briefing' no init)."},
+    "is_minuta": {"type": "boolean", "description": "true até a entrega ser liberada por pode-entregar; vira false só na liberação."},
+    "pendencias_jurisprudencia": {"type": "array", "items": {"type": "string"}, "description": "Espelha o campo do conselho; qualquer item bloqueia a entrega."},
+    "arquivo_canonico": {"type": "string", "description": "Caminho do .docx de trabalho, relativo à pasta do PECA_STATE (o absoluto de estado antigo ainda vale) — qual dos arquivos é a peça viva. Peça fora da pasta do estado fica com «..» no relativo, que pode levar o nome da pasta do caso; o relato de máquina (`canonico`, `qual-arquivo`) cita então só o nome do arquivo. Versão anterior à 3.2 não lê o relativo: voltar a ela, ou mover o PECA_STATE sem a peça, exige registrar a peça de novo com `canonico --arquivo`. Gravado por `estado_peca.py canonico`. Sem ele, com a peça em duas pastas, o advogado pode editar uma enquanto o plugin trabalha sobre a outra."},
+    "hash_canonico": {"type": ["string", "null"], "description": "SHA-256 do arquivo_canonico quando o plugin o viu pela última vez. `qual-arquivo` compara antes de qualquer edição: divergente = alguém editou fora do fluxo, PARA e avisa o advogado."},
+    "canonico_em": {"type": ["string", "null"], "description": "Timestamp do último carimbo do hash (via --ts)."},
+    "grau_jurisdicao": {"enum": ["primeiro", "segundo", "superior", null], "description": "Grau derivado da classe processual no briefing (`grau_jurisdicao.derivar`) e propagado até o linter (`lint_peca.py --grau`), que MEDE as formas de tratamento (L20). Sem ele, vocativo de 1º grau numa apelação não é apontado."},
+    "processos": {"type": "array", "items": {"type": "string"}, "description": "Números CNJ do PRÓPRIO caso e dos recursos dele derivados. Repassados ao linter (`--processo`): saem da heurística de julgado (o agravo tirado destes autos não é precedente) e da contagem de repetição (repetir o número dos autos é obrigação)."},
+    "atualizado": {"type": ["string", "null"], "description": "Timestamp passado pelo chamador via --ts (nunca relógio do sistema)."},
+    "caso_id": {"type": ["string", "null"], "pattern": "^caso-[0-9a-f]{12}$", "description": "Código opaco do caso (`caso_raiz.py registrar`), gravado pelo `init` quando o PECA_STATE está na pasta do caso registrado. Nunca o nome da parte, o CNJ ou o caminho da pasta."},
+    "exame_mapa": {"type": "boolean", "description": "Marca gravada pelo `init` desde a 3.2: o estado foi criado com o exame do mapa (mapa_argumentativo.py). Ausente, o estado é de versão anterior (caso em andamento) e o exame do mapa só avisa, com o código, sem bloquear."},
+    "session_id": {"type": ["string", "null"], "minLength": 1, "description": "Id da sessão do harness, gravado por `init --session-id`: string não vazia ou null. É por ele que o `pode-entregar` e o `entregar` acham a pasta do caso (o ponteiro de `caso_raiz.py registrar --session-id`) quando o cwd não é essa pasta."},
+    "anexos": {"type": "array", "description": "Arquivos que acompanham a peça na entrega (a guia de juntada, por exemplo), gravados por `estado_peca.py anexo`. O `entregar` copia a peça canônica e cada anexo registrado e confere o hash de cada um.", "items": {"type": "object", "additionalProperties": true, "required": ["arquivo", "sha256"], "properties": {"arquivo": {"type": "string", "minLength": 1, "description": "Caminho do anexo, relativo à pasta do PECA_STATE (o absoluto de estado antigo ainda vale)."}, "sha256": {"type": "string", "minLength": 1, "description": "SHA-256 do anexo no registro. A entrega recusa com anexo_divergente quando o arquivo mudou depois."}, "registrado_em": {"type": "string", "description": "Timestamp do registro (via --ts)."}}}},
+    "entregas": {"type": "array", "description": "Recibos gravados pelo `entregar`: um para a peça e um para cada anexo copiado, com o destino, o hash conferido da cópia e a data.", "items": {"type": "object", "additionalProperties": true, "required": ["destino", "sha256", "data"], "properties": {"destino": {"type": "string", "minLength": 1, "description": "Caminho do arquivo gravado na pasta de entrega."}, "sha256": {"type": "string", "minLength": 1, "description": "SHA-256 da cópia, igual ao da canônica ou do anexo registrado."}, "data": {"type": "string", "minLength": 1, "description": "Timestamp da entrega (--ts, ou o relógio quando ausente)."}, "anexo": {"type": "boolean", "description": "true no recibo de anexo; ausente no recibo da peça."}}}},
+    "ciclo": {"type": "integer", "description": "Contador de ciclos; 1 no init, +1 a cada reabrir (devolução do conselho)."},
+    "reaberturas": {"type": "array", "items": {"type": "object"}, "description": "Log das reaberturas: {fase, motivo, em?} por devolução."},
+    "reinicios": {"type": "array", "items": {"type": "object"}, "description": "Log dos recomeços do zero (`init --recomecar --motivo`): {em, motivo, sha256_anterior, fases_concluidas_anteriores, ciclo_anterior, copia}. O estado anterior fica em `_versoes/`."},
+    "exigir_adversarial": {"type": "boolean", "description": "Exigência da etapa ADVERSARIAL (simulação da contraparte, entre estrategia e mapa). OBRIGATÓRIA em peça NOVA: o `init` grava true; `init --sem-adversarial \"<motivo>\"` grava false com o motivo em dispensa_adversarial. FORA de 'required': ausente = NÃO exigida, e o estado sem a chave continua entregável. `pode-entregar --exigir-adversarial` e DSR_EXIGIR_ADVERSARIAL=1 também ligam; a combinação é OU monotônico — nenhum ponto de entrada desliga o que outro ligou."},
+    "dispensa_adversarial": {"type": ["string", "null"], "description": "Motivo declarado pelo advogado para dispensar a etapa adversarial NESTA peça (`init --sem-adversarial`). Null quando exigida. Escape mudo não existe: dispensar exige dizer por quê."},
+    "exigir_estanqueidade": {"type": "boolean", "description": "Exige que a fase verificacao DECLARE `trechos_lacrados` antes da entrega. O `init` grava false; `init --exigir-estanqueidade` grava true. Ausente = NÃO exigida. `pode-entregar --exigir-estanqueidade` e DSR_EXIGIR_ESTANQUEIDADE=1 também ligam (OU monotônico)."},
+    "exigir_squad": {"type": "boolean", "description": "Exige a etapa `memoria` do squad concluída antes da entrega. O `init` grava true; `init --sem-squad \"<motivo>\"` grava false com o motivo em dispensa_squad. Ausente = NÃO exigido. `pode-entregar --exigir-squad` e DSR_EXIGIR_SQUAD=1 também ligam (OU monotônico)."},
+    "dispensa_squad": {"type": ["string", "null"], "description": "Motivo declarado para dispensar o squad NESTA peça (`init --sem-squad`). Null quando exigido."},
+    "fases": {
+      "type": "object",
+      "description": "Mapa fase→registro. As chaves devem ser um subconjunto do enum de fases.",
+      "propertyNames": {"$ref": "#/definitions/nomeFase"},
+      "additionalProperties": {"$ref": "#/definitions/registroFase"}
+    }
+  },
+  "definitions": {
+    "nomeFase": {
+      "enum": ["briefing", "prazo", "estrategia", "adversarial", "mapa", "redacao", "verificacao", "visual_law", "lint", "conselho", "entrega"],
+      "description": "Ordem fixa: briefing → prazo → estrategia → adversarial → mapa → redacao → verificacao → visual_law → lint → conselho → entrega. 'adversarial' é a única fase OPCIONAL no CONTRATO (estado_peca.FASES_OPCIONAIS): entra no enum e é registrável sempre, e é COBRADA quando 'exigir_adversarial' estiver ligado — o que o `init` faz por padrão em peça nova, salvo dispensa declarada. Fica ANTES do mapa porque o mapa é o artefato que o advogado aprova — ataque que chega depois da aprovação (ou depois da redação) já não muda o mapa."
+    },
+    "registroFase": {
+      "type": "object",
+      "additionalProperties": true,
+      "properties": {
+        "status": {"enum": ["pendente", "concluida", "bloqueada"]},
+        "artefato": {"type": "string", "description": "Path/ref do artefato real produzido; só conta como presente se não-vazio após strip."},
+        "concluida_em": {"type": ["string", "null"], "description": "Timestamp recebido via --ts no avancar."},
+        "entrega_por_download": {"type": "boolean", "description": "Só na fase visual_law (`avancar --entrega-por-download`): em ambiente efêmero o .docx é entregue por download, declarado, e o acórdão o registra."},
+        "evidencia": {
+          "type": "object",
+          "additionalProperties": true,
+          "description": "Evidência da fase. Campos booleanos são estritos (rejeitam 'false'/1/'yes'); exit_code é inteiro estrito (rejeita bool/float/str).",
+          "properties": {
+            "briefing_forte": {"type": "boolean"},
+            "ok_advogado": {"type": "boolean"},
+            "aprovado": {"type": "boolean"},
+            "ooxml_valido": {"type": "boolean"},
+            "urgente": {"type": "boolean"},
+            "liberado": {"type": "boolean"},
+            "dispensa_por_urgencia": {"type": "boolean", "description": "Opt-in explícito: dispensa o ok_advogado em estrategia/mapa quando o prazo é urgente."},
+            "autor_id": {"type": "string", "minLength": 1, "description": "Id do agente responsável pela fase. String NÃO-VAZIA (espelha o autor_id do conselho_status: numérico ou vazio = ausente). Na fase 'estrategia' identifica quem desenhou a tese; na fase 'adversarial', quem a ATACA — e o gate recusa quando os dois são o mesmo, senão a etapa vira o autor se elogiando sob outro cabeçalho."},
+            "exit_code": {"type": "integer"},
+            "pendencias_jurisprudencia": {"type": "array", "items": {"type": "string"}, "description": "Obrigatória na fase verificacao; qualquer item bloqueia a fase e a entrega."},
+            "sem_jurisprudencia": {"type": "boolean", "description": "Fase verificacao: peça que não cita julgado declara true; dispensa o exit_code e exige zero pendência. Sai no acórdão."},
+            "trechos_lacrados": {"type": "array", "items": {"type": "string"}, "description": "Fase verificacao: trechos de procedência LACRADA apontados pela estanqueidade. Qualquer item bloqueia; lista vazia é declaração válida."},
+            "contradicoes_sem_lastro": {"type": "array", "items": {"type": "string"}, "description": "Fase verificacao: contradições afirmadas sem os dois lastros literais conferidos. Qualquer item bloqueia."},
+            "data_alvo_D2": {"type": "string", "description": "Fase prazo: prazo-alvo (D-2), repetido no acórdão."},
+            "pendencias_lint": {"type": "array", "items": {"type": "string"}, "description": "Fase lint: as linhas PENDENTE do linter, cada uma começando pelo código da regra. Com elas, o bloqueio em MINUTA diz se a correção é na peça ou só na conferência da fonte."},
+            "pedidos_liquidos": {"type": "array", "items": {"type": "object", "properties": {"pedido": {"type": "string"}, "valor": {"type": "string", "description": "Valor em texto, no formato \"R$ 10.000,00\"."}}}, "description": "Opcional nas fases briefing, estrategia e mapa: os pedidos com valor, lidos pelo checklist de protocolo da juntada."},
+            "classe": {"type": "string", "description": "Opcional nas fases briefing, estrategia e mapa: classe processual, lida pelo checklist de protocolo."},
+            "assunto": {"type": "string", "description": "Opcional nas fases briefing, estrategia e mapa: assunto da demanda, lido pelo checklist de protocolo."}
+          }
+        }
+      }
+    }
+  }
+}
