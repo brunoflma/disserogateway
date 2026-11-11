@@ -1,0 +1,147 @@
+{
+  "hooks": {
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash \"${CLAUDE_PLUGIN_ROOT}/hooks/gate_licenca.sh\"",
+            "timeout": 15
+          },
+          {
+            "type": "command",
+            "command": "bash \"${CLAUDE_PLUGIN_ROOT}/hooks/autolimpar.sh\"",
+            "timeout": 15
+          },
+          {
+            "type": "command",
+            "command": "bash \"${CLAUDE_PLUGIN_ROOT}/hooks/aviso_versao.sh\"",
+            "timeout": 10
+          },
+          {
+            "type": "command",
+            "command": "bash \"${CLAUDE_PLUGIN_ROOT}/hooks/gates_ativos.sh\"",
+            "timeout": 10
+          }
+        ]
+      }
+    ],
+    "UserPromptSubmit": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash \"${CLAUDE_PLUGIN_ROOT}/hooks/gate_licenca.sh\"",
+            "timeout": 15
+          },
+          {
+            "type": "command",
+            "command": "bash \"${CLAUDE_PLUGIN_ROOT}/hooks/detectar-demanda.sh\"",
+            "timeout": 10
+          },
+          {
+            "type": "command",
+            "command": "bash \"${CLAUDE_PLUGIN_ROOT}/hooks/registro_falas.sh\"",
+            "timeout": 10
+          }
+        ]
+      },
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash \"${CLAUDE_PLUGIN_ROOT}/hooks/gate_sigilo.sh\"",
+            "timeout": 15
+          }
+        ],
+        "matcher": ""
+      }
+    ],
+    "SubagentStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash \"${CLAUDE_PLUGIN_ROOT}/hooks/prov_subagente.sh\"",
+            "timeout": 10
+          }
+        ]
+      }
+    ],
+    "PreToolUse": [
+      {
+        "matcher": ".*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash \"${CLAUDE_PLUGIN_ROOT}/hooks/gate_sigilo_ferramenta.sh\"",
+            "timeout": 15
+          }
+        ]
+      },
+      {
+        "matcher": "Bash|Shell|PowerShell|Pwsh|Write|Edit|^(?:mcp__.*__)?(?:[Bb]ash|[Ss]h|[Ss]hell|[Zz]sh|[Pp]ower_?[Ss]hell|[Pp]wsh|[Cc]md|[Tt]erminal|[Rr]un_?[Ii]n_?[Tt]erminal|[Cc]tx_(?:[Bb]atch_)?[Ee]xecute(?:_[Ff]ile)?|[Rr]un_?[Cc]ommand|[Ee]xec(?:ute)?(?:_[Cc]ommand)?|[Mm]onitor)$|^mcp__.*__(?:[Ff]ile_?[Ss]ystem|[Ff]iles?|[Ff]ile_?[Uu]pload|(?:[Cc]opy|[Mm]ove|[Rr]ename|[Ww]rite|[Cc]reate|[Uu]pload|[Ss]ave|[Pp]ut|[Ee]dit)_?[Ff]ile(?:_[Cc]ontent)?)$|^SendUserFile$|^(?:mcp__.*__)?present_files$|^Artifact$|^mcp__.*__(?:batch|update|create|(?:create|update)_doc|(?:create|update)_draft|update_file|criar_nota|reescrever_nota|write_pdf)$",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash \"${CLAUDE_PLUGIN_ROOT}/hooks/gate_entrega.sh\"",
+            "timeout": 40,
+            "onFailure": "block"
+          }
+        ]
+      },
+      {
+        "matcher": "Write|Edit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash \"${CLAUDE_PLUGIN_ROOT}/hooks/aviso_completude.sh\"",
+            "timeout": 10
+          }
+        ]
+      },
+      {
+        "matcher": "Task|Agent",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash \"${CLAUDE_PLUGIN_ROOT}/hooks/gate_subagentes.sh\"",
+            "timeout": 10
+          }
+        ]
+      },
+      {
+        "matcher": "mcp__.*__iniciar_ingestao",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash \"${CLAUDE_PLUGIN_ROOT}/hooks/gate_ingestao.sh\"",
+            "timeout": 10
+          }
+        ]
+      },
+      {
+        "matcher": "mcp__.*__(?:consultar_(?:empresa_cnpja|receita_federal_cnpj|ccc|simples_mei|suframa|pessoa_cnpja|estabelecimento_cnpj|cep_cnpja)|buscar_(?:estabelecimentos_cnpj|pessoas_cnpja)|emitir_comprovante_(?:rfb|ccc|simples_mei|suframa)|gerar_(?:mapa_estabelecimento|visao_rua_estabelecimento))",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash \"${CLAUDE_PLUGIN_ROOT}/hooks/gate_cnpja.sh\"",
+            "timeout": 10
+          }
+        ]
+      }
+    ],
+    "SubagentStop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash \"${CLAUDE_PLUGIN_ROOT}/hooks/gate_entrega_subagente.sh\"",
+            "timeout": 40
+          }
+        ]
+      }
+    ]
+  }
+}

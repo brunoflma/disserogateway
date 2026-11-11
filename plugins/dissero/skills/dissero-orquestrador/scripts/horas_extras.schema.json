@@ -1,0 +1,136 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "dsr.horas_extras.decisao.v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "decision_id",
+    "name",
+    "legal_source_url",
+    "legal_source_sha256",
+    "review_valid_from",
+    "review_valid_to",
+    "reviewed_by",
+    "reviewed_role",
+    "reviewed_at",
+    "segregation_attested",
+    "rounding",
+    "monthly_rules"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": "dsr.horas_extras.decisao.v1"
+    },
+    "decision_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "name": {
+      "type": "string",
+      "minLength": 1
+    },
+    "legal_source_url": {
+      "type": "string",
+      "pattern": "^https://[^#]+$"
+    },
+    "legal_source_sha256": {
+      "type": "string",
+      "pattern": "^[0-9A-Fa-f]{64}$"
+    },
+    "review_valid_from": {
+      "type": "string",
+      "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+    },
+    "review_valid_to": {
+      "type": "string",
+      "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+    },
+    "reviewed_by": {
+      "type": "string",
+      "minLength": 3
+    },
+    "reviewed_role": {
+      "const": "advogado"
+    },
+    "reviewed_at": {
+      "type": "string",
+      "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+    },
+    "segregation_attested": {
+      "const": true
+    },
+    "rounding": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "scale",
+        "mode"
+      ],
+      "properties": {
+        "scale": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 8
+        },
+        "mode": {
+          "enum": [
+            "ROUND_HALF_UP",
+            "ROUND_HALF_EVEN",
+            "ROUND_DOWN"
+          ]
+        }
+      }
+    },
+    "monthly_rules": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "competencia",
+          "divisor",
+          "he_rates",
+          "night_rule",
+          "interval_rule",
+          "reflex_rules"
+        ],
+        "properties": {
+          "competencia": {
+            "type": "string"
+          },
+          "divisor": {
+            "type": "string"
+          },
+          "he_rates": {
+            "type": "object"
+          },
+          "night_rule": {
+            "type": "object"
+          },
+          "interval_rule": {
+            "type": "object",
+            "description": "Declara enabled, additional_rate e nature ('salarial' ou 'indenizatoria'). O intervalo entra na base do DSR só com nature 'salarial'; com 'indenizatoria' fica fora (CLT, art. 71, § 4º, na redação da Lei 13.467/2017). Com 'indenizatoria', nenhum reflexo pode ter 'interval' entre as sources: o motor recusa com intervalo_indenizatorio_em_reflexo."
+          },
+          "reflex_rules": {
+            "type": "array"
+          },
+          "dsr_rule": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "enabled"
+            ],
+            "properties": {
+              "enabled": {
+                "type": "boolean"
+              }
+            },
+            "description": "Opcional. enabled=false desliga o DSR sobre as horas extras — escala 12x36, CLT art. 59-A, parágrafo único. Ausente = ligado."
+          }
+        }
+      }
+    }
+  }
+}

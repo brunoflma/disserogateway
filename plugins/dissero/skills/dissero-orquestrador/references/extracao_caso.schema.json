@@ -1,0 +1,723 @@
+{
+ "$schema": "http://json-schema.org/draft-07/schema#",
+ "$id": "dsr:extracao_caso.v1",
+ "title": "EXTRACAO_CASO DISSERO",
+ "description": "Contrato da extracao consolidada do caso, produzida por consolidar_extracao.py a partir do plano da turma e dos retornos dos leitores. CARREGADO E APLICADO pelo proprio modulo (schema_mini) antes de gravar: extracao que o contrato publicado recusa nao vai para o disco. Todo achado EXIGE `pagina` e `sha256_arquivo` - e por eles que o L15 do LINT confere folha citada contra pagina lida; sem isso a extracao vira resumo solto e nao serve para a peca.",
+ "type": "object",
+ "required": [
+  "schema_version",
+  "caso",
+  "gerado_em",
+  "achados",
+  "reconciliacao",
+  "divergencias",
+  "ilegiveis",
+  "cronologia"
+ ],
+ "additionalProperties": false,
+ "properties": {
+  "schema_version": {
+   "const": "dsr.extracao_caso.v1"
+  },
+  "caso": {
+   "type": [
+    "string",
+    "null"
+   ]
+  },
+  "gerado_em": {
+   "type": "string",
+   "minLength": 1
+  },
+  "achados": {
+   "type": "array",
+   "items": {
+    "$ref": "#/definitions/achado"
+   }
+  },
+  "reconciliacao": {
+   "$ref": "#/definitions/reconciliacao"
+  },
+  "divergencias": {
+   "type": "array",
+   "items": {
+    "$ref": "#/definitions/divergencia"
+   }
+  },
+  "ilegiveis": {
+   "type": "array",
+   "items": {
+    "$ref": "#/definitions/ilegivel"
+   }
+  },
+  "cronologia": {
+   "$ref": "#/definitions/cronologia"
+  }
+ },
+ "definitions": {
+  "achado": {
+   "type": "object",
+   "required": [
+    "fatia_id",
+    "doc_id",
+    "sha256_arquivo",
+    "pagina",
+    "agente",
+    "tipo",
+    "teor"
+   ],
+   "additionalProperties": false,
+   "properties": {
+    "fatia_id": {
+     "type": "string",
+     "minLength": 1
+    },
+    "doc_id": {
+     "type": "string",
+     "minLength": 1
+    },
+    "sha256_arquivo": {
+     "type": "string",
+     "minLength": 1
+    },
+    "pagina": {
+     "type": "integer"
+    },
+    "agente": {
+     "type": "string",
+     "minLength": 1
+    },
+    "tipo": {
+     "enum": [
+      "fato",
+      "data",
+      "valor",
+      "prova",
+      "tese"
+     ]
+    },
+    "teor": {
+     "type": "string",
+     "minLength": 1
+    },
+    "chave": {
+     "type": "string",
+     "minLength": 1
+    },
+    "detalhe": {
+     "type": "string",
+     "minLength": 1
+    },
+    "extras": {
+     "type": "object",
+     "description": "Campos que o leitor devolveu alem do contrato. Preservados em vez de descartados: descartar em silencio e a mesma perda que este subsistema existe para matar."
+    },
+    "estatuto": {
+     "description": "So no achado de tipo `fato` (nos demais tipos o campo vai para `extras`). Lista fechada do metodo analise-autos: `alegado` (so a peca o afirma; narrativa verossimil sem lastro continua alegado), `provado` (documento ou prova produzida), `incontroverso` (exige `fundamento`), `inferencia` (deducao do leitor, separada do que esta nos autos). Valor fora da lista ou incontroverso sem fundamento recusa o retorno.",
+     "enum": [
+      "alegado",
+      "provado",
+      "incontroverso",
+      "inferencia"
+     ]
+    },
+    "fundamento": {
+     "description": "So acompanha `estatuto: incontroverso`: admissao expressa, art. 341 filtrado pelas excecoes do art. 345, art. 374 ou documento nao impugnado (art. 436).",
+     "enum": [
+      "admissao_expressa",
+      "art341_filtrado_345",
+      "art374",
+      "art436_documento_nao_impugnado"
+     ]
+    },
+    "plano": {
+     "description": "Em que cronologia o achado entra: `material` (o que aconteceu entre as partes) ou `processual` (o fluxo dos autos). Sem `plano`, o achado nao entra na cronologia.",
+     "enum": [
+      "material",
+      "processual"
+     ]
+    },
+    "data": {
+     "description": "Data do evento como o leitor a leu (texto cru, nunca normalizado). No achado de tipo `data`, o proprio `teor` faz esse papel.",
+     "type": "string",
+     "minLength": 1
+    }
+   }
+  },
+  "reconciliacao": {
+   "type": "object",
+   "description": "`ok: false` significa PERDA DE CONTEUDO - fatia que ninguem leu, documento que nunca virou fatia (por nao ter sido lido OU por nao ter paginacao), ou folha que o proprio plano declara fora de fatia. Divergencia entre fatias NAO entra aqui: ela e achado para o advogado, e viaja em `divergencias`. Os campos NOMEADOS que nao reprovam - `fatias_sem_achado`, `retornos_duplicados`, `achados_fora_da_faixa`, `declaracoes_divergentes` - existem porque contradicao que nao e perda nao pode derrubar leitura ja paga, mas tambem nao pode sumir.",
+   "required": [
+    "cobertura_derivada",
+    "cobertura_lida",
+    "documentos_sem_fatia",
+    "fatias_planejadas",
+    "fatias_respondidas",
+    "fatias_sem_retorno",
+    "ok",
+    "retornos_fora_do_plano",
+    "retornos_invalidos"
+   ],
+   "additionalProperties": false,
+   "properties": {
+    "ok": {
+     "type": "boolean"
+    },
+    "fatias_planejadas": {
+     "type": "integer"
+    },
+    "fatias_respondidas": {
+     "type": "integer"
+    },
+    "fatias_sem_retorno": {
+     "type": "array",
+     "items": {
+      "type": "string",
+      "minLength": 1
+     }
+    },
+    "retornos_fora_do_plano": {
+     "type": "array",
+     "items": {
+      "type": "string",
+      "minLength": 1
+     }
+    },
+    "documentos_sem_fatia": {
+     "type": "array",
+     "items": {
+      "type": "string",
+      "minLength": 1
+     }
+    },
+    "documentos_sem_paginacao": {
+     "description": "Documento que ficou de fora do leque por `paginas_total` ausente - TXT, DOCX, planilha, e-mail. Nomeado a parte para que o MOTIVO apareca, em vez de o arquivo sumir. Entra tambem em `documentos_sem_fatia` (e reprova), SALVO quando o plano declara `sem_paginacao_autorizado`.",
+     "type": "array",
+     "items": {
+      "type": "string",
+      "minLength": 1
+     }
+    },
+    "sem_paginacao_autorizado": {
+     "description": "Presente e verdadeiro quando o plano declara que o advogado autorizou expressamente seguir sem ler o(s) documento(s) sem paginacao. O documento continua NOMEADO em `documentos_sem_paginacao`; a autorizacao so o tira de `documentos_sem_fatia`, para que a guarda a jusante nao desfaca a decisao ja tomada a montante.",
+     "type": "boolean"
+    },
+    "fatias_sem_achado": {
+     "description": "Fatia que voltou com `achados: []` - o leitor LEU e nao achou nada. NAO reprova (nao ha perda), mas o advogado precisa saber onde o leque voltou seco. Nao se confunde com o stub sem a chave `achados`, que e recusado como retorno invalido.",
+     "type": "array",
+     "items": {
+      "type": "string",
+      "minLength": 1
+     }
+    },
+    "retornos_duplicados": {
+     "description": "Segunda leitura da MESMA fatia (arquivo esquecido de rodada anterior, ou redisparo gravado ao lado). Os achados dela sao gravados UMA vez; a duplicata e nomeada e nao reprova.",
+     "type": "array",
+     "items": {
+      "type": "object",
+      "required": [
+       "fatia_id",
+       "posicao",
+       "agente"
+      ],
+      "additionalProperties": false,
+      "properties": {
+       "fatia_id": {
+        "type": "string",
+        "minLength": 1
+       },
+       "posicao": {
+        "type": "integer"
+       },
+       "agente": {
+        "type": "string",
+        "minLength": 1
+       }
+      }
+     }
+    },
+    "achados_fora_da_faixa": {
+     "description": "Achado cuja folha a fatia nao cobre. NOMEIA sem derrubar: derrubar mataria a leitura ja paga do documento com numeracao de AUTOS, cuja fatia e indexada por pagina do arquivo enquanto o leitor devolve a folha dos autos.",
+     "type": "array",
+     "items": {
+      "type": "object",
+      "required": [
+       "fatia_id",
+       "agente",
+       "pagina",
+       "pagina_inicial",
+       "pagina_final"
+      ],
+      "additionalProperties": false,
+      "properties": {
+       "fatia_id": {
+        "type": "string",
+        "minLength": 1
+       },
+       "agente": {
+        "type": "string",
+        "minLength": 1
+       },
+       "pagina": {
+        "type": "integer"
+       },
+       "pagina_inicial": {
+        "type": "integer"
+       },
+       "pagina_final": {
+        "type": "integer"
+       }
+      }
+     }
+    },
+    "declaracoes_divergentes": {
+     "description": "Campo do oficio (sha256_arquivo, doc_id, fatia_id) que o leitor ecoou com valor diferente do plano. Nenhum leitor calcula sha256 - valor divergente e alucinacao, nao deteccao de outra versao. O carimbo do plano prevalece e o valor contraditorio segue preservado em `achados[].extras`; aqui fica so o AVISO.",
+     "type": "array",
+     "items": {
+      "type": "object",
+      "required": [
+       "fatia_id",
+       "agente",
+       "campo",
+       "declarado",
+       "do_plano"
+      ],
+      "additionalProperties": false,
+      "properties": {
+       "fatia_id": {
+        "type": "string",
+        "minLength": 1
+       },
+       "agente": {
+        "type": "string",
+        "minLength": 1
+       },
+       "campo": {
+        "enum": [
+         "sha256_arquivo",
+         "doc_id",
+         "fatia_id"
+        ]
+       },
+       "declarado": {
+        "type": "string",
+        "minLength": 1
+       },
+       "do_plano": {
+        "type": "string",
+        "minLength": 1
+       }
+      }
+     }
+    },
+    "cobertura_do_plano": {
+     "description": "O que o PLANO declara sobre a propria cobertura, copiado para dentro da extracao. O plano nao carrega `paginas_total` por documento, entao refazer a conta aqui e impossivel - mas ignorar a declaracao do planejador era reconciliar sobre um buraco conhecido. `completa: false` ou `faltando` nao vazio derruba `ok`.",
+     "type": "object",
+     "required": [
+      "completa",
+      "faltando"
+     ],
+     "additionalProperties": false,
+     "properties": {
+      "completa": {
+       "type": [
+        "boolean",
+        "null"
+       ]
+      },
+      "faltando": {
+       "type": "array",
+       "items": {
+        "type": "object",
+        "required": [
+         "doc_id",
+         "paginas",
+         "total_faltando"
+        ],
+        "additionalProperties": false,
+        "properties": {
+         "doc_id": {
+          "type": "string",
+          "minLength": 1
+         },
+         "paginas": {
+          "type": "array",
+          "items": {
+           "type": "integer"
+          }
+         },
+         "total_faltando": {
+          "type": "integer"
+         }
+        }
+       }
+      }
+     }
+    },
+    "plano_escalado_autorizado": {
+     "description": "Presente e verdadeiro quando um plano com `acao: escalar` foi consolidado por autorizacao EXPRESSA do advogado. Escape que nao deixa rastro e escape acidental.",
+     "type": "boolean"
+    },
+    "retornos_invalidos": {
+     "type": "array",
+     "items": {
+      "type": "object",
+      "required": [
+       "fatia_id",
+       "posicao",
+       "motivos"
+      ],
+      "additionalProperties": false,
+      "properties": {
+       "fatia_id": {
+        "type": [
+         "string",
+         "null"
+        ]
+       },
+       "posicao": {
+        "type": "integer"
+       },
+       "motivos": {
+        "type": "array",
+        "items": {
+         "type": "string",
+         "minLength": 1
+        }
+       }
+      }
+     }
+    },
+    "cobertura_derivada": {
+     "description": "A cobertura RECALCULADA da uniao das `fatias[]` - nunca a que o plano declara. Conferir a declaracao de quem se quer conferir nao e conferencia: encolher uma fatia em UMA folha passaria com o plano ainda afirmando `completa: true`. A uniao NAO sofre com o overlap - somar tamanhos conta a folha sobreposta duas vezes, mas conjunto nao.",
+     "type": "object",
+     "required": [
+      "completa",
+      "paginas_cobertas",
+      "faltando"
+     ],
+     "properties": {
+      "completa": {
+       "type": "boolean"
+      },
+      "paginas_cobertas": {
+       "type": "integer",
+       "minimum": 0
+      },
+      "paginas_planejadas": {
+       "type": [
+        "integer",
+        "null"
+       ]
+      },
+      "documentos": {
+       "type": "array",
+       "items": {
+        "type": "string"
+       }
+      },
+      "faltando": {
+       "type": "array",
+       "items": {
+        "type": "object",
+        "required": [
+         "doc_id",
+         "total_faltando",
+         "tipo"
+        ],
+        "properties": {
+         "doc_id": {
+          "type": "string"
+         },
+         "paginas": {
+          "type": "array",
+          "items": {
+           "type": "integer"
+          }
+         },
+         "total_faltando": {
+          "type": "integer",
+          "minimum": 1
+         },
+         "tipo": {
+          "enum": [
+           "interior",
+           "borda_ou_documento_inteiro"
+          ]
+         }
+        }
+       }
+      }
+     }
+    },
+    "cobertura_lida": {
+     "description": "A uniao das paginas que VOLTARAM LIDAS - o invariante de FIDELIDADE, e a unica das tres coberturas que enxerga leitor que nao voltou. A `cobertura_derivada` mede o PLANO, que por construcao cobre tudo: ela responde completa=true mesmo quando uma fatia inteira volta sem leitor. OBRIGATORIA no contrato: cobertura que pode faltar da saida e cobertura que se pode calar.",
+     "type": "object",
+     "required": [
+      "completa",
+      "paginas_cobertas",
+      "faltando"
+     ],
+     "properties": {
+      "completa": {
+       "type": "boolean"
+      },
+      "paginas_cobertas": {
+       "type": "integer",
+       "minimum": 0
+      },
+      "paginas_planejadas": {
+       "type": [
+        "integer",
+        "null"
+       ]
+      },
+      "documentos": {
+       "type": "array",
+       "items": {
+        "type": "string"
+       }
+      },
+      "faltando": {
+       "type": "array",
+       "items": {
+        "type": "object",
+        "required": [
+         "doc_id",
+         "total_faltando",
+         "tipo"
+        ],
+        "properties": {
+         "doc_id": {
+          "type": "string"
+         },
+         "paginas": {
+          "type": "array",
+          "items": {
+           "type": "integer"
+          }
+         },
+         "total_faltando": {
+          "type": "integer",
+          "minimum": 1
+         },
+         "tipo": {
+          "enum": [
+           "interior",
+           "borda_ou_documento_inteiro"
+          ]
+         }
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "divergencia": {
+   "type": "object",
+   "description": "O que nao fecha entre fatias. As duas leituras ficam registradas com folha e agente; NENHUMA e eleita vencedora - o motor nao arbitra juizo juridico. A `chave` cruza pela forma normalizada (caixa e espaco), porque ela e texto livre do leitor e nao ha vocabulario fechado; o TEOR nao e normalizado.",
+   "required": [
+    "chave",
+    "tipos",
+    "valores",
+    "ocorrencias"
+   ],
+   "additionalProperties": false,
+   "properties": {
+    "chave": {
+     "type": "string",
+     "minLength": 1
+    },
+    "mesma_folha": {
+     "description": "Todas as ocorrencias caem na MESMA folha do MESMO documento. Rotulo, nunca supressao: o overlap do plano faz a folha da fronteira ser lida duas vezes por desenho, e uma diferenca so de formatacao vira ruido fabricado - mas suprimir esconderia o conflito de leitura que a redundancia existe para pegar.",
+     "type": "boolean"
+    },
+    "origem": {
+     "description": "So acompanha `mesma_folha`. `sobreposicao_do_plano`: fatias vizinhas relendo a folha compartilhada. `mesma_fatia`: o leitor se contradizendo dentro do proprio trecho, que e outra noticia.",
+     "enum": [
+      "sobreposicao_do_plano",
+      "mesma_fatia"
+     ]
+    },
+    "tipos": {
+     "type": "array",
+     "items": {
+      "enum": [
+       "fato",
+       "data",
+       "valor",
+       "prova",
+       "tese"
+      ]
+     }
+    },
+    "valores": {
+     "type": "array",
+     "items": {
+      "type": "string",
+      "minLength": 1
+     }
+    },
+    "ocorrencias": {
+     "type": "array",
+     "items": {
+      "type": "object",
+      "required": [
+       "fatia_id",
+       "doc_id",
+       "pagina",
+       "agente",
+       "teor"
+      ],
+      "additionalProperties": false,
+      "properties": {
+       "fatia_id": {
+        "type": "string",
+        "minLength": 1
+       },
+       "doc_id": {
+        "type": "string",
+        "minLength": 1
+       },
+       "pagina": {
+        "type": "integer"
+       },
+       "agente": {
+        "type": "string",
+        "minLength": 1
+       },
+       "teor": {
+        "type": "string",
+        "minLength": 1
+       }
+      }
+     }
+    }
+   }
+  },
+  "ilegivel": {
+   "type": "object",
+   "description": "O que estava ilegivel FICA DITO, nunca preenchido. Viaja inclusive quando o retorno que o declarou foi recusado por outro motivo.",
+   "required": [
+    "fatia_id",
+    "doc_id",
+    "nota"
+   ],
+   "additionalProperties": false,
+   "properties": {
+    "fatia_id": {
+     "type": "string",
+     "minLength": 1
+    },
+    "doc_id": {
+     "type": "string",
+     "minLength": 1
+    },
+    "sha256_arquivo": {
+     "type": "string",
+     "minLength": 1
+    },
+    "pagina": {
+     "type": [
+      "integer",
+      "null"
+     ]
+    },
+    "nota": {
+     "type": "string",
+     "minLength": 1
+    }
+   }
+  },
+  "cronologia": {
+   "type": "object",
+   "description": "Duas listas, material e processual, montadas dos achados que declaram `plano`. Ordem: data reconhecivel (AAAA-MM-DD ou DD/MM/AAAA) primeiro, depois as sem data, na ordem de documento e folha. Divergencia nao elege vencedor: as leituras discordantes ficam lado a lado, marcadas `divergente`.",
+   "required": [
+    "material",
+    "processual"
+   ],
+   "additionalProperties": false,
+   "properties": {
+    "material": {
+     "type": "array",
+     "items": {
+      "$ref": "#/definitions/item_cronologia"
+     }
+    },
+    "processual": {
+     "type": "array",
+     "items": {
+      "$ref": "#/definitions/item_cronologia"
+     }
+    }
+   }
+  },
+  "item_cronologia": {
+   "type": "object",
+   "required": [
+    "fatia_id",
+    "doc_id",
+    "pagina",
+    "agente",
+    "tipo",
+    "teor",
+    "data"
+   ],
+   "additionalProperties": false,
+   "properties": {
+    "fatia_id": {
+     "type": "string",
+     "minLength": 1
+    },
+    "doc_id": {
+     "type": "string",
+     "minLength": 1
+    },
+    "pagina": {
+     "type": "integer"
+    },
+    "agente": {
+     "type": "string",
+     "minLength": 1
+    },
+    "tipo": {
+     "enum": [
+      "fato",
+      "data",
+      "valor",
+      "prova",
+      "tese"
+     ]
+    },
+    "teor": {
+     "type": "string",
+     "minLength": 1
+    },
+    "data": {
+     "description": "Texto cru da data; null quando o leitor nao a deu.",
+     "type": [
+      "string",
+      "null"
+     ]
+    },
+    "chave": {
+     "type": "string",
+     "minLength": 1
+    },
+    "estatuto": {
+     "enum": [
+      "alegado",
+      "provado",
+      "incontroverso",
+      "inferencia"
+     ]
+    },
+    "divergente": {
+     "description": "A chave deste item aparece em `divergencias`. As leituras discordantes ficam TODAS na lista, cada uma com a sua folha; nenhuma e eleita.",
+     "type": "boolean"
+    }
+   }
+  }
+ }
+}

@@ -1,0 +1,71 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "dsr:pje:aquisicao:v1",
+  "title": "Contrato de aquisição PJe Dissero v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version", "processo_cnj", "status", "local_execution",
+    "authorized_by_lawyer", "retention", "adapter", "documents", "timeline",
+    "expected_documents", "acquired_documents"
+  ],
+  "properties": {
+    "schema_version": { "const": "dsr.pje.aquisicao.v1" },
+    "processo_cnj": { "type": "string", "minLength": 20 },
+    "status": { "enum": ["complete", "partial", "inconclusive"] },
+    "local_execution": { "type": "boolean" },
+    "authorized_by_lawyer": { "type": "boolean" },
+    "retention": { "enum": ["zero", "local"] },
+    "adapter": { "enum": ["manual-local"] },
+    "source": { "type": "string" },
+    "documents": {
+      "type": "array",
+      "items": { "$ref": "#/definitions/document" }
+    },
+    "expected_documents": { "type": ["integer", "null"], "minimum": 0 },
+    "acquired_documents": { "type": "integer", "minimum": 0 },
+    "previous_manifest_sha256": { "type": "string", "pattern": "^[0-9A-Fa-f]{64}$" },
+    "timeline": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "id": {}, "event_id": {}, "type": {}, "kind": {}, "status": {},
+          "at": {}, "timestamp": {}, "acquired_at": {}, "document_id": {},
+          "name": {}, "bytes": {}, "sha256": {}, "count": {}, "page": {}, "pages": {}
+        }
+      }
+    },
+    "confidential_content": { "type": "boolean" }
+  },
+  "allOf": [
+    {
+      "if": { "properties": { "status": { "const": "complete" } } },
+      "then": {
+        "properties": {
+          "local_execution": { "const": true },
+          "authorized_by_lawyer": { "const": true },
+          "expected_documents": { "type": "integer", "minimum": 1 },
+          "documents": { "minItems": 1 }
+        }
+      }
+    }
+  ],
+  "definitions": {
+    "document": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "name", "path", "sha256", "bytes", "acquired_at"],
+      "properties": {
+        "id": { "type": "string", "minLength": 1 },
+        "name": { "type": "string", "minLength": 1 },
+        "path": { "type": "string", "minLength": 1 },
+        "sha256": { "type": "string", "pattern": "^[0-9A-Fa-f]{64}$" },
+        "bytes": { "type": "integer", "minimum": 0 },
+        "acquired_at": { "type": "string", "minLength": 1 },
+        "confidential_content": { "type": "boolean" }
+      }
+    }
+  }
+}

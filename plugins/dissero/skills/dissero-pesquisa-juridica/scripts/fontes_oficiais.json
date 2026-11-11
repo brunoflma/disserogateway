@@ -1,0 +1,1288 @@
+{
+  "versao": "4.0",
+  "atualizado": "2026-10-20",
+  "_gerado": {
+    "por": "build/gerar_fontes_oficiais.py",
+    "de": "zetema/src/security/official-sources.ts",
+    "origem_sha256": "3a85adf91fd5719585ef46b045fc9e4e007b2de6ac838b5e31af26285f43ea46",
+    "mapa_capacidade": {
+      "search": "busca",
+      "document_fetch": "confirmacao_teor",
+      "jurimetry": "jurimetria",
+      "legislation_discovery": "legislacao"
+    },
+    "sobreposicoes_locais": {
+      "www.in.gov.br": {
+        "capacidades": [
+          "busca"
+        ],
+        "medido_em": "2026-09-05",
+        "por_que": "O zetema cataloga o host só para `document_fetch`. Medido: a busca do DOU responde e devolve resultados estruturados, então tratá-lo como fonte que só serve documento fazia a casa perder a etapa de descoberta.",
+        "como_medir_de_novo": "GET https://www.in.gov.br/consulta/-/buscar/dou?q=<termo>&s=todos&exactDate=all&sortType=0&delta=5 — exige User-Agent de navegador (sem ele o WAF responde sem resultado). O payload NÃO vem em JSON de API: vem embutido na página, no <script id=\"_br_com_seatecnologia_in_buscadou_BuscaDouPortlet_params\" type=\"application/json\">, cujo objeto tem uma chave só, `jsonArray`."
+      }
+    },
+    "mapas_de_campos_medidos": {
+      "www.in.gov.br": {
+        "_leia": "Campos medidos sobre resultados reais da busca. Duas armadilhas: `pubName` e `editionNumber` parecem órgão e número do ato, e não são.",
+        "pubName": "ARMADILHA: é a SEÇÃO do Diário, não o órgão (ex.: 'DO1_EXTRA_A', 'DO1_EXTRA_B', variantes da seção 1). Lê-lo como órgão atribui o ato a quem não o praticou.",
+        "editionNumber": "ARMADILHA: é a edição ('168-A', '168-B'), não o número do ato.",
+        "hierarchyStr": "a hierarquia administrativa ('Atos do Poder Legislativo'); é daqui que se lê o órgão, e não de `pubName`.",
+        "artType": "espécie do ato ('Lei Complementar', 'Portaria', ...)",
+        "title": "título do ato, já com número e data",
+        "pubDate": "data de publicação, DD/MM/AAAA",
+        "numberPage": "página no Diário",
+        "urlTitle": "slug do ato; compõe a URL do inteiro teor",
+        "content": "trecho com o termo, marcado por <span class='highlight'> — é EXCERTO, não teor: confirmação continua exigindo o documento."
+      }
+    },
+    "travas_locais": {
+      "confirmacao_teor": {
+        "hosts": [
+          "api-publica.datajud.cnj.jus.br",
+          "www.cnj.jus.br",
+          "projeto.lexml.gov.br",
+          "www.lexml.gov.br"
+        ],
+        "fichas_da_origem": [
+          "datajud",
+          "lexml"
+        ],
+        "por_que": "DataJud entrega metadado e movimentação processual; LexML indexa a norma e aponta o texto publicado por outro órgão. Nenhum dos dois serve o documento que a conferência literal confronta, embora a origem os declare com `document_fetch`.",
+        "alcance": "www.cnj.jus.br entra inteiro porque, na origem, só a ficha do DataJud o cataloga e o plugin não o usa para conferir teor. Resolução, provimento e portaria do CNJ se conferem em atos.cnj.jus.br, que esta trava não alcança."
+      }
+    },
+    "nao_traduzido": {
+      "automatic_confirmation": "rótulo declarado em fichas do MCP e lido por NENHUM código dele. Traduzi-lo para capacidade que aqui libera a peça seria promover rótulo a garantia."
+    },
+    "_leia": "NÃO EDITE À MÃO. Este arquivo é PROJEÇÃO do catálogo de hosts oficiais do zetema (governança §10-A: a casa não mantém duas verdades sobre a mesma pergunta). Para mudar um host, mude na origem e rode o gerador. O que é exclusivo do plugin sobrevive marcado com origem: local."
+  },
+  "descricao": "Catálogo de hosts exatos e capacidades. Sufixo oficial apenas identifica candidato; nunca confirma automaticamente. PROJEÇÃO GERADA do catálogo do zetema (governança §10-A): não edite à mão; ver o bloco `_gerado`.",
+  "hosts": {
+    "acordaos.economia.gov.br": {
+      "orgao": "Índice público de acórdãos do CARF",
+      "capacidades": [
+        "busca",
+        "confirmacao_teor"
+      ]
+    },
+    "api-publica.datajud.cnj.jus.br": {
+      "orgao": "DataJud/CNJ",
+      "capacidades": [
+        "jurimetria",
+        "metadados"
+      ],
+      "origem": "projetado+local",
+      "travas_locais": [
+        "confirmacao_teor"
+      ]
+    },
+    "aplicativos.tjes.jus.br": {
+      "orgao": "TJES",
+      "capacidades": [
+        "busca",
+        "confirmacao_teor"
+      ]
+    },
+    "arquivo.trf1.jus.br": {
+      "orgao": "TRF1",
+      "capacidades": [
+        "busca",
+        "confirmacao_teor"
+      ]
+    },
+    "bnp.pdpj.jus.br": {
+      "orgao": "BNP/Pangea (CNJ)",
+      "capacidades": [
+        "busca"
+      ]
+    },
+    "busca.tjsc.jus.br": {
+      "orgao": "TJSC",
+      "capacidades": [
+        "busca",
+        "confirmacao_teor"
+      ]
+    },
+    "cjf.jus.br": {
+      "orgao": "TNU",
+      "capacidades": [
+        "busca",
+        "confirmacao_teor"
+      ]
+    },
+    "cjo.tjsp.jus.br": {
+      "orgao": "TJSP",
+      "capacidades": [
+        "busca",
+        "confirmacao_teor"
+      ]
+    },
+    "colaboragov.sei.gov.br": {
+      "orgao": "Jurisprudência do CRSFN",
+      "capacidades": [
+        "busca",
+        "confirmacao_teor"
+      ]
+    },
+    "consulta-jurisprudencia.tjmg.jus.br": {
+      "orgao": "TJMG",
+      "capacidades": [
+        "busca",
+        "confirmacao_teor"
+      ]
+    },
+    "consultadocumento.tst.jus.br": {
+      "orgao": "TST e Justiça do Trabalho",
+      "capacidades": [
+        "busca",
+        "confirmacao_teor"
+      ]
+    },
+    "consultajurisprudencia.app.tjpe.jus.br": {
+      "orgao": "TJPE",
+      "capacidades": [
+        "busca",
+        "confirmacao_teor"
+      ]
+    },
+    "consultasaj.tjam.jus.br": {
+      "orgao": "TJAM",
+      "capacidades": [
+        "confirmacao_teor"
+      ]
+    },
+    "dados.cvm.gov.br": {
+      "orgao": "Dados Abertos da CVM",
+      "capacidades": [
+        "busca"
+      ]
+    },
+    "dadosabertos.camara.leg.br": {
+      "orgao": "Dados Abertos da Câmara dos Deputados",
+      "capacidades": [
+        "confirmacao_teor",
+        "legislacao"
+      ]
+    },
+    "dadosabertos.web.stj.jus.br": {
+      "orgao": "STJ Dados Abertos",
+      "capacidades": [
+        "busca",
+        "confirmacao_teor",
+        "ementa"
+      ],
+      "origem": "projetado+local"
+    },
+    "eproc-consulta.tjsp.jus.br": {
+      "orgao": "TJSP",
+      "capacidades": [
+        "busca",
+        "confirmacao_teor"
+      ]
+    },
+    "eproc-jur.trf6.jus.br": {
+      "orgao": "TRF6",
+      "capacidades": [
+        "busca",
+        "confirmacao_teor"
+      ]
+    },
+    "eproc.tjpr.jus.br": {
+      "orgao": "TJPR",
+      "capacidades": [
+        "busca",
+        "confirmacao_teor"
+      ]
+    },
+    "eproc.tjrs.jus.br": {
+      "orgao": "TJRS",
+      "capacidades": [
+        "busca",
+        "confirmacao_teor"
+      ]
+    },
+    "eproc.trf2.jus.br": {
+      "orgao": "TRF2",
+      "capacidades": [
+        "busca",
+        "confirmacao_teor"
+      ]
+    },
+    "eproc1g.stm.jus.br": {
+      "orgao": "STM",
+      "capacidades": [
+        "busca",
+        "confirmacao_teor"
+      ]
+    },
+    "eproc1g.tjrj.jus.br": {
+      "orgao": "TJRJ",
+      "capacidades": [
+        "busca",
+        "confirmacao_teor"
+      ]
+    },
+    "eproc1g.tjsc.jus.br": {
+      "orgao": "TJSC",
+      "capacidades": [
+        "busca",
+        "confirmacao_teor"
+      ]
+    },
+    "eproc2g.stm.jus.br": {
+      "orgao": "STM",
+      "capacidades": [
+        "busca",
+        "confirmacao_teor"
+      ]
+    },
+    "eproc2trf4.trf4.jus.br": {
+      "orgao": "TRF4",
+      "capacidades": [
+        "busca",
+        "confirmacao_teor"
+      ]
+    },
+    "eproctnu.cjf.jus.br": {
+      "orgao": "TNU",
+      "capacidades": [
+        "busca",
+        "confirmacao_teor"
+      ]
+    },
+    "eprocwebcon.tjsc.jus.br": {
+      "orgao": "TJSC",
+      "capacidades": [
+        "busca",
+        "confirmacao_teor"
+      ]
+    },
+    "esaj.tjac.jus.br": {
+      "orgao": "TJAC",
+      "capacidades": [
+        "busca",
+        "confirmacao_teor"
+      ]
+    },
+    "esaj.tjce.jus.br": {
+      "orgao": "TJCE",
+      "capacidades": [
+        "busca",
+        "confirmacao_teor"
+      ]
+    },
+    "esaj.tjms.jus.br": {
+      "orgao": "TJMS",
+      "capacidades": [
+        "busca",
+        "confirmacao_teor"
+      ]
+    },
+    "esaj.tjsp.jus.br": {
+      "orgao": "TJSP",
+      "capacidades": [
+        "busca",
+        "confirmacao_teor"
+      ]
+    },
+    "gateway.tjce.jus.br": {
+      "orgao": "TJCE",
+      "capacidades": [
+        "busca",
+        "confirmacao_teor"
+      ]
+    },
+    "gsa-index.tjpa.jus.br": {
+      "orgao": "TJPA",
+      "capacidades": [
+        "busca",
+        "confirmacao_teor"
+      ]
+    },
+    "hellsgate-preview.tjmt.jus.br": {
+      "orgao": "TJMT",
+      "capacidades": [
+        "busca",
+        "confirmacao_teor"
+      ]
+    },
+    "juris-back.tjro.jus.br": {
+      "orgao": "TJRO",
+      "capacidades": [
+        "busca",
+        "confirmacao_teor"
+      ]
+    },
+    "juris.tjro.jus.br": {
+      "orgao": "TJRO",
+      "capacidades": [
+        "busca",
+        "confirmacao_teor"
+      ]
+    },
+    "jurisconsult.tjma.jus.br": {
+      "orgao": "TJMA",
+      "capacidades": [
+        "confirmacao_teor"
+      ]
+    },
+    "jurisdf.tjdft.jus.br": {
+      "orgao": "TJDFT",
+      "capacidades": [
+        "busca",
+        "confirmacao_teor"
+      ]
+    },
+    "jurisprudencia-api.tjmg.jus.br": {
+      "orgao": "TJMG",
+      "capacidades": [
+        "busca",
+        "confirmacao_teor"
+      ]
+    },
+    "jurisprudencia-backend.tst.jus.br": {
+      "orgao": "TST e Justiça do Trabalho",
+      "capacidades": [
+        "busca",
+        "confirmacao_teor"
+      ]
+    },
+    "jurisprudencia-backend2.tst.jus.br": {
+      "orgao": "TST e Justiça do Trabalho",
+      "capacidades": [
+        "busca",
+        "confirmacao_teor",
+        "ementa"
+      ],
+      "origem": "projetado+local"
+    },
+    "jurisprudencia.cjf.jus.br": {
+      "orgao": "TNU",
+      "capacidades": [
+        "busca",
+        "confirmacao_teor"
+      ]
+    },
+    "jurisprudencia.jt.jus.br": {
+      "orgao": "TST e Justiça do Trabalho",
+      "capacidades": [
+        "busca",
+        "confirmacao_teor"
+      ]
+    },
+    "jurisprudencia.oab.org.br": {
+      "orgao": "Conselho Federal da OAB",
+      "capacidades": [
+        "busca",
+        "confirmacao_teor"
+      ]
+    },
+    "jurisprudencia.stf.jus.br": {
+      "orgao": "STF",
+      "capacidades": [
+        "busca",
+        "confirmacao_teor"
+      ]
+    },
+    "jurisprudencia.stm.jus.br": {
+      "orgao": "STM",
+      "capacidades": [
+        "busca",
+        "confirmacao_teor"
+      ]
+    },
+    "jurisprudencia.tjba.jus.br": {
+      "orgao": "TJBA",
+      "capacidades": [
+        "busca",
+        "confirmacao_teor"
+      ]
+    },
+    "jurisprudencia.tjmmg.jus.br": {
+      "orgao": "TJMMG",
+      "capacidades": [
+        "busca",
+        "confirmacao_teor"
+      ]
+    },
+    "jurisprudencia.tjmt.jus.br": {
+      "orgao": "TJMT",
+      "capacidades": [
+        "busca",
+        "confirmacao_teor"
+      ]
+    },
+    "jurisprudencia.tjpa.jus.br": {
+      "orgao": "TJPA",
+      "capacidades": [
+        "busca",
+        "confirmacao_teor"
+      ]
+    },
+    "jurisprudencia.tjpi.jus.br": {
+      "orgao": "TJPI",
+      "capacidades": [
+        "busca",
+        "confirmacao_teor"
+      ]
+    },
+    "jurisprudencia.tjrn.jus.br": {
+      "orgao": "TJRN",
+      "capacidades": [
+        "busca",
+        "confirmacao_teor"
+      ]
+    },
+    "jurisprudencia.tjrr.jus.br": {
+      "orgao": "TJRR",
+      "capacidades": [
+        "busca",
+        "confirmacao_teor"
+      ]
+    },
+    "jurisprudencia.tjto.jus.br": {
+      "orgao": "TJTO",
+      "capacidades": [
+        "busca",
+        "confirmacao_teor"
+      ]
+    },
+    "jurisprudencia.trf4.jus.br": {
+      "orgao": "TRF4",
+      "capacidades": [
+        "busca",
+        "confirmacao_teor"
+      ]
+    },
+    "jurisprudencia.trf5.jus.br": {
+      "orgao": "TRF5",
+      "capacidades": [
+        "busca",
+        "confirmacao_teor"
+      ]
+    },
+    "jurisprudencia.tse.jus.br": {
+      "orgao": "TSE",
+      "capacidades": [
+        "confirmacao_teor"
+      ]
+    },
+    "jurisprudencia.tst.jus.br": {
+      "orgao": "TST e Justiça do Trabalho",
+      "capacidades": [
+        "busca",
+        "confirmacao_teor"
+      ]
+    },
+    "jurisprudenciasfn.fazenda.gov.br": {
+      "orgao": "Jurisprudência do CRSFN",
+      "capacidades": [
+        "busca",
+        "confirmacao_teor"
+      ]
+    },
+    "jurisprudenciaws.tjba.jus.br": {
+      "orgao": "TJBA",
+      "capacidades": [
+        "busca",
+        "confirmacao_teor"
+      ]
+    },
+    "legis.senado.gov.br": {
+      "orgao": "Dados Abertos do Senado Federal",
+      "capacidades": [
+        "confirmacao_teor",
+        "legislacao"
+      ]
+    },
+    "legis.senado.leg.br": {
+      "orgao": "Dados Abertos do Senado Federal",
+      "capacidades": [
+        "confirmacao_teor",
+        "legislacao",
+        "metadados"
+      ],
+      "origem": "projetado+local"
+    },
+    "liame.tjro.jus.br": {
+      "orgao": "TJRO",
+      "capacidades": [
+        "busca",
+        "confirmacao_teor"
+      ]
+    },
+    "link.jt.jus.br": {
+      "orgao": "TST e Justiça do Trabalho",
+      "capacidades": [
+        "busca",
+        "confirmacao_teor"
+      ]
+    },
+    "normas.leg.br": {
+      "orgao": "Normas.leg.br (Congresso Nacional)",
+      "capacidades": [
+        "confirmacao_teor",
+        "legislacao"
+      ]
+    },
+    "pangeabnp.pdpj.jus.br": {
+      "orgao": "BNP/Pangea (CNJ)",
+      "capacidades": [
+        "busca"
+      ]
+    },
+    "pesquisa.apps.tcu.gov.br": {
+      "orgao": "TCU",
+      "capacidades": [
+        "busca",
+        "confirmacao_teor"
+      ]
+    },
+    "pesquisajuris.tjdft.jus.br": {
+      "orgao": "TJDFT",
+      "capacidades": [
+        "busca",
+        "confirmacao_teor"
+      ]
+    },
+    "pje-jurisprudencia.tjpb.jus.br": {
+      "orgao": "TJPB",
+      "capacidades": [
+        "busca",
+        "confirmacao_teor"
+      ]
+    },
+    "pje.tjmg.jus.br": {
+      "orgao": "TJMG",
+      "capacidades": [
+        "busca",
+        "confirmacao_teor"
+      ]
+    },
+    "pje.tst.jus.br": {
+      "orgao": "TST e Justiça do Trabalho",
+      "capacidades": [
+        "busca",
+        "confirmacao_teor"
+      ]
+    },
+    "pjesg.tjro.jus.br": {
+      "orgao": "TJRO",
+      "capacidades": [
+        "busca",
+        "confirmacao_teor"
+      ]
+    },
+    "planalto.gov.br": {
+      "orgao": "Planalto",
+      "capacidades": [
+        "confirmacao_teor"
+      ]
+    },
+    "portal.stf.jus.br": {
+      "orgao": "STF",
+      "capacidades": [
+        "busca",
+        "confirmacao_teor"
+      ]
+    },
+    "portal.tcu.gov.br": {
+      "orgao": "TCU",
+      "capacidades": [
+        "busca",
+        "confirmacao_teor"
+      ]
+    },
+    "portal.tjpr.jus.br": {
+      "orgao": "TJPR",
+      "capacidades": [
+        "busca",
+        "confirmacao_teor"
+      ]
+    },
+    "portaltj.tjrj.jus.br": {
+      "orgao": "TJRJ",
+      "capacidades": [
+        "busca",
+        "confirmacao_teor"
+      ]
+    },
+    "processo.stj.jus.br": {
+      "orgao": "STJ Dados Abertos",
+      "capacidades": [
+        "busca",
+        "confirmacao_teor"
+      ]
+    },
+    "projeto.lexml.gov.br": {
+      "orgao": "LexML",
+      "capacidades": [
+        "legislacao"
+      ],
+      "travas_locais": [
+        "confirmacao_teor"
+      ]
+    },
+    "projudi.tjpr.jus.br": {
+      "orgao": "TJPR",
+      "capacidades": [
+        "busca",
+        "confirmacao_teor"
+      ]
+    },
+    "redir.stf.jus.br": {
+      "orgao": "STF",
+      "capacidades": [
+        "busca",
+        "confirmacao_teor"
+      ]
+    },
+    "scon.stj.jus.br": {
+      "orgao": "STJ Dados Abertos",
+      "capacidades": [
+        "busca",
+        "confirmacao_teor"
+      ]
+    },
+    "sistemas.tjes.jus.br": {
+      "orgao": "TJES",
+      "capacidades": [
+        "busca",
+        "confirmacao_teor"
+      ]
+    },
+    "sites.tcu.gov.br": {
+      "orgao": "TCU",
+      "capacidades": [
+        "busca",
+        "confirmacao_teor"
+      ]
+    },
+    "sjur-pesquisa.tse.jus.br": {
+      "orgao": "TSE",
+      "capacidades": [
+        "confirmacao_teor"
+      ]
+    },
+    "sjuris.tjce.jus.br": {
+      "orgao": "TJCE",
+      "capacidades": [
+        "busca",
+        "confirmacao_teor"
+      ]
+    },
+    "stf.jus.br": {
+      "orgao": "STF",
+      "capacidades": [
+        "busca",
+        "confirmacao_teor"
+      ]
+    },
+    "stm.jus.br": {
+      "orgao": "STM",
+      "capacidades": [
+        "busca",
+        "confirmacao_teor"
+      ]
+    },
+    "tjac.jus.br": {
+      "orgao": "TJAC",
+      "capacidades": [
+        "busca",
+        "confirmacao_teor"
+      ]
+    },
+    "tjal.jus.br": {
+      "orgao": "TJAL",
+      "capacidades": [
+        "busca",
+        "confirmacao_teor"
+      ]
+    },
+    "tjam.jus.br": {
+      "orgao": "TJAM",
+      "capacidades": [
+        "confirmacao_teor"
+      ]
+    },
+    "tjap.jus.br": {
+      "orgao": "TJAP",
+      "capacidades": [
+        "confirmacao_teor"
+      ]
+    },
+    "tjba.jus.br": {
+      "orgao": "TJBA",
+      "capacidades": [
+        "busca",
+        "confirmacao_teor"
+      ]
+    },
+    "tjce.jus.br": {
+      "orgao": "TJCE",
+      "capacidades": [
+        "busca",
+        "confirmacao_teor"
+      ]
+    },
+    "tjdft.jus.br": {
+      "orgao": "TJDFT",
+      "capacidades": [
+        "busca",
+        "confirmacao_teor"
+      ]
+    },
+    "tjes.jus.br": {
+      "orgao": "TJES",
+      "capacidades": [
+        "busca",
+        "confirmacao_teor"
+      ]
+    },
+    "tjgo.jus.br": {
+      "orgao": "TJGO",
+      "capacidades": [
+        "confirmacao_teor"
+      ]
+    },
+    "tjma.jus.br": {
+      "orgao": "TJMA",
+      "capacidades": [
+        "confirmacao_teor"
+      ]
+    },
+    "tjmg.jus.br": {
+      "orgao": "TJMG",
+      "capacidades": [
+        "busca",
+        "confirmacao_teor"
+      ]
+    },
+    "tjmmg.jus.br": {
+      "orgao": "TJMMG",
+      "capacidades": [
+        "busca",
+        "confirmacao_teor"
+      ]
+    },
+    "tjms.jus.br": {
+      "orgao": "TJMS",
+      "capacidades": [
+        "busca",
+        "confirmacao_teor"
+      ]
+    },
+    "tjmt.jus.br": {
+      "orgao": "TJMT",
+      "capacidades": [
+        "busca",
+        "confirmacao_teor"
+      ]
+    },
+    "tjpa.jus.br": {
+      "orgao": "TJPA",
+      "capacidades": [
+        "busca",
+        "confirmacao_teor"
+      ]
+    },
+    "tjpb.jus.br": {
+      "orgao": "TJPB",
+      "capacidades": [
+        "busca",
+        "confirmacao_teor"
+      ]
+    },
+    "tjpe.jus.br": {
+      "orgao": "TJPE",
+      "capacidades": [
+        "busca",
+        "confirmacao_teor"
+      ]
+    },
+    "tjpi.jus.br": {
+      "orgao": "TJPI",
+      "capacidades": [
+        "busca",
+        "confirmacao_teor"
+      ]
+    },
+    "tjpr.jus.br": {
+      "orgao": "TJPR",
+      "capacidades": [
+        "busca",
+        "confirmacao_teor"
+      ]
+    },
+    "tjrj.jus.br": {
+      "orgao": "TJRJ",
+      "capacidades": [
+        "busca",
+        "confirmacao_teor"
+      ]
+    },
+    "tjrn.jus.br": {
+      "orgao": "TJRN",
+      "capacidades": [
+        "busca",
+        "confirmacao_teor"
+      ]
+    },
+    "tjro.jus.br": {
+      "orgao": "TJRO",
+      "capacidades": [
+        "busca",
+        "confirmacao_teor"
+      ]
+    },
+    "tjrr.jus.br": {
+      "orgao": "TJRR",
+      "capacidades": [
+        "busca",
+        "confirmacao_teor"
+      ]
+    },
+    "tjrs.jus.br": {
+      "orgao": "TJRS",
+      "capacidades": [
+        "busca",
+        "confirmacao_teor"
+      ]
+    },
+    "tjsc.jus.br": {
+      "orgao": "TJSC",
+      "capacidades": [
+        "busca",
+        "confirmacao_teor"
+      ]
+    },
+    "tjse.jus.br": {
+      "orgao": "TJSE",
+      "capacidades": [
+        "confirmacao_teor"
+      ]
+    },
+    "tjto.jus.br": {
+      "orgao": "TJTO",
+      "capacidades": [
+        "busca",
+        "confirmacao_teor"
+      ]
+    },
+    "trf1.jus.br": {
+      "orgao": "TRF1",
+      "capacidades": [
+        "busca",
+        "confirmacao_teor"
+      ]
+    },
+    "trf2.jus.br": {
+      "orgao": "TRF2",
+      "capacidades": [
+        "busca",
+        "confirmacao_teor"
+      ]
+    },
+    "trf3.jus.br": {
+      "orgao": "TRF3",
+      "capacidades": [
+        "confirmacao_teor"
+      ]
+    },
+    "trf4.jus.br": {
+      "orgao": "TRF4",
+      "capacidades": [
+        "busca",
+        "confirmacao_teor"
+      ]
+    },
+    "trf5.jus.br": {
+      "orgao": "TRF5",
+      "capacidades": [
+        "busca",
+        "confirmacao_teor"
+      ]
+    },
+    "trf6.jus.br": {
+      "orgao": "TRF6",
+      "capacidades": [
+        "busca",
+        "confirmacao_teor"
+      ]
+    },
+    "tst.jus.br": {
+      "orgao": "TST e Justiça do Trabalho",
+      "capacidades": [
+        "busca",
+        "confirmacao_teor"
+      ]
+    },
+    "tucujuris.tjap.jus.br": {
+      "orgao": "TJAP",
+      "capacidades": [
+        "confirmacao_teor"
+      ]
+    },
+    "webapp.tjro.jus.br": {
+      "orgao": "TJRO",
+      "capacidades": [
+        "busca",
+        "confirmacao_teor"
+      ]
+    },
+    "www.camara.leg.br": {
+      "orgao": "Dados Abertos da Câmara dos Deputados",
+      "capacidades": [
+        "confirmacao_teor",
+        "legislacao"
+      ]
+    },
+    "www.cjf.jus.br": {
+      "orgao": "CJF",
+      "capacidades": [
+        "busca",
+        "confirmacao_teor"
+      ],
+      "origem": "local"
+    },
+    "www.cnj.jus.br": {
+      "orgao": "DataJud/CNJ",
+      "capacidades": [
+        "jurimetria",
+        "metadados"
+      ],
+      "origem": "projetado+local",
+      "travas_locais": [
+        "confirmacao_teor"
+      ]
+    },
+    "www.in.gov.br": {
+      "orgao": "Planalto",
+      "capacidades": [
+        "busca",
+        "confirmacao_teor"
+      ],
+      "origem": "projetado+medido_local"
+    },
+    "www.lexml.gov.br": {
+      "orgao": "LexML",
+      "capacidades": [
+        "legislacao",
+        "metadados"
+      ],
+      "origem": "projetado+local",
+      "travas_locais": [
+        "confirmacao_teor"
+      ]
+    },
+    "www.planalto.gov.br": {
+      "orgao": "Planalto",
+      "capacidades": [
+        "confirmacao_teor"
+      ]
+    },
+    "www.stf.jus.br": {
+      "orgao": "STF",
+      "capacidades": [
+        "busca",
+        "confirmacao_teor"
+      ]
+    },
+    "www.stj.jus.br": {
+      "orgao": "STJ Dados Abertos",
+      "capacidades": [
+        "busca",
+        "confirmacao_teor"
+      ]
+    },
+    "www.stm.jus.br": {
+      "orgao": "STM",
+      "capacidades": [
+        "busca",
+        "confirmacao_teor"
+      ]
+    },
+    "www.tjac.jus.br": {
+      "orgao": "TJAC",
+      "capacidades": [
+        "busca",
+        "confirmacao_teor"
+      ]
+    },
+    "www.tjal.jus.br": {
+      "orgao": "TJAL",
+      "capacidades": [
+        "busca",
+        "confirmacao_teor"
+      ]
+    },
+    "www.tjam.jus.br": {
+      "orgao": "TJAM",
+      "capacidades": [
+        "confirmacao_teor"
+      ]
+    },
+    "www.tjap.jus.br": {
+      "orgao": "TJAP",
+      "capacidades": [
+        "confirmacao_teor"
+      ]
+    },
+    "www.tjba.jus.br": {
+      "orgao": "TJBA",
+      "capacidades": [
+        "busca",
+        "confirmacao_teor"
+      ]
+    },
+    "www.tjce.jus.br": {
+      "orgao": "TJCE",
+      "capacidades": [
+        "busca",
+        "confirmacao_teor"
+      ]
+    },
+    "www.tjdft.jus.br": {
+      "orgao": "TJDFT",
+      "capacidades": [
+        "busca",
+        "confirmacao_teor"
+      ]
+    },
+    "www.tjes.jus.br": {
+      "orgao": "TJES",
+      "capacidades": [
+        "busca",
+        "confirmacao_teor"
+      ]
+    },
+    "www.tjgo.jus.br": {
+      "orgao": "TJGO",
+      "capacidades": [
+        "confirmacao_teor"
+      ]
+    },
+    "www.tjma.jus.br": {
+      "orgao": "TJMA",
+      "capacidades": [
+        "confirmacao_teor"
+      ]
+    },
+    "www.tjmg.jus.br": {
+      "orgao": "TJMG",
+      "capacidades": [
+        "busca",
+        "confirmacao_teor"
+      ]
+    },
+    "www.tjmmg.jus.br": {
+      "orgao": "TJMMG",
+      "capacidades": [
+        "busca",
+        "confirmacao_teor"
+      ]
+    },
+    "www.tjms.jus.br": {
+      "orgao": "TJMS",
+      "capacidades": [
+        "busca",
+        "confirmacao_teor"
+      ]
+    },
+    "www.tjmt.jus.br": {
+      "orgao": "TJMT",
+      "capacidades": [
+        "busca",
+        "confirmacao_teor"
+      ]
+    },
+    "www.tjpa.jus.br": {
+      "orgao": "TJPA",
+      "capacidades": [
+        "busca",
+        "confirmacao_teor"
+      ]
+    },
+    "www.tjpb.jus.br": {
+      "orgao": "TJPB",
+      "capacidades": [
+        "busca",
+        "confirmacao_teor"
+      ]
+    },
+    "www.tjpe.jus.br": {
+      "orgao": "TJPE",
+      "capacidades": [
+        "busca",
+        "confirmacao_teor"
+      ]
+    },
+    "www.tjpi.jus.br": {
+      "orgao": "TJPI",
+      "capacidades": [
+        "busca",
+        "confirmacao_teor"
+      ]
+    },
+    "www.tjpr.jus.br": {
+      "orgao": "TJPR",
+      "capacidades": [
+        "busca",
+        "confirmacao_teor"
+      ]
+    },
+    "www.tjrj.jus.br": {
+      "orgao": "TJRJ",
+      "capacidades": [
+        "busca",
+        "confirmacao_teor"
+      ]
+    },
+    "www.tjrn.jus.br": {
+      "orgao": "TJRN",
+      "capacidades": [
+        "busca",
+        "confirmacao_teor"
+      ]
+    },
+    "www.tjro.jus.br": {
+      "orgao": "TJRO",
+      "capacidades": [
+        "busca",
+        "confirmacao_teor"
+      ]
+    },
+    "www.tjrr.jus.br": {
+      "orgao": "TJRR",
+      "capacidades": [
+        "busca",
+        "confirmacao_teor"
+      ]
+    },
+    "www.tjrs.jus.br": {
+      "orgao": "TJRS",
+      "capacidades": [
+        "busca",
+        "confirmacao_teor"
+      ]
+    },
+    "www.tjsc.jus.br": {
+      "orgao": "TJSC",
+      "capacidades": [
+        "busca",
+        "confirmacao_teor"
+      ]
+    },
+    "www.tjse.jus.br": {
+      "orgao": "TJSE",
+      "capacidades": [
+        "confirmacao_teor"
+      ]
+    },
+    "www.tjto.jus.br": {
+      "orgao": "TJTO",
+      "capacidades": [
+        "busca",
+        "confirmacao_teor"
+      ]
+    },
+    "www.trf1.jus.br": {
+      "orgao": "TRF1",
+      "capacidades": [
+        "busca",
+        "confirmacao_teor"
+      ]
+    },
+    "www.trf2.jus.br": {
+      "orgao": "TRF2",
+      "capacidades": [
+        "busca",
+        "confirmacao_teor"
+      ]
+    },
+    "www.trf3.jus.br": {
+      "orgao": "TRF3",
+      "capacidades": [
+        "confirmacao_teor"
+      ]
+    },
+    "www.trf4.jus.br": {
+      "orgao": "TRF4",
+      "capacidades": [
+        "busca",
+        "confirmacao_teor"
+      ]
+    },
+    "www.trf5.jus.br": {
+      "orgao": "TRF5",
+      "capacidades": [
+        "busca",
+        "confirmacao_teor"
+      ]
+    },
+    "www.trf6.jus.br": {
+      "orgao": "TRF6",
+      "capacidades": [
+        "busca",
+        "confirmacao_teor"
+      ]
+    },
+    "www.tse.jus.br": {
+      "orgao": "TSE",
+      "capacidades": [
+        "confirmacao_teor"
+      ]
+    },
+    "www.tst.jus.br": {
+      "orgao": "TST e Justiça do Trabalho",
+      "capacidades": [
+        "busca",
+        "confirmacao_teor"
+      ]
+    },
+    "www03.tjrj.jus.br": {
+      "orgao": "TJRJ",
+      "capacidades": [
+        "busca",
+        "confirmacao_teor"
+      ]
+    },
+    "www2.tjal.jus.br": {
+      "orgao": "TJAL",
+      "capacidades": [
+        "busca",
+        "confirmacao_teor"
+      ]
+    },
+    "www2.tjce.jus.br": {
+      "orgao": "TJCE",
+      "capacidades": [
+        "busca",
+        "confirmacao_teor"
+      ],
+      "origem": "local"
+    },
+    "www2.tjsp.jus.br": {
+      "orgao": "TJSP",
+      "capacidades": [
+        "busca",
+        "confirmacao_teor"
+      ]
+    },
+    "www3.tjrj.jus.br": {
+      "orgao": "TJRJ",
+      "capacidades": [
+        "busca",
+        "confirmacao_teor"
+      ]
+    }
+  },
+  "sufixos_oficiais": [
+    ".jus.br",
+    ".gov.br",
+    ".leg.br",
+    ".mp.br",
+    ".def.br"
+  ],
+  "regra": "Host exato catalogado identifica a fonte e suas capacidades. Host apenas compatível com sufixo oficial é candidato para conferência humana, mas não pode produzir confirmação automática. DataJud e LexML (api-publica.datajud.cnj.jus.br, www.cnj.jus.br, projeto.lexml.gov.br, www.lexml.gov.br, marcados com `travas_locais`) não confirmam teor de nenhuma natureza, nem por máquina nem por atestação humana; o teor se confere no documento do tribunal ou do órgão que o publicou."
+}

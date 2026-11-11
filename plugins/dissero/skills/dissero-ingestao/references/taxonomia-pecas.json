@@ -1,0 +1,1050 @@
+{
+  "schema_version": "dsr.taxonomia_pecas.v1",
+
+  "_leia": "Tabela do advogado, não do programador. Diz que tipos de peça processual o plugin reconhece e por quais marcadores de FORMA. Quem a lê é o `taxonomia_pecas.py` (validador e classificador), usado pela fronteira de peça e pelo mapa estrutural dos autos. Cada tipo declara em `_ancora` o dispositivo de lei que o nomeia, para que a conferência seja item a item. A classificação exige os três portões abertos (`habilitado` nesta tabela, `autorizado=True` na função e DSR_TAXONOMIA_PECAS=1 na linha de comando) e o rito declarado por quem chama, porque o módulo não infere rito. Toda proposta sai `a_confirmar`: os marcadores ainda não foram calibrados contra peça real (leia `pendencia`).",
+
+  "habilitado": true,
+  "_leia_habilitado": "Com `habilitado` false o módulo devolve `inconclusivo` e não propõe tipo algum. Para ligar, a `pendencia` tem de estar desbloqueada, `dominios` e `tipos` preenchidos e a `revisao` completa: revisor identificado, papel advogado e o par review_valid_from/review_valid_to. O par de vigência vem inteiro ou nulo dos dois lados; meio par é MALFORMADO, e o build/vigencia_fontes.py reprova a árvore.",
+
+  "_leia_revisao": "A assinatura tem prazo. O build/vigencia_fontes.py avisa nos 60 dias anteriores a `review_valid_to`, tempo para caber a releitura jurídica, e, vencido o prazo, reprova a árvore inteira até alguém reconferir e reassinar; o próprio validador da tabela passa a recusá-la. Para reassinar, troque `revisado_em` e o par de vigência por datas novas. Para deixar a tabela sem prazo, ponha em `review_valid_to` uma data distante, sabendo que com isso o alarme de calendário deixa de cobrar a releitura. A tabela não declara URL oficial, e por isso o build/monitorar_fontes.py não a vigia: mudança na lei só aparece nessa releitura.",
+  "revisao": {
+    "revisor": "advogado titular",
+    "papel": "advogado",
+    "revisado_em": "2026-08-25",
+    "review_valid_from": "2026-08-25",
+    "review_valid_to": "2026-12-31"
+  },
+
+  "procedencia": {
+    "origem": "Texto legal em fonte oficial (Planalto, planalto.gov.br/ccivil_03): Constituição Federal, CPC (Lei 13.105/2015), CPP (Decreto-Lei 3.689/1941), CLT (Decreto-Lei 5.452/1943), LEP (Lei 7.210/1984), Leis 9.099/1995, 11.343/2006, 12.016/2009, 5.584/1970 e 8.038/1990, Decreto-Lei 201/1967, ECA (Lei 8.069/1990) e Código Eleitoral (Lei 4.737/1965).",
+    "adaptacao": "Cada tipo é a peça que o dispositivo citado em `_ancora` cria ou nomeia, inclusive as dos ritos criminais: resposta à acusação, defesa prévia da Lei de Drogas, exceções, alegações finais, RESE, embargos infringentes e de nulidade, revisão criminal, habeas corpus, carta testemunhável e agravo em execução. O campo `ritos` deixa um mesmo tipo cobrir ritos distintos sem fundi-los: `apelacao` cobre cível, penal e juizado criminal porque as três leis usam esse nome, e não porque sejam a mesma peça. Nome de praxe para peça que a lei já nomeia entra como alias do tipo legal; quando a lei não dá nome à peça, como no recurso do art. 41 da Lei 9.099/1995, o nome de praxe é o rótulo (ver `colisoes_de_nome_entre_ritos`).",
+    "colisoes_de_nome_entre_ritos": "O mesmo nome designa peças diferentes conforme o rito, e é por isso que cada tipo declara `ritos`. (a) 'Apelação' é nome vigente no CPC (art. 1.009), no CPP (art. 593) e na Lei 9.099/1995 (art. 82); no juizado criminal ela é uma petição escrita que já contém as razões (art. 82, § 1º), diferente do penal comum. (b) 'Defesa prévia' não é nome vigente no CPP, mas é na Lei 11.343/2006, art. 55: por isso o tipo da Lei de Drogas é próprio. (c) 'Embargos de declaração' aparece no CPC (art. 1.022), no CPP (art. 619) e na CLT (art. 897-A); o CPP, art. 382, trata da mesma peça contra sentença de primeiro grau sem usar o nome ('pedir ao juiz que declare a sentença'), e 'embarguinhos' é praxe, que entrou como alias. (d) 'Agravo' nomeia peças distintas no CPC (arts. 1.015 e 1.021), na CLT (art. 897, 'a' e 'b') e na LEP (art. 197). (e) A Lei 9.099/1995, art. 41, não dá nome ao recurso do juizado cível: 'recurso inominado' é nome de praxe. (f) 'Agravo regimental' vive em regimento interno de tribunal, não em lei, e entrou como alias de `agravo_interno` (CPC, art. 1.021), que é o nome legal.",
+    "dispositivos_que_nao_criam_peca": "O CPP, art. 647-A (incluído pela Lei 14.836/2024), não cria peça: trata do habeas corpus expedido de ofício pela autoridade judicial, e não de peça que o advogado escreve. Da Lei 5.584/1970 só sai o pedido de revisão do valor da causa (art. 2º, §§ 1º e 2º: peça autônoma, prazo próprio de 48 horas, dirigida ao Presidente do TRT e não ao juízo de origem), que está na tabela como `pedido_revisao_valor_causa`; os arts. 6º e 7º tratam de prazo e depósito recursal, e os arts. 14 a 19 de assistência judiciária."
+  },
+
+  "pendencia": {
+    "bloqueada": false,
+
+    "motivo": "Os marcadores não foram calibrados contra peça real do escritório. Os tipos estão conferidos contra a lei, um a um, em `_ancora`; os marcadores são a primeira redação, feita a partir do vocabulário legal e da praxe. Por isso toda proposta sai `a_confirmar`, com os marcadores casados à vista, e o tipo só vale depois que o advogado o confirma.",
+
+    "alerta_rito_penal": "RITO PENAL. A banca faz defesa criminal, e os tipos penais, de execução penal, de juizado criminal, de ato infracional e eleitorais desta tabela vêm do texto legal; os marcadores deles também não foram calibrados contra peça criminal real. O módulo não infere rito: quem chama declara o rito do documento, e rito não declarado ou fora de `dominios.rito` devolve INCONCLUSIVO. Rótulo errado em peça criminal entra na defesa como erro, e por isso nenhuma proposta dispensa a conferência do advogado. Até a calibração dos marcadores penais com peças criminais reais da banca, toda proposta para esses ritos sai `a_confirmar`.",
+
+    "decisoes_do_advogado": [
+      {
+        "pergunta": "A tabela deve cobrir outros ritos?",
+        "por_que_importa": "A classificação só considera os tipos que cobrem o rito declarado por quem chama. Rito fora de `dominios.rito` não é classificado: o módulo devolve INCONCLUSIVO em vez de arriscar.",
+        "candidatos_a_avaliar": "tributário e execução fiscal; processo administrativo.",
+        "quem_decide": "advogado"
+      },
+      {
+        "pergunta": "Rótulo, aliases, fase, polo e instância de cada tipo correspondem à prática do escritório?",
+        "por_que_importa": "O rótulo é o que o advogado lê no mapa estrutural e na relação de documentos da juntada, e fase, polo e instância são os eixos que esses dois consomem. Tipo a mais gera empate e INCONCLUSIVO; tipo a menos gera silêncio. Nenhum dos dois é erro grave: o erro grave é o tipo ERRADO com aparência de certeza. Valor de eixo fora de `dominios` reprova a tabela.",
+        "candidatos_a_avaliar": "Conferir cada tipo contra a peça que o escritório de fato produz e recebe, começando pelos de maior volume.",
+        "quem_decide": "advogado"
+      },
+      {
+        "pergunta": "Que marcadores de FORMA denunciam cada tipo?",
+        "por_que_importa": "O módulo conta quantos marcadores distintos casam no texto e propõe o tipo com mais casamentos, exigindo margem sobre o segundo colocado. Marcador genérico demais (que casa em toda peça) não separa nada e ainda infla o empate; marcador específico demais não casa nunca. Escolher o vocabulário é decisão de quem lê peça, não de quem escreve código.",
+        "candidatos_a_avaliar": "Cada marcador é uma expressão regular avaliada sem diferenciar maiúsculas de minúsculas. Para calibrar, rode o `taxonomia_pecas.py` com DSR_TAXONOMIA_PECAS=1 sobre um lote de peças já conhecidas, confira `marcadores_casados` de cada proposta e corte o marcador que casa em tudo (não separa) e o que não casa nunca (não serve). Prefira fórmulas estáveis a palavras de mérito, que variam com o caso, observando o limite abaixo.",
+        "limite_conhecido_texto_transcrito": "TEXTO TRANSCRITO CONTA COMO TEXTO PRÓPRIO. A contagem varre o documento inteiro, sem peso de posição e sem descontar trecho transcrito ou citado. Uma peça que reproduz outra dentro de si casa também os marcadores da transcrita e pode PERDER o placar para ela: a proposta sai com o tipo, a fase, o polo e a instância da transcrita. As fórmulas de abertura e de fecho são justamente as que mais aparecem dentro de uma transcrição; prefira os marcadores que NÃO sobrevivem a ela e confira `marcadores_casados` antes de aceitar qualquer proposta. O módulo declara esse limite em `avisos` de toda proposta e nomeia o tipo concorrente quando outro também casou marcadores; corrigi-lo (peso posicional, desconto de citação) depende da calibragem contra peças reais.",
+        "quem_decide": "advogado"
+      },
+      {
+        "pergunta": "Os marcadores de cada tipo de rito penal, novo ou existente, separam as peças criminais reais da banca?",
+        "por_que_importa": "Rótulo errado em peça criminal entra na defesa. A regra vale para todo tipo de rito penal: penal, execução penal, juizado criminal, ato infracional e eleitoral. Até a calibração, toda proposta desses ritos sai `a_confirmar`.",
+        "candidatos_a_avaliar": "Rodar o `taxonomia_pecas.py` com DSR_TAXONOMIA_PECAS=1 sobre um lote de peças criminais já conhecidas da banca, de cada rito, conferir `marcadores_casados` de cada proposta e cortar ou trocar o marcador que não separa. É trabalho do advogado com peças reais, fora do código.",
+        "quem_decide": "advogado"
+      }
+    ],
+
+    "como_alterar": [
+      "1. Editar `tipos` (e, se preciso, `dominios`), sempre com a `_ancora` do dispositivo que nomeia o tipo.",
+      "2. Todo tipo de rito penal, novo ou existente, inclusive os de execução penal, de juizado criminal, de ato infracional e eleitorais (`penal`, `execucao_penal`, `juizado_criminal`, `ato_infracional` ou `eleitoral` em `ritos`), só entra ou muda depois de o advogado conferir os marcadores dele, um a um, contra peças criminais reais. Até essa calibração, a proposta para ele sai `a_confirmar`.",
+      "3. Rodar `python skills/dissero-ingestao/scripts/taxonomia_pecas.py --validar` até sair sem impedimento.",
+      "4. Reassinar a `revisao`: revisor identificado, papel advogado, `revisado_em` e o par review_valid_from/review_valid_to com datas novas.",
+      "5. Rodar `python skills/dissero-ingestao/scripts/test_taxonomia_pecas.py` e `python build/vigencia_fontes.py`."
+    ]
+  },
+
+  "_leia_dominios": "Vocabulário fechado dos eixos. O valor que cada tipo declara tem de existir aqui: valor fora do domínio reprova a tabela, em vez de virar categoria nova em silêncio.",
+  "dominios": {
+    "rito": ["civel", "trabalhista", "penal", "execucao_penal", "juizado_civel", "juizado_criminal", "ato_infracional", "eleitoral"],
+    "fase": ["postulatoria", "resposta", "instrucao", "razoes_finais", "recursal", "execucao", "autonoma"],
+    "polo": ["ativo", "passivo", "qualquer", "terceiro"],
+    "instancia": ["primeira", "segunda", "superior", "qualquer"]
+  },
+
+  "_leia_tipos": "Formato de cada item: {\"id\": \"identificador_estavel\", \"rotulo\": \"Nome que o advogado lê\", \"fase\": \"<valor de dominios.fase>\", \"polo\": \"<valor de dominios.polo>\", \"instancia\": \"<valor de dominios.instancia>\", \"ritos\": [\"<valores de dominios.rito>\"], \"marcadores\": [\"expressão regular\", \"...\"], \"aliases\": [\"...\"], \"_ancora\": \"dispositivo que nomeia o tipo\"}. `aliases` é opcional; `_ancora` o validador ignora, mas o teste da tabela a exige em todo tipo. O `id` volta em `tipo_proposto.id` para a fronteira de peça e o mapa estrutural, e por isso não se renomeia. id duplicado, tipo sem marcador, marcador que não compila, alias repetido entre tipos e eixo fora do domínio são IMPEDIMENTO: a tabela inteira fica inutilizável, e não só o item defeituoso.",
+  "tipos": [
+    {
+      "id": "peticao_inicial",
+      "rotulo": "Petição inicial",
+      "fase": "postulatoria",
+      "polo": "ativo",
+      "instancia": "primeira",
+      "ritos": [
+        "civel"
+      ],
+      "marcadores": [
+        "petiç[ãa]o inicial",
+        "vem.{0,60}propor a presente",
+        "d[áa]-se [àa] causa o valor",
+        "requer.{0,40}cita[çc][ãa]o d[oa] r[ée]u",
+        "protesta provar o alegado por todos os meios"
+      ],
+      "aliases": [
+        "inicial",
+        "exordial",
+        "peça vestibular"
+      ],
+      "_ancora": "CPC, art. 319"
+    },
+    {
+      "id": "contestacao",
+      "rotulo": "Contestação",
+      "fase": "resposta",
+      "polo": "passivo",
+      "instancia": "primeira",
+      "ritos": [
+        "civel"
+      ],
+      "marcadores": [
+        "CONTESTA[ÇC][ÃA]O",
+        "apresentar.{0,30}contesta[çc][ãa]o",
+        "impugna[çc][ãa]o especificada dos fatos",
+        "julgada totalmente improcedente a (a[çc][ãa]o|demanda)"
+      ],
+      "aliases": [
+        "defesa cível",
+        "resposta do réu"
+      ],
+      "_ancora": "CPC, arts. 335 e 336"
+    },
+    {
+      "id": "reconvencao",
+      "rotulo": "Reconvenção",
+      "fase": "resposta",
+      "polo": "passivo",
+      "instancia": "primeira",
+      "ritos": [
+        "civel"
+      ],
+      "marcadores": [
+        "RECONVEN[ÇC][ÃA]O",
+        "reconvir",
+        "reconvinte",
+        "reconvind[oa]"
+      ],
+      "aliases": [
+        "pedido contraposto reconvencional"
+      ],
+      "_ancora": "CPC, art. 343"
+    },
+    {
+      "id": "replica",
+      "rotulo": "Réplica",
+      "fase": "resposta",
+      "polo": "ativo",
+      "instancia": "primeira",
+      "ritos": [
+        "civel"
+      ],
+      "marcadores": [
+        "R[ÉE]PLICA",
+        "r[ée]plica [àa] contesta[çc][ãa]o",
+        "manifesta[çc][ãa]o sobre a contesta[çc][ãa]o"
+      ],
+      "aliases": [
+        "impugnação à contestação"
+      ],
+      "_ancora": "CPC, arts. 350 e 351"
+    },
+    {
+      "id": "razoes_finais_civel",
+      "rotulo": "Razões finais (memoriais)",
+      "fase": "razoes_finais",
+      "polo": "qualquer",
+      "instancia": "primeira",
+      "ritos": [
+        "civel"
+      ],
+      "marcadores": [
+        "raz[õo]es finais",
+        "memoriais? escritos?",
+        "alega[çc][õo]es finais.{0,40}c[íi]vel"
+      ],
+      "aliases": [
+        "memoriais cíveis"
+      ],
+      "_ancora": "CPC, art. 364, § 2º"
+    },
+    {
+      "id": "impugnacao_cumprimento_sentenca",
+      "rotulo": "Impugnação ao cumprimento de sentença",
+      "fase": "execucao",
+      "polo": "passivo",
+      "instancia": "primeira",
+      "ritos": [
+        "civel"
+      ],
+      "marcadores": [
+        "impugna[çc][ãa]o ao cumprimento de senten[çc]a",
+        "cumprimento de senten[çc]a.{0,40}impugna",
+        "excesso de execu[çc][ãa]o.{0,80}cumprimento de senten[çc]a"
+      ],
+      "aliases": [
+        "impugnação ao cumprimento"
+      ],
+      "_ancora": "CPC, art. 525"
+    },
+    {
+      "id": "embargos_execucao",
+      "rotulo": "Embargos à execução",
+      "fase": "execucao",
+      "polo": "passivo",
+      "instancia": "primeira",
+      "ritos": [
+        "civel",
+        "trabalhista"
+      ],
+      "marcadores": [
+        "EMBARGOS [ÀA] EXECU[ÇC][ÃA]O",
+        "embargante",
+        "embargos do devedor"
+      ],
+      "aliases": [
+        "embargos do executado"
+      ],
+      "_ancora": "CPC, arts. 914 e 917; CLT, art. 884"
+    },
+    {
+      "id": "embargos_terceiro",
+      "rotulo": "Embargos de terceiro",
+      "fase": "autonoma",
+      "polo": "terceiro",
+      "instancia": "primeira",
+      "ritos": [
+        "civel",
+        "trabalhista"
+      ],
+      "marcadores": [
+        "EMBARGOS DE TERCEIRO",
+        "terceiro (senhor e )?possuidor",
+        "constri[çc][ãa]o (judicial )?sobre bem de terceiro"
+      ],
+      "_ancora": "CPC, art. 674"
+    },
+    {
+      "id": "apelacao",
+      "rotulo": "Apelação",
+      "fase": "recursal",
+      "polo": "qualquer",
+      "instancia": "primeira",
+      "ritos": [
+        "civel",
+        "penal",
+        "juizado_criminal"
+      ],
+      "marcadores": [
+        "APELA[ÇC][ÃA]O",
+        "apelante",
+        "apelad[oa]",
+        "raz[õo]es (recursais )?de apela[çc][ãa]o"
+      ],
+      "aliases": [
+        "recurso de apelação"
+      ],
+      "_ancora": "CPC, art. 1.009; CPP, art. 593; Lei 9.099/1995, art. 82"
+    },
+    {
+      "id": "contrarrazoes",
+      "rotulo": "Contrarrazões",
+      "fase": "recursal",
+      "polo": "qualquer",
+      "instancia": "primeira",
+      "ritos": [
+        "civel",
+        "penal",
+        "trabalhista",
+        "juizado_criminal"
+      ],
+      "marcadores": [
+        "CONTRARRAZ[ÕO]ES",
+        "contra-?raz[õo]es",
+        "recorrid[oa].{0,60}apresentar.{0,30}contrarraz"
+      ],
+      "aliases": [
+        "resposta ao recurso",
+        "razões do recorrido"
+      ],
+      "_ancora": "CPC, art. 1.010, § 1º; CPP, art. 600; CLT, art. 900"
+    },
+    {
+      "id": "recurso_adesivo",
+      "rotulo": "Recurso adesivo",
+      "fase": "recursal",
+      "polo": "qualquer",
+      "instancia": "primeira",
+      "ritos": [
+        "civel"
+      ],
+      "marcadores": [
+        "RECURSO ADESIVO",
+        "adesivamente",
+        "na forma adesiva"
+      ],
+      "_ancora": "CPC, art. 997"
+    },
+    {
+      "id": "agravo_instrumento",
+      "rotulo": "Agravo de instrumento",
+      "fase": "recursal",
+      "polo": "qualquer",
+      "instancia": "segunda",
+      "ritos": [
+        "civel",
+        "trabalhista"
+      ],
+      "marcadores": [
+        "AGRAVO DE INSTRUMENTO",
+        "agravante",
+        "agravad[oa]",
+        "decis[ãa]o interlocut[óo]ria.{0,60}agrav"
+      ],
+      "aliases": [
+        "AI"
+      ],
+      "_ancora": "CPC, art. 1.015; CLT, art. 897, b"
+    },
+    {
+      "id": "agravo_interno",
+      "rotulo": "Agravo interno",
+      "fase": "recursal",
+      "polo": "qualquer",
+      "instancia": "segunda",
+      "ritos": [
+        "civel",
+        "trabalhista",
+        "penal"
+      ],
+      "marcadores": [
+        "AGRAVO INTERNO",
+        "agravo regimental",
+        "decis[ãa]o monocr[áa]tica.{0,60}[óo]rg[ãa]o colegiado"
+      ],
+      "aliases": [
+        "agravo regimental",
+        "agravo legal"
+      ],
+      "_ancora": "CPC, art. 1.021"
+    },
+    {
+      "id": "embargos_declaracao",
+      "rotulo": "Embargos de declaração",
+      "fase": "recursal",
+      "polo": "qualquer",
+      "instancia": "qualquer",
+      "ritos": [
+        "civel",
+        "trabalhista",
+        "penal",
+        "juizado_civel",
+        "juizado_criminal"
+      ],
+      "marcadores": [
+        "EMBARGOS DE DECLARA[ÇC][ÃA]O",
+        "embargos declarat[óo]rios",
+        "omiss[ãa]o, contradi[çc][ãa]o (e|ou) obscuridade",
+        "obscuridade, (ambig[üu]idade, )?contradi[çc][ãa]o ou omiss[ãa]o"
+      ],
+      "aliases": [
+        "embargos declaratórios",
+        "embarguinhos"
+      ],
+      "_ancora": "CPC, art. 1.022; CPP, arts. 382 e 619; CLT, art. 897-A"
+    },
+    {
+      "id": "recurso_ordinario",
+      "rotulo": "Recurso ordinário",
+      "fase": "recursal",
+      "polo": "qualquer",
+      "instancia": "segunda",
+      "ritos": [
+        "civel",
+        "trabalhista"
+      ],
+      "marcadores": [
+        "RECURSO ORDIN[ÁA]RIO",
+        "recorrente.{0,80}recurso ordin[áa]rio"
+      ],
+      "aliases": [
+        "RO"
+      ],
+      "_ancora": "CPC, art. 1.027; CLT, art. 895"
+    },
+    {
+      "id": "recurso_especial",
+      "rotulo": "Recurso especial",
+      "fase": "recursal",
+      "polo": "qualquer",
+      "instancia": "superior",
+      "ritos": [
+        "civel",
+        "trabalhista",
+        "penal"
+      ],
+      "marcadores": [
+        "RECURSO ESPECIAL",
+        "al[íi]nea .?c.? do (permissivo|inciso III)",
+        "diss[íi]dio jurisprudencial",
+        "Superior Tribunal de Justi[çc]a.{0,60}especial"
+      ],
+      "aliases": [
+        "REsp"
+      ],
+      "_ancora": "CF/1988, art. 105, III; CPC, art. 1.029"
+    },
+    {
+      "id": "recurso_extraordinario",
+      "rotulo": "Recurso extraordinário",
+      "fase": "recursal",
+      "polo": "qualquer",
+      "instancia": "superior",
+      "ritos": [
+        "civel",
+        "trabalhista",
+        "penal"
+      ],
+      "marcadores": [
+        "RECURSO EXTRAORDIN[ÁA]RIO",
+        "repercuss[ãa]o geral",
+        "Supremo Tribunal Federal.{0,60}extraordin[áa]rio"
+      ],
+      "aliases": [
+        "RE"
+      ],
+      "_ancora": "CF/1988, art. 102, III; CPC, art. 1.029"
+    },
+    {
+      "id": "agravo_em_recurso_especial",
+      "rotulo": "Agravo em recurso especial ou extraordinário",
+      "fase": "recursal",
+      "polo": "qualquer",
+      "instancia": "superior",
+      "ritos": [
+        "civel",
+        "trabalhista",
+        "penal"
+      ],
+      "marcadores": [
+        "AGRAVO EM RECURSO ESPECIAL",
+        "AGRAVO EM RECURSO EXTRAORDIN[ÁA]RIO",
+        "decis[ãa]o (que )?(n[ãa]o admitiu|inadmit)"
+      ],
+      "aliases": [
+        "AREsp",
+        "ARE"
+      ],
+      "_ancora": "CPC, art. 1.042"
+    },
+    {
+      "id": "embargos_divergencia",
+      "rotulo": "Embargos de divergência",
+      "fase": "recursal",
+      "polo": "qualquer",
+      "instancia": "superior",
+      "ritos": [
+        "civel"
+      ],
+      "marcadores": [
+        "EMBARGOS DE DIVERG[ÊE]NCIA",
+        "ac[óo]rd[ãa]o paradigma",
+        "diverg[êe]ncia entre (turmas|se[çc][õo]es)"
+      ],
+      "_ancora": "CPC, art. 1.043"
+    },
+    {
+      "id": "acao_rescisoria",
+      "rotulo": "Ação rescisória",
+      "fase": "autonoma",
+      "polo": "ativo",
+      "instancia": "segunda",
+      "ritos": [
+        "civel",
+        "trabalhista"
+      ],
+      "marcadores": [
+        "A[ÇC][ÃA]O RESCIS[ÓO]RIA",
+        "rescindir a (r\\.? )?decis[ãa]o",
+        "decis[ãa]o (de m[ée]rito )?transitada em julgado.{0,60}rescis"
+      ],
+      "aliases": [
+        "rescisória"
+      ],
+      "_ancora": "CPC, arts. 966 e 968"
+    },
+    {
+      "id": "reclamacao_constitucional",
+      "rotulo": "Reclamação (constitucional)",
+      "fase": "autonoma",
+      "polo": "ativo",
+      "instancia": "superior",
+      "ritos": [
+        "civel",
+        "trabalhista",
+        "penal"
+      ],
+      "marcadores": [
+        "RECLAMA[ÇC][ÃA]O CONSTITUCIONAL",
+        "preservar a compet[êe]ncia do tribunal",
+        "garantir a autoridade (das|de suas) decis[õo]es"
+      ],
+      "_ancora": "CPC, art. 988"
+    },
+    {
+      "id": "reclamacao_trabalhista",
+      "rotulo": "Reclamação trabalhista",
+      "fase": "postulatoria",
+      "polo": "ativo",
+      "instancia": "primeira",
+      "ritos": [
+        "trabalhista"
+      ],
+      "marcadores": [
+        "RECLAMA[ÇC][ÃA]O TRABALHISTA",
+        "reclamante",
+        "reclamad[oa]",
+        "Vara do Trabalho"
+      ],
+      "aliases": [
+        "petição inicial trabalhista"
+      ],
+      "_ancora": "CLT, art. 840"
+    },
+    {
+      "id": "defesa_trabalhista",
+      "rotulo": "Defesa (contestação trabalhista)",
+      "fase": "resposta",
+      "polo": "passivo",
+      "instancia": "primeira",
+      "ritos": [
+        "trabalhista"
+      ],
+      "marcadores": [
+        "DEFESA.{0,40}reclama[çc][ãa]o",
+        "contesta[çc][ãa]o.{0,40}reclamad",
+        "reclamad[oa].{0,60}apresentar (sua )?defesa"
+      ],
+      "_ancora": "CLT, art. 847"
+    },
+    {
+      "id": "recurso_revista",
+      "rotulo": "Recurso de revista",
+      "fase": "recursal",
+      "polo": "qualquer",
+      "instancia": "superior",
+      "ritos": [
+        "trabalhista"
+      ],
+      "marcadores": [
+        "RECURSO DE REVISTA",
+        "transcend[êe]ncia",
+        "Tribunal Superior do Trabalho.{0,60}revista"
+      ],
+      "aliases": [
+        "RR"
+      ],
+      "_ancora": "CLT, art. 896"
+    },
+    {
+      "id": "agravo_peticao",
+      "rotulo": "Agravo de petição",
+      "fase": "execucao",
+      "polo": "qualquer",
+      "instancia": "primeira",
+      "ritos": [
+        "trabalhista"
+      ],
+      "marcadores": [
+        "AGRAVO DE PETI[ÇC][ÃA]O",
+        "delimita[çc][ãa]o.{0,60}mat[ée]rias e (os )?valores impugnados"
+      ],
+      "aliases": [
+        "AP"
+      ],
+      "_ancora": "CLT, art. 897, a"
+    },
+    {
+      "id": "embargos_tst",
+      "rotulo": "Embargos ao TST",
+      "fase": "recursal",
+      "polo": "qualquer",
+      "instancia": "superior",
+      "ritos": [
+        "trabalhista"
+      ],
+      "marcadores": [
+        "EMBARGOS.{0,40}Se[çc][ãa]o de Diss[íi]dios Individuais",
+        "EMBARGOS AO TST",
+        "SBDI-?[I1]"
+      ],
+      "aliases": [
+        "embargos à SDI"
+      ],
+      "_ancora": "CLT, art. 894"
+    },
+    {
+      "id": "denuncia_queixa",
+      "rotulo": "Denúncia ou queixa-crime",
+      "fase": "postulatoria",
+      "polo": "ativo",
+      "instancia": "primeira",
+      "ritos": [
+        "penal"
+      ],
+      "marcadores": [
+        "DEN[ÚU]NCIA",
+        "QUEIXA-?CRIME",
+        "denunciad[oa]",
+        "querelad[oa]",
+        "incurso nas penas do art"
+      ],
+      "aliases": [
+        "exordial acusatória",
+        "peça acusatória"
+      ],
+      "_ancora": "CPP, art. 41"
+    },
+    {
+      "id": "resposta_acusacao",
+      "rotulo": "Resposta à acusação",
+      "fase": "resposta",
+      "polo": "passivo",
+      "instancia": "primeira",
+      "ritos": [
+        "penal"
+      ],
+      "marcadores": [
+        "RESPOSTA [ÀA] ACUSA[ÇC][ÃA]O",
+        "absolvi[çc][ãa]o sum[áa]ria",
+        "arts?\\.? 396-A",
+        "rejei[çc][ãa]o da den[úu]ncia"
+      ],
+      "_ancora": "CPP, arts. 396 e 396-A"
+    },
+    {
+      "id": "defesa_previa_drogas",
+      "rotulo": "Defesa prévia (Lei de Drogas)",
+      "fase": "resposta",
+      "polo": "passivo",
+      "instancia": "primeira",
+      "ritos": [
+        "penal"
+      ],
+      "marcadores": [
+        "DEFESA PR[ÉE]VIA",
+        "art\\.? 55 da Lei n?o?\\.? ?11\\.?343",
+        "notifica[çc][ãa]o do acusado para oferecer defesa pr[ée]via"
+      ],
+      "aliases": [
+        "defesa preliminar em tóxicos"
+      ],
+      "_ancora": "Lei 11.343/2006, art. 55"
+    },
+    {
+      "id": "resposta_preliminar_funcionario",
+      "rotulo": "Resposta preliminar (crime de funcionário)",
+      "fase": "resposta",
+      "polo": "passivo",
+      "instancia": "primeira",
+      "ritos": [
+        "penal"
+      ],
+      "marcadores": [
+        "RESPOSTA PRELIMINAR",
+        "defesa preliminar",
+        "arts?\\.? 51[45] do C[óo]digo de Processo Penal",
+        "crimes? afian[çc][áa]ve(l|is) (praticados? )?por funcion[áa]rio p[úu]blico"
+      ],
+      "_ancora": "CPP, art. 514"
+    },
+    {
+      "id": "excecao_penal",
+      "rotulo": "Exceção (processo penal)",
+      "fase": "resposta",
+      "polo": "passivo",
+      "instancia": "primeira",
+      "ritos": [
+        "penal"
+      ],
+      "marcadores": [
+        "EXCE[ÇC][ÃA]O DE (SUSPEI[ÇC][ÃA]O|INCOMPET[ÊE]NCIA|LITISPEND[ÊE]NCIA|COISA JULGADA|ILEGITIMIDADE)",
+        "excipiente",
+        "except[oa]"
+      ],
+      "_ancora": "CPP, art. 95"
+    },
+    {
+      "id": "alegacoes_finais_penal",
+      "rotulo": "Alegações finais (memoriais criminais)",
+      "fase": "razoes_finais",
+      "polo": "qualquer",
+      "instancia": "primeira",
+      "ritos": [
+        "penal"
+      ],
+      "marcadores": [
+        "ALEGA[ÇC][ÕO]ES FINAIS",
+        "memoriais.{0,40}art\\.? 403",
+        "in dubio pro reo",
+        "absolvi[çc][ãa]o.{0,40}art\\.? 386"
+      ],
+      "aliases": [
+        "memoriais criminais"
+      ],
+      "_ancora": "CPP, art. 403, § 3º, e art. 404, parágrafo único"
+    },
+    {
+      "id": "recurso_sentido_estrito",
+      "rotulo": "Recurso em sentido estrito",
+      "fase": "recursal",
+      "polo": "qualquer",
+      "instancia": "primeira",
+      "ritos": [
+        "penal"
+      ],
+      "marcadores": [
+        "RECURSO EM SENTIDO ESTRITO",
+        "\\bRESE\\b",
+        "ju[íi]zo de retrata[çc][ãa]o",
+        "art\\.? 581 do C[óo]digo de Processo Penal"
+      ],
+      "aliases": [
+        "RESE"
+      ],
+      "_ancora": "CPP, art. 581"
+    },
+    {
+      "id": "embargos_infringentes_nulidade",
+      "rotulo": "Embargos infringentes e de nulidade",
+      "fase": "recursal",
+      "polo": "passivo",
+      "instancia": "segunda",
+      "ritos": [
+        "penal"
+      ],
+      "marcadores": [
+        "EMBARGOS INFRINGENTES",
+        "embargos.{0,20}de nulidade",
+        "voto vencido.{0,60}favor[áa]vel ao r[ée]u"
+      ],
+      "aliases": [
+        "infringentes criminais"
+      ],
+      "_ancora": "CPP, art. 609, parágrafo único"
+    },
+    {
+      "id": "revisao_criminal",
+      "rotulo": "Revisão criminal",
+      "fase": "autonoma",
+      "polo": "passivo",
+      "instancia": "segunda",
+      "ritos": [
+        "penal"
+      ],
+      "marcadores": [
+        "REVIS[ÃA]O CRIMINAL",
+        "art\\.? 621 do C[óo]digo de Processo Penal",
+        "contr[áa]ria ao texto expresso da lei penal"
+      ],
+      "_ancora": "CPP, art. 621"
+    },
+    {
+      "id": "habeas_corpus",
+      "rotulo": "Habeas corpus",
+      "fase": "autonoma",
+      "polo": "qualquer",
+      "instancia": "qualquer",
+      "ritos": [
+        "penal",
+        "execucao_penal"
+      ],
+      "marcadores": [
+        "HABEAS CORPUS",
+        "paciente",
+        "autoridade coatora.{0,60}constrangimento ilegal",
+        "liberdade de locomo[çc][ãa]o"
+      ],
+      "aliases": [
+        "HC",
+        "writ"
+      ],
+      "_ancora": "CPP, arts. 647 e 648"
+    },
+    {
+      "id": "carta_testemunhavel",
+      "rotulo": "Carta testemunhável",
+      "fase": "recursal",
+      "polo": "qualquer",
+      "instancia": "primeira",
+      "ritos": [
+        "penal"
+      ],
+      "marcadores": [
+        "CARTA TESTEMUNH[ÁA]VEL",
+        "testemunhante",
+        "art\\.? 639 do C[óo]digo de Processo Penal"
+      ],
+      "_ancora": "CPP, art. 639"
+    },
+    {
+      "id": "agravo_execucao_penal",
+      "rotulo": "Agravo em execução",
+      "fase": "recursal",
+      "polo": "qualquer",
+      "instancia": "primeira",
+      "ritos": [
+        "execucao_penal"
+      ],
+      "marcadores": [
+        "AGRAVO EM EXECU[ÇC][ÃA]O",
+        "art\\.? 197 da Lei de Execu[çc][ãa]o Penal",
+        "agravo, sem efeito suspensivo"
+      ],
+      "aliases": [
+        "agravo do art. 197 da LEP"
+      ],
+      "_ancora": "LEP (Lei 7.210/1984), art. 197"
+    },
+    {
+      "id": "mandado_seguranca",
+      "rotulo": "Mandado de segurança (petição inicial)",
+      "fase": "autonoma",
+      "polo": "ativo",
+      "instancia": "qualquer",
+      "ritos": [
+        "civel",
+        "trabalhista",
+        "penal"
+      ],
+      "marcadores": [
+        "MANDADO DE SEGURAN[ÇC]A",
+        "direito l[íi]quido e certo",
+        "autoridade coatora",
+        "impetrante",
+        "impetrad[oa]"
+      ],
+      "aliases": [
+        "MS",
+        "writ of mandamus"
+      ],
+      "_ancora": "Lei 12.016/2009, arts. 1º e 6º"
+    },
+    {
+      "id": "recurso_inominado",
+      "rotulo": "Recurso inominado (Juizado Especial Cível)",
+      "fase": "recursal",
+      "polo": "qualquer",
+      "instancia": "primeira",
+      "ritos": [
+        "juizado_civel"
+      ],
+      "marcadores": [
+        "RECURSO INOMINADO",
+        "Turma Recursal",
+        "art\\.? 41 da Lei n?o?\\.? ?9\\.?099"
+      ],
+      "aliases": [
+        "recurso do art. 41 da Lei 9.099"
+      ],
+      "_ancora": "Lei 9.099/1995, art. 41"
+    },
+    {
+      "id": "resposta_acusacao_originaria",
+      "rotulo": "Resposta (ação penal originária em tribunal)",
+      "fase": "resposta",
+      "polo": "passivo",
+      "instancia": "segunda",
+      "ritos": [
+        "penal"
+      ],
+      "marcadores": [
+        "resposta.{0,60}a[çc][ãa]o penal origin[áa]ria",
+        "arts?\\.? [48]o? da Lei n?o?\\.? ?8\\.?038",
+        "notificad[oa] para oferecer resposta"
+      ],
+      "aliases": [
+        "defesa prévia em tribunal"
+      ],
+      "_ancora": "Lei 8.038/1990, arts. 4º e 8º"
+    },
+    {
+      "id": "defesa_previa_prefeito",
+      "rotulo": "Defesa prévia (crime de responsabilidade de prefeito)",
+      "fase": "resposta",
+      "polo": "passivo",
+      "instancia": "segunda",
+      "ritos": [
+        "penal"
+      ],
+      "marcadores": [
+        "Decreto-?Lei n?o?\\.? ?201",
+        "crimes? de responsabilidade.{0,60}[Pp]refeito",
+        "defesa pr[ée]via.{0,60}prefeito"
+      ],
+      "_ancora": "Decreto-Lei 201/1967, art. 2º, I"
+    },
+    {
+      "id": "defesa_previa_ato_infracional",
+      "rotulo": "Defesa prévia (apuração de ato infracional)",
+      "fase": "resposta",
+      "polo": "passivo",
+      "instancia": "primeira",
+      "ritos": [
+        "ato_infracional"
+      ],
+      "marcadores": [
+        "ato infracional",
+        "arts?\\.? 186 (do )?(ECA|Estatuto da Crian[çc]a)",
+        "adolescente.{0,40}representa[çc][ãa]o.{0,60}defesa pr[ée]via"
+      ],
+      "aliases": [
+        "defesa prévia do adolescente"
+      ],
+      "_ancora": "ECA (Lei 8.069/1990), art. 186, §§ 3º e 4º"
+    },
+    {
+      "id": "alegacoes_escritas_eleitoral",
+      "rotulo": "Alegações escritas (crime eleitoral)",
+      "fase": "razoes_finais",
+      "polo": "qualquer",
+      "instancia": "primeira",
+      "ritos": [
+        "eleitoral"
+      ],
+      "marcadores": [
+        "alega[çc][õo]es escritas",
+        "art\\.? 359 do C[óo]digo Eleitoral",
+        "crimes? eleitora(l|is)"
+      ],
+      "_ancora": "Código Eleitoral (Lei 4.737/1965), art. 359"
+    },
+    {
+      "id": "requerimento_execucao_penal",
+      "rotulo": "Requerimento no juízo da execução penal",
+      "fase": "execucao",
+      "polo": "passivo",
+      "instancia": "primeira",
+      "ritos": [
+        "execucao_penal"
+      ],
+      "marcadores": [
+        "ju[íi]zo da execu[çc][ãa]o",
+        "progress[ãa]o de regime",
+        "livramento condicional",
+        "remi[çc][ãa]o (de pena|pelo (trabalho|estudo))",
+        "arts?\\.? 19[456] da Lei de Execu[çc][ãa]o Penal"
+      ],
+      "aliases": [
+        "pedido de progressão",
+        "incidente de execução"
+      ],
+      "_ancora": "LEP (Lei 7.210/1984), arts. 194 a 196"
+    },
+    {
+      "id": "mandado_seguranca_coletivo",
+      "rotulo": "Mandado de segurança coletivo",
+      "fase": "autonoma",
+      "polo": "ativo",
+      "instancia": "qualquer",
+      "ritos": [
+        "civel",
+        "trabalhista"
+      ],
+      "marcadores": [
+        "MANDADO DE SEGURAN[ÇC]A COLETIVO",
+        "arts?\\.? 2[12] da Lei n?o?\\.? ?12\\.?016",
+        "em defesa dos (direitos e )?interesses (l[íi]quidos e certos )?d[eo]s? (seus )?(membros|associados)"
+      ],
+      "aliases": [
+        "MS coletivo"
+      ],
+      "_ancora": "Lei 12.016/2009, arts. 21 e 22"
+    },
+    {
+      "id": "pedido_suspensao_liminar",
+      "rotulo": "Pedido de suspensão de liminar ou de segurança",
+      "fase": "recursal",
+      "polo": "qualquer",
+      "instancia": "segunda",
+      "ritos": [
+        "civel",
+        "trabalhista"
+      ],
+      "marcadores": [
+        "suspens[ãa]o (de|da) (liminar|seguran[çc]a|execu[çc][ãa]o da liminar)",
+        "grave les[ãa]o [àa] ordem, [àa] sa[úu]de, [àa] seguran[çc]a e [àa] economia p[úu]blicas",
+        "art\\.? 15 da Lei n?o?\\.? ?12\\.?016"
+      ],
+      "aliases": [
+        "suspensão de segurança",
+        "SLS"
+      ],
+      "_ancora": "Lei 12.016/2009, art. 15"
+    },
+    {
+      "id": "informacoes_autoridade_coatora",
+      "rotulo": "Informações da autoridade coatora",
+      "fase": "resposta",
+      "polo": "passivo",
+      "instancia": "qualquer",
+      "ritos": [
+        "civel",
+        "trabalhista",
+        "penal"
+      ],
+      "marcadores": [
+        "informa[çc][õo]es.{0,40}autoridade coatora",
+        "prestar as informa[çc][õo]es",
+        "art\\.? 7[oº]?,? I,? da Lei n?o?\\.? ?12\\.?016"
+      ],
+      "_ancora": "Lei 12.016/2009, art. 7º, I"
+    },
+    {
+      "id": "excecao_incompetencia_trabalhista",
+      "rotulo": "Exceção de incompetência territorial (trabalhista)",
+      "fase": "resposta",
+      "polo": "passivo",
+      "instancia": "primeira",
+      "ritos": [
+        "trabalhista"
+      ],
+      "marcadores": [
+        "exce[çc][ãa]o de incompet[êe]ncia territorial",
+        "art\\.? 800 da (CLT|Consolida[çc][ãa]o)",
+        "exce[çc][ãa]o.{0,40}cinco dias.{0,60}audi[êe]ncia"
+      ],
+      "_ancora": "CLT, art. 800"
+    },
+    {
+      "id": "pedido_revisao_valor_causa",
+      "rotulo": "Pedido de revisão do valor da causa (alçada)",
+      "fase": "recursal",
+      "polo": "qualquer",
+      "instancia": "primeira",
+      "ritos": [
+        "trabalhista"
+      ],
+      "marcadores": [
+        "pedido de revis[ãa]o.{0,50}(valor|al[çc]ada)",
+        "art\\.? 2[oº]?,? .{0,20}Lei n?o?\\.? ?5\\.?584",
+        "impugnar o valor fixado",
+        "Presidente do Tribunal Regional.{0,40}48"
+      ],
+      "aliases": [
+        "revisão de alçada"
+      ],
+      "_ancora": "Lei 5.584/1970, art. 2º, §§ 1º e 2º"
+    }
+  ]
+}

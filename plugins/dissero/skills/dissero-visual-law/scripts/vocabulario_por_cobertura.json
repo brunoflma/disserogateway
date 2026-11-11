@@ -1,0 +1,88 @@
+{
+  "schema_version": "dsr.calibracao_vocabulario.v2",
+  "_leia": "Regras de estilo revisadas pelo advogado. Cada expressão pertence a uma classe, e cada classe declara a cobertura de precedente mínima, na escala do registro dsr.achados.v3, a partir da qual aquela firmeza se sustenta. Quando a peça declara cobertura menor, calibracao_vocabulario.py aponta o termo, o trecho e o motivo; não decide a tese, não mexe no texto. Mudar a regra é editar este arquivo: o código não guarda vocabulário.",
+
+  "habilitado": true,
+  "revisao": {
+    "papel": "advogado",
+    "revisor": "advogado titular",
+    "review_valid_to": "2026-12-31",
+    "review_valid_from": "2026-08-25",
+    "revisado_em": "2026-08-25"
+  },
+  "_leia_revisao": "A calibração só roda com habilitado true e revisão de advogado identificado dentro da vigência; fora disso o L26 fica inconclusivo. Reassinar é atualizar revisado_em, review_valid_from e review_valid_to com a data da nova conferência. O build/vigencia_fontes.py vigia o par review_valid_from/review_valid_to e reprova a árvore depois do vencimento.",
+
+  "coberturas": {
+    "confirmada": { "rank": 3, "_leia": "Precedente favorável selecionado e liberado no registro." },
+    "substituivel": { "rank": 2, "_leia": "Sem precedente direto, com autoridade substituta confirmada e selecionada." },
+    "forcada": { "rank": 1, "_leia": "A tese depende de analogia, com a fundamentação analógica declarada." },
+    "inexistente": { "rank": 0, "_leia": "Nenhum precedente aderente à tese central." }
+  },
+  "_leia_coberturas": "O rank ordena a solidez da tese, de confirmada (mais alta) a inexistente. Os nomes têm de ser os de COBERTURAS em estrategia_precedentes.py; se divergirem, a calibração fica inconclusiva.",
+
+  "classes": {
+    "estado_da_jurisprudencia": {
+      "_leia": "Única classe que o L26 trata como erro. Ela não qualifica a tese do cliente, relata um fato sobre o direito aplicado, e fato errado compromete a credibilidade do resto da peça.",
+      "exige_cobertura": "confirmada",
+      "motivo": "a frase descreve como os tribunais decidem, e o juízo confere essa descrição na própria pesquisa; ela pede precedente favorável confirmado no registro"
+    },
+    "certeza_absoluta": {
+      "_leia": "Pede a mesma cobertura que estrategia_precedentes.avaliar_linguagem exige de «inequívoco» e «incontroverso», para que as duas verificações não divirjam sobre a mesma palavra.",
+      "exige_cobertura": "confirmada",
+      "motivo": "adjetivo que põe a tese fora de debate («inequívoco», «indiscutível»); se o registro não traz precedente favorável confirmado, ele próprio mostra que há o que debater"
+    },
+    "adverbio_de_certeza": {
+      "_leia": "Um degrau abaixo dos adjetivos. Com autoridade confirmada a apontar, o advérbio ainda tem lastro; na analogia, o juiz precisa aceitar o passo do paradigma ao caso, e chamar esse passo de óbvio pesa contra a peça.",
+      "exige_cobertura": "substituivel",
+      "motivo": "advérbio que pede ao leitor que dispense a conferência («obviamente», «indubitavelmente»); com a tese apoiada só em analogia ou sem precedente, o raciocínio tem de ser mostrado, e não declarado óbvio"
+    },
+    "assertiva_categorica": {
+      "_leia": "Classe estreita de propósito, só com as fórmulas de encerramento. Cobrar também a afirmação comum («é», «impõe-se») apontaria prosa correta.",
+      "exige_cobertura": "forcada",
+      "motivo": "fórmula que dá a discussão por encerrada («não há dúvida», «é certo que»); sem precedente aderente algum, a tese se apresenta como argumento a acolher, e não como conclusão já posta"
+    }
+  },
+
+  "expressoes": [
+    { "classe": "estado_da_jurisprudencia", "id": "e_pacifico", "padrao": "(?<!\\w)[eé]\\s+pac[ií]fic[ao](?!\\w)", "exemplo": "é pacífica a orientação desta Corte" },
+    { "classe": "estado_da_jurisprudencia", "id": "jurisprudencia_pacifica", "padrao": "(?<!\\w)jurisprud[eê]ncia\\s+(?:[eé]\\s+)?pac[ií]fica(?!\\w)", "exemplo": "jurisprudência pacífica sobre o dano" },
+    { "classe": "estado_da_jurisprudencia", "id": "jurisprudencia_unissona", "padrao": "(?<!\\w)jurisprud[eê]ncia\\s+(?:[eé]\\s+)?un[ií]ssona(?!\\w)", "exemplo": "jurisprudência uníssona das câmaras" },
+    { "classe": "estado_da_jurisprudencia", "id": "jurisprudencia_assente", "padrao": "(?<!\\w)jurisprud[eê]ncia\\s+(?:[eé]\\s+)?(?:assente|tranquila|consolidada|un[ií]forme)(?!\\w)", "exemplo": "jurisprudência assente na turma" },
+    { "classe": "estado_da_jurisprudencia", "id": "sem_divergencia", "padrao": "(?<!\\w)n[aã]o\\s+h[aá]\\s+diverg[eê]ncia(?!\\w)", "exemplo": "não há divergência no tribunal" },
+    { "classe": "estado_da_jurisprudencia", "id": "entendimento_consolidado", "padrao": "(?<!\\w)entendimento\\s+(?:[eé]\\s+)?(?:assente|consolidado|pac[ií]fico)(?!\\w)", "exemplo": "entendimento assente da seção" },
+    { "classe": "estado_da_jurisprudencia", "id": "materia_pacificada", "padrao": "(?<!\\w)(?:quest[aã]o|tese|mat[eé]ria)\\s+(?:j[aá]\\s+)?(?:se\\s+encontra\\s+)?pacificada(?!\\w)", "exemplo": "questão já pacificada" },
+    { "classe": "estado_da_jurisprudencia", "id": "orientacao_uniforme", "padrao": "(?<!\\w)orienta[cç][aã]o\\s+(?:jurisprudencial\\s+)?un[ií]forme(?!\\w)", "exemplo": "orientação uniforme das turmas" },
+    { "classe": "estado_da_jurisprudencia", "id": "todos_os_tribunais", "padrao": "(?<!\\w)todos\\s+os\\s+tribunais(?!\\w)", "exemplo": "como decidem todos os tribunais" },
+
+    { "classe": "certeza_absoluta", "id": "inequivoco", "padrao": "(?<!\\w)inequ[ií]voc[ao]s?(?!\\w)", "exemplo": "prova inequívoca do pagamento" },
+    { "classe": "certeza_absoluta", "id": "incontroverso", "padrao": "(?<!\\w)incontrovers[ao]s?(?!\\w)", "exemplo": "dano incontroverso" },
+    { "classe": "certeza_absoluta", "id": "cristalino", "padrao": "(?<!\\w)cristalin[ao]s?(?!\\w)", "exemplo": "o direito é cristalino" },
+    { "classe": "certeza_absoluta", "id": "indiscutivel", "padrao": "(?<!\\w)indiscut[ií]ve(?:is|l)(?!\\w)", "exemplo": "responsabilidade indiscutível" },
+    { "classe": "certeza_absoluta", "id": "irrefutavel", "padrao": "(?<!\\w)irrefut[aá]ve(?:is|l)(?!\\w)", "exemplo": "argumento irrefutável" },
+    { "classe": "certeza_absoluta", "id": "insofismavel", "padrao": "(?<!\\w)insofism[aá]ve(?:is|l)(?!\\w)", "exemplo": "nexo insofismável" },
+    { "classe": "certeza_absoluta", "id": "incontestavel", "padrao": "(?<!\\w)incontest[aá]ve(?:is|l)(?!\\w)", "exemplo": "crédito incontestável" },
+
+    { "classe": "adverbio_de_certeza", "id": "indubitavelmente", "padrao": "(?<!\\w)indubitavelmente(?!\\w)", "exemplo": "o réu indubitavelmente sabia" },
+    { "classe": "adverbio_de_certeza", "id": "inquestionavelmente", "padrao": "(?<!\\w)inquestionavelmente(?!\\w)", "exemplo": "multa inquestionavelmente devida" },
+    { "classe": "adverbio_de_certeza", "id": "incontestavelmente", "padrao": "(?<!\\w)incontestavelmente(?!\\w)", "exemplo": "cláusula incontestavelmente abusiva" },
+    { "classe": "adverbio_de_certeza", "id": "obviamente", "padrao": "(?<!\\w)obviamente(?!\\w)", "exemplo": "obviamente cabe a tutela" },
+    { "classe": "adverbio_de_certeza", "id": "evidentemente", "padrao": "(?<!\\w)evidentemente(?!\\w)", "exemplo": "cobrança evidentemente nula" },
+    { "classe": "adverbio_de_certeza", "id": "a_toda_evidencia", "padrao": "(?<!\\w)[aà]\\s+toda\\s+evid[eê]ncia(?!\\w)", "exemplo": "a toda evidência, houve culpa" },
+    { "classe": "adverbio_de_certeza", "id": "sem_sombra_de_duvida", "padrao": "(?<!\\w)sem\\s+(?:sombra\\s+de\\s+)?(?:a\\s+menor\\s+)?d[uú]vida(?!\\w)", "exemplo": "sem a menor dúvida, o prazo correu" },
+
+    { "classe": "assertiva_categorica", "id": "nao_ha_duvida", "padrao": "(?<!\\w)n[aã]o\\s+h[aá]\\s+d[uú]vida(?!\\w)", "exemplo": "não há dúvida sobre a mora" },
+    { "classe": "assertiva_categorica", "id": "e_certo_que", "padrao": "(?<!\\w)[eé]\\s+cert[ao]\\s+que(?!\\w)", "exemplo": "é certo que a obrigação venceu" },
+    { "classe": "assertiva_categorica", "id": "resta_claro", "padrao": "(?<!\\w)resta\\s+(?:evidente|incontroverso|claro)(?!\\w)", "exemplo": "resta evidente a culpa" },
+    { "classe": "assertiva_categorica", "id": "e_inegavel", "padrao": "(?<!\\w)[eé]\\s+ineg[aá]ve(?:is|l)(?!\\w)", "exemplo": "é inegável o nexo causal" }
+  ],
+
+  "negacao": {
+    "marcadores": "(?<!\\w)(?:jamais|nunca|nem|tampouco|sequer|longe\\s+de|n[aã]o(?!\\s+(?:obstante|s[oó])(?!\\w)))(?!\\w)",
+    "fim_de_oracao": "(?<!\\w)(?:todavia|contudo|entretanto|mas|por[eé]m)(?!\\w)|[;:.,!?()\\[\\]]",
+    "_leia": "A frase negada não é apontada: «não é pacífico» concede, e concessão é o tom que a cobertura fraca pede. «marcadores» são as palavras que invertem a afirmação; «fim_de_oracao» delimita a oração, para que a negação de uma não alcance a seguinte: em «Não sendo caso de perícia, a jurisprudência é pacífica», a vírgula fecha a oração do «não», e a segunda parte é apontada.",
+    "_leia_limites": "Limites conhecidos. (1) Período longo sem pontuação estende a oração, e um «não» do começo pode calar afirmação do fim; o erro fica do lado de não apontar. (2) «Não obstante» e «não só» têm forma de negação, mas não negam, e por isso estão excluídos. (3) O «não» que integra a expressão («não há dúvida») não a isenta; um «não» anterior a ela («não é verdade que não há dúvida») isenta, porque a dupla negação concede."
+  },
+
+  "isencoes": [],
+  "_leia_isencoes": "Isenção é exceção do advogado e sai sempre impressa no resultado. Cada item traz expressao_id, cobertura, razao (30 caracteres ou mais) e autorizado_por, e vale só para aquela expressão naquela cobertura. Item incompleto torna a tabela inteira inválida."
+}

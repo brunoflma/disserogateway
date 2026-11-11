@@ -1,0 +1,369 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "dsr:mapa_estrutural:v1",
+  "title": "Mapa estrutural do processo Dissero v1",
+  "description": "Por peca: a ordem, a ancora de citacao e o intervalo de paginas LIDO de dentro do identificador do tribunal. Tipo de peca e resumo saem sempre nulos, com motivo. Usa apenas as palavras-chave que skills/dissero-ingestao/scripts/schema_mini.py implementa (ref, const, enum, type, minLength, required, additionalProperties, properties, items), porque qualquer outra seria ignorada em silencio.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "versao",
+    "status",
+    "mapa_id",
+    "base_do_mapa_id",
+    "origem_sha256",
+    "fronteira",
+    "inconclusivo",
+    "motivo",
+    "pecas",
+    "segmentos_descartados"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": "dsr.mapa_estrutural.v1"
+    },
+    "ok": {
+      "type": "boolean"
+    },
+    "versao": {
+      "type": "string",
+      "minLength": 1
+    },
+    "status": {
+      "const": "MINUTA_PARA_REVISAO"
+    },
+    "gerado_em": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "mapa_id": {
+      "type": "string",
+      "minLength": 12
+    },
+    "base_do_mapa_id": {
+      "enum": [
+        "origem_sha256",
+        "esqueleto_de_ancoras"
+      ]
+    },
+    "origem_sha256": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "fronteira": {
+      "$ref": "#/definitions/fronteira"
+    },
+    "inconclusivo": {
+      "type": "boolean"
+    },
+    "motivo": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "pecas": {
+      "type": "array",
+      "items": {
+        "$ref": "#/definitions/peca"
+      }
+    },
+    "segmentos_descartados": {
+      "type": "array",
+      "items": {
+        "$ref": "#/definitions/descarte"
+      }
+    },
+    "avisos": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    }
+  },
+  "definitions": {
+    "nullable_string": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "nullable_int": {
+      "type": [
+        "integer",
+        "null"
+      ]
+    },
+    "fronteira": {
+      "description": "Proveniencia: de qual modulo de segmentacao (fronteira_peca.py) este mapa veio, em que versao e com que parametros. `disponivel: false` e o estado declarado quando fronteira_peca.py nao pode ser carregado - o mapa nunca segmenta por conta propria no lugar dele. `parametros` e `ancoras` vem de la e nao tem forma fixada aqui, para uma chave nova de fronteira_peca.py nao reprovar um registro correto.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "modulo",
+        "disponivel",
+        "sistemas",
+        "inconclusivo"
+      ],
+      "properties": {
+        "modulo": {
+          "type": "string",
+          "minLength": 1
+        },
+        "versao": {
+          "$ref": "#/definitions/nullable_string"
+        },
+        "disponivel": {
+          "type": "boolean"
+        },
+        "erro": {
+          "$ref": "#/definitions/nullable_string"
+        },
+        "parametros": {
+          "type": [
+            "object",
+            "null"
+          ]
+        },
+        "sistemas": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "ancoras": {
+          "type": [
+            "object",
+            "null"
+          ]
+        },
+        "inconclusivo": {
+          "type": "boolean"
+        },
+        "motivo": {
+          "$ref": "#/definitions/nullable_string"
+        }
+      }
+    },
+    "peca": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "ordem",
+        "peca_id",
+        "desempate",
+        "citacao_ancora",
+        "paginacao",
+        "confianca_fronteira",
+        "ancora_ambigua",
+        "estado",
+        "confirmado_por",
+        "tipo_peca",
+        "motivo_tipo_peca",
+        "resumo",
+        "motivo_resumo"
+      ],
+      "properties": {
+        "ordem": {
+          "type": "integer"
+        },
+        "peca_id": {
+          "type": "string",
+          "minLength": 12
+        },
+        "desempate": {
+          "type": "integer"
+        },
+        "citacao_ancora": {
+          "$ref": "#/definitions/citacao_ancora"
+        },
+        "paginacao": {
+          "$ref": "#/definitions/paginacao"
+        },
+        "confianca_fronteira": {
+          "$ref": "#/definitions/confianca_fronteira"
+        },
+        "ancora_ambigua": {
+          "type": "boolean"
+        },
+        "estado": {
+          "enum": [
+            "a_confirmar",
+            "confirmado"
+          ]
+        },
+        "confirmado_por": {
+          "$ref": "#/definitions/nullable_string"
+        },
+        "tipo_peca": {
+          "type": [
+            "null",
+            "object"
+          ],
+          "properties": {
+            "estado": {
+              "const": "a_confirmar"
+            },
+            "tipo_proposto": {
+              "type": "object"
+            },
+            "rito_declarado": {
+              "type": "string",
+              "minLength": 1
+            },
+            "avisos": {
+              "type": "array"
+            },
+            "placar_marcadores": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "id": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "casados": {
+                    "type": "integer"
+                  }
+                },
+                "required": [
+                  "id",
+                  "casados"
+                ],
+                "additionalProperties": false
+              }
+            },
+            "marcadores_casados_total": {
+              "type": "integer"
+            }
+          },
+          "required": [
+            "estado",
+            "tipo_proposto",
+            "rito_declarado"
+          ],
+          "additionalProperties": false
+        },
+        "motivo_tipo_peca": {
+          "type": "string",
+          "minLength": 1
+        },
+        "resumo": {
+          "type": "null"
+        },
+        "motivo_resumo": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "citacao_ancora": {
+      "description": "O texto LITERAL do identificador que o tribunal imprimiu, nas duas pontas da peca. E a referencia autoritativa - o que o advogado escreve na peca. Nulo so na cabeca e no rabo dos autos, onde nao ha identificador antes/depois.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "inicial",
+        "final"
+      ],
+      "properties": {
+        "inicial": {
+          "$ref": "#/definitions/nullable_string"
+        },
+        "final": {
+          "$ref": "#/definitions/nullable_string"
+        }
+      }
+    },
+    "confianca_fronteira": {
+      "description": "Rotulo de confianca que fronteira_peca deu a fronteira de cada ponta da peca - propagado, nunca recalculado aqui. Nulo quando aquela ponta nao tem fronteira (cabeca e rabo dos autos) ou quando o pareamento entre fronteira e segmento nao pode ser conferido pela ancora; nesse caso sai um aviso no registro.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "inicial",
+        "final"
+      ],
+      "properties": {
+        "inicial": {
+          "enum": [
+            "baixa",
+            "media",
+            "alta",
+            null
+          ]
+        },
+        "final": {
+          "enum": [
+            "baixa",
+            "media",
+            "alta",
+            null
+          ]
+        }
+      }
+    },
+    "paginacao": {
+      "description": "Intervalo de paginas lido de DENTRO do identificador, nunca contado em codigo. `escopo` declara a regua: 'documento' e pagina dentro de um documento da juntada (PJe `Pag. <n>`, STJ `Pagina <n> de <m>`), 'autos' e folha do processo inteiro (e-SAJ `fls. <n>`). Nao ha conversao entre as duas reguas. Paginas nulas com `motivo` escrito e o estado normal quando o intervalo nao pode ser afirmado. Nenhum destes campos e aceito como declarado: o validador (regra cruzada 11 de mapa_estrutural.validar_regras) RELE familia, pagina, documento e total do texto literal de `citacao_ancora` e reprova o que o identificador nao imprimiu; o schema sozinho nao expressa isso.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "escopo",
+        "familia",
+        "documento_ref",
+        "inicial",
+        "final",
+        "motivo"
+      ],
+      "properties": {
+        "escopo": {
+          "enum": [
+            "documento",
+            "autos",
+            null
+          ]
+        },
+        "familia": {
+          "enum": [
+            "pje",
+            "stj",
+            "esaj",
+            null
+          ]
+        },
+        "documento_ref": {
+          "$ref": "#/definitions/nullable_string"
+        },
+        "inicial": {
+          "$ref": "#/definitions/nullable_int"
+        },
+        "final": {
+          "$ref": "#/definitions/nullable_int"
+        },
+        "motivo": {
+          "$ref": "#/definitions/nullable_string"
+        }
+      }
+    },
+    "descarte": {
+      "description": "Segmento que a fronteira produziu e que este mapa NAO transformou em peca, com a razao. Descarte declarado, nunca silencioso.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "ordem_no_segmentador",
+        "motivo"
+      ],
+      "properties": {
+        "ordem_no_segmentador": {
+          "$ref": "#/definitions/nullable_int"
+        },
+        "motivo": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    }
+  }
+}

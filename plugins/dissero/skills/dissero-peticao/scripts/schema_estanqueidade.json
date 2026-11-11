@@ -1,0 +1,124 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "dsr:estanqueidade:registro:v1",
+  "title": "Registro de estanqueidade de um trecho candidato",
+  "description": "Diz se UM trecho pode ir aos autos, e por que. Tres destinos: interno_nunca_aos_autos (lacrado, nao ha reescrita que salve), interno_pode_ser_reescrito (o conteudo serve, a forma vazou vocabulario interno do L16) e externo. Quando o modulo nao apura, classe fica null e conclusivo false - inconclusivo declarado, nunca afirmacao sem fundamento.",
+  "$comment": "O REGISTRO E, ELE PROPRIO, MATERIAL INTERNO: cita o marcador encontrado e nomeia o artefato de origem. Por isso registro_e_interno e const true - relatorio gerado a partir daqui nao se anexa aos autos. Validado por schema_mini.py, que cobre const/enum/type/required/additionalProperties/items/minLength e IGNORA pattern; os patterns abaixo sao documentacao. estanqueidade.validar_registro confere em codigo o de trecho_sha256 e as invariantes cruzadas que nenhum schema deste subconjunto expressa (pode_ir_aos_autos so com externo, reescrita_permitida so com interno_pode_ser_reescrito, conclusivo casando com classe).",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "avaliado_em",
+    "trecho_id",
+    "trecho_sha256",
+    "procedencia",
+    "conclusivo",
+    "classe",
+    "pode_ir_aos_autos",
+    "reescrita_permitida",
+    "regra_decisoria",
+    "motivos",
+    "declaracao_advogado",
+    "registro_e_interno"
+  ],
+  "properties": {
+    "schema_version": { "const": "dsr.estanqueidade.v1" },
+    "avaliado_em": {
+      "type": "string",
+      "minLength": 10,
+      "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$",
+      "description": "data da avaliacao (ISO). Nao e vigencia de norma: este modulo nao decide direito."
+    },
+    "trecho_id": {
+      "type": "string",
+      "description": "identificador do trecho no artefato de origem. Vazio quando o chamador nao deu. NAO carrega numero de processo, nome de parte nem caminho de pasta de cliente."
+    },
+    "trecho_sha256": {
+      "type": "string",
+      "minLength": 64,
+      "pattern": "^[0-9a-f]{64}$",
+      "description": "sha-256 do texto avaliado. Existe para o registro identificar o trecho SEM transcreve-lo."
+    },
+    "procedencia": {
+      "type": "string",
+      "enum": [
+        "",
+        "painel_conselho",
+        "conselho_status",
+        "squad_state",
+        "painel_squad",
+        "avaliacao_fragilidade",
+        "relatorio_estrategico_interno",
+        "dossie_redacao",
+        "minuta_advogado",
+        "autos",
+        "documento_do_cliente",
+        "pesquisa_confirmada"
+      ],
+      "description": "de qual artefato o trecho veio, DECLARADO pelo chamador. As seis primeiras sao lacradas: o artefato inteiro e material interno, e nenhuma redacao o salva. Vazio quando o chamador nao declarou - o que leva a inconclusivo (regra P0), nunca a palpite. O modulo NAO verifica se a declaracao e verdadeira."
+    },
+    "conclusivo": {
+      "type": "boolean",
+      "description": "false quando o modulo se recusou a classificar (P0, M2 sem declaracao, V0). Recusa e resultado legitimo."
+    },
+    "classe": {
+      "type": ["string", "null"],
+      "enum": ["interno_nunca_aos_autos", "interno_pode_ser_reescrito", "externo", null],
+      "description": "null quando inconclusivo."
+    },
+    "pode_ir_aos_autos": {
+      "type": "boolean",
+      "description": "verdadeiro SO com classe=externo. Inconclusivo devolve false: falha fechada na direcao do gate, sem afirmar classe."
+    },
+    "reescrita_permitida": {
+      "type": "boolean",
+      "description": "verdadeiro so com classe=interno_pode_ser_reescrito. Autoriza o AUTOR a reescrever; o modulo nunca reescreve o texto do advogado."
+    },
+    "regra_decisoria": {
+      "type": "string",
+      "enum": ["P0", "P1", "M1", "M2", "V0", "V1", "D1", "E1"],
+      "description": "P0 procedencia nao declarada | P1 procedencia lacrada | M1 marcador declarado de conteudo interno | M2 marcador ambiguo sem declaracao do advogado | V0 L16 indisponivel | V1 residuo do L16 | D1 classe declarada ou restringida pelo advogado | E1 nada encontrado. A declaracao do advogado e sempre a ULTIMA regra a agir: um trecho com marcador ambiguo E residuo do L16 sai V1, e nao D1, porque a classe apurada e o teto do que a declaracao pode liberar; com o L16 fora de alcance sai V0, nunca `externo`."
+    },
+    "motivos": {
+      "type": "array",
+      "description": "por que o trecho caiu nessa classe. Sempre ao menos um: classificacao sem motivo declarado nao serve ao advogado.",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["regra", "rotulo", "evidencia", "explicacao"],
+        "properties": {
+          "regra": {
+            "type": "string",
+            "enum": ["P0", "P1", "M1", "M2", "V0", "V1", "D1", "D2", "E1"],
+            "description": "D2 nao decide nada: registra tentativa RECUSADA de afrouxar a classificacao - inclusive a de afirmar `externo` sobre apuracao inconclusiva (V0). Um registro V0 com motivo M2 e motivo D2 e o rastro de que houve declaracao, ela nao foi aplicada, e o L16 nao chegou a ser medido."
+          },
+          "rotulo": { "type": "string", "minLength": 1 },
+          "evidencia": {
+            "type": "string",
+            "description": "o marcador casado (texto normalizado), a procedencia ou o termo do L16 - nunca o paragrafo inteiro. Cortado em LIMITE_EVIDENCIA (80 por padrao, arbitrario: nao ha o que medir, o corte so impede que o registro vire copia da prosa do advogado). Por ser arbitrario e configuravel em TODOS os pontos de entrada - classificar(limite_evidencia=), avaliar_conjunto(limite_evidencia=) e a CLI (--limite-evidencia); evidencia cortada termina em reticencia, entao o comprimento maximo e o limite mais 3."
+          },
+          "explicacao": { "type": "string", "minLength": 1 }
+        }
+      }
+    },
+    "declaracao_advogado": {
+      "type": ["object", "null"],
+      "additionalProperties": false,
+      "required": ["classe", "por", "em"],
+      "description": "declaracao humana identificada. Resolve ambiguidade (M2) e pode RESTRINGIR a classe; nunca afrouxa um lacre - a tentativa vira motivo D2 e a classificacao apurada permanece.",
+      "properties": {
+        "classe": {
+          "type": "string",
+          "enum": ["interno_nunca_aos_autos", "interno_pode_ser_reescrito", "externo"]
+        },
+        "por": { "type": "string", "minLength": 1, "description": "quem declarou. Identificacao funcional (id do perfil), nao nome civil." },
+        "em": { "type": "string", "minLength": 10, "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$" },
+        "razao": { "type": "string" }
+      }
+    },
+    "registro_e_interno": {
+      "const": true,
+      "description": "constante. Este registro nao vai aos autos: ele cita o marcador interno e nomeia o artefato de origem."
+    }
+  }
+}

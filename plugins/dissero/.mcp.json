@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "dissero": {
+      "type": "http",
+      "url": "https://dissero.bfldevlabs.studio/mcp"
+    }
+  }
+}

@@ -1,0 +1,8 @@
+{
+ "header:even": "header1.xml",
+ "header:default": "header2.xml",
+ "header:first": "header3.xml",
+ "footer:even": "footer1.xml",
+ "footer:default": "footer2.xml",
+ "footer:first": "footer3.xml"
+}

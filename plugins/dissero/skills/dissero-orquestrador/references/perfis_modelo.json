@@ -1,0 +1,352 @@
+{
+  "_": "Perfil de modelo por cenário e fase, legível por máquina. A prosa (governança §8 e a tabela 'Seleção de modelo por cenário' do catálogo) é a autoridade; este arquivo é o espelho dela e não pode divergir.",
+  "versao": 1,
+  "atualizado": "2026-10-23",
+  "fonte_prosa": {
+    "doutrina": "references/governanca.md §8 (fonte única: _shared/governanca.md)",
+    "tabela_cenarios": "skills/dissero-orquestrador/references/catalogo-cenarios.md — seção 'Seleção de modelo por cenário'",
+    "assentos": "references/conselho-revisor.md §1 (fonte única: _shared/conselho-revisor.md)"
+  },
+  "tiers": [
+    "fable",
+    "opus",
+    "sonnet",
+    "haiku"
+  ],
+  "fallback": {
+    "valor": "herdado",
+    "regra": "modelo indicado indisponível no ambiente → herda o modelo da sessão; nunca falhar por causa do modelo",
+    "cadeia": {
+      "fable": [
+        "fable",
+        "opus",
+        "herdado"
+      ],
+      "opus": [
+        "opus",
+        "herdado"
+      ],
+      "sonnet": [
+        "sonnet",
+        "herdado"
+      ],
+      "haiku": [
+        "haiku",
+        "herdado"
+      ]
+    }
+  },
+  "perfis": {
+    "P-A": {
+      "nome": "análise-pesada",
+      "analise": "opus",
+      "execucao": "sonnet",
+      "analise_preferencial": "fable"
+    },
+    "P-O": {
+      "nome": "análise pura",
+      "analise": "opus",
+      "execucao": "opus",
+      "analise_preferencial": "fable"
+    },
+    "P-S": {
+      "nome": "execução",
+      "analise": "sonnet",
+      "execucao": "sonnet"
+    },
+    "P-H": {
+      "nome": "triagem",
+      "analise": "haiku",
+      "execucao": "haiku",
+      "escala_para": "opus"
+    }
+  },
+  "analise_inicial_preferencial": {
+    "_": "Fable acima do Opus na ANÁLISE INICIAL, só quando DISPONÍVEL. Espelho da governança §8 'FABLE NA ANÁLISE INICIAL' e do mapa §2-B. O leitor é recomendar_modelo.py; sem sinal, a tabela de cenários vale como está.",
+    "tier": "fable",
+    "substitui": [
+      "opus"
+    ],
+    "planos": [
+      "max",
+      "teams"
+    ],
+    "sinais": [
+      "perfil.plataforma.plano em planos",
+      "modelo da sessão pertence à família fable (transcript da sessão principal, gravado pelo harness)"
+    ],
+    "fases": [
+      "classificacao_e_anuncio",
+      "estrategia",
+      "mapa_argumentativo",
+      "pesquisa_confronto_tese",
+      "analise_autos"
+    ],
+    "execucao_inalterada": true,
+    "conselho_inalterado": true,
+    "nunca_presumido": true,
+    "leitor": "skills/dissero-orquestrador/scripts/recomendar_modelo.py --cenario N",
+    "_esforco": "O esforço da análise inicial é o da fase de DECISÃO: high, com Fable ou com Opus (esforco.por_perfil_analise). Antes de 23/10/2026 o Fable recomendava medium, quando o padrão do Claude Code era high."
+  },
+  "cenarios": {
+    "1": {
+      "cenario": "Peça nova",
+      "perfil": "P-A",
+      "modelo": "Opus (estratégia/mapa) → Sonnet (redação)"
+    },
+    "2": {
+      "cenario": "Caso complexo",
+      "perfil": "P-A",
+      "modelo": "Opus → Sonnet, por capítulo"
+    },
+    "3": {
+      "cenario": "Análise de decisão / viabilidade recursal",
+      "perfil": "P-A",
+      "modelo": "Opus (predomina) → Sonnet só se redigir"
+    },
+    "4": {
+      "cenario": "Jurisprudência",
+      "perfil": "P-O",
+      "modelo": "Opus (confronto de tese) / Sonnet (compilação)"
+    },
+    "5": {
+      "cenario": "Validação de tese / red team",
+      "perfil": "P-O",
+      "modelo": "Opus"
+    },
+    "6": {
+      "cenario": "Análise de autos",
+      "perfil": "P-H",
+      "modelo": "Haiku (triagem/resumo) → Opus se virar diagnóstico"
+    },
+    "7": {
+      "cenario": "Análise probatória",
+      "perfil": "P-O",
+      "modelo": "Opus"
+    },
+    "8": {
+      "cenario": "Prazos",
+      "perfil": "P-S",
+      "modelo": "Sonnet (determinístico via `calcular_prazo.py`)"
+    },
+    "9": {
+      "cenario": "Audiência / sustentação",
+      "perfil": "P-A",
+      "modelo": "Opus (estratégia) → Sonnet (roteiro)"
+    },
+    "10": {
+      "cenario": "Perícia (quesitos/laudo)",
+      "perfil": "P-O",
+      "modelo": "Opus"
+    },
+    "11": {
+      "cenario": "Perfil do julgador",
+      "perfil": "P-O",
+      "modelo": "Opus"
+    },
+    "12": {
+      "cenario": "Contrato — redigir",
+      "perfil": "P-S",
+      "modelo": "Sonnet (Opus se societário complexo)"
+    },
+    "13": {
+      "cenario": "Contrato — revisar",
+      "perfil": "P-O",
+      "modelo": "Opus (radar de risco)"
+    },
+    "14": {
+      "cenario": "Notificação extrajudicial",
+      "perfil": "P-S",
+      "modelo": "Sonnet"
+    },
+    "15": {
+      "cenario": "Risco / prognóstico",
+      "perfil": "P-O",
+      "modelo": "Opus"
+    },
+    "16": {
+      "cenario": "Legislação / compliance",
+      "perfil": "P-A",
+      "modelo": "Opus (mapeamento) → Sonnet (checklist)"
+    },
+    "17-21": {
+      "cenario": "Cliente / honorários / gestão / marketing",
+      "perfil": "P-S",
+      "modelo": "Sonnet (Haiku p/ mensagens curtas)"
+    },
+    "22": {
+      "cenario": "Visual Law (formatação)",
+      "perfil": "P-S",
+      "modelo": "Sonnet (determinístico)"
+    },
+    "23": {
+      "cenario": "Edição pontual",
+      "perfil": "P-S",
+      "modelo": "Sonnet (Haiku p/ ajuste trivial)"
+    },
+    "24": {
+      "cenario": "Acadêmico",
+      "perfil": "P-A",
+      "modelo": "Opus (tese/estrutura) → Sonnet (redação)"
+    },
+    "25": {
+      "cenario": "Estudo profundo de autos",
+      "perfil": "P-O",
+      "modelo": "Opus (cruzamento/contradições)"
+    },
+    "26": {
+      "cenario": "Ingestão / extração",
+      "perfil": "P-H",
+      "modelo": "Haiku/Sonnet (OCR mecânico) → conferência"
+    },
+    "27": {
+      "cenario": "Diligência cadastral",
+      "perfil": "P-H",
+      "modelo": "Haiku/Sonnet (consulta determinística) → Opus só em divergência ou grupo econômico"
+    },
+    "28": {
+      "cenario": "Intake por e-mail",
+      "perfil": "P-H",
+      "modelo": "Haiku/Sonnet (triagem mecânica do que chegou) → Opus só depois da confirmação do advogado, no cenário real"
+    },
+    "29": {
+      "cenario": "Liberar versão para a banca",
+      "perfil": "P-S",
+      "modelo": "Sonnet (Haiku p/ mensagens curtas)"
+    },
+    "30": {
+      "cenario": "Ativar a atualização automática",
+      "perfil": "P-S",
+      "modelo": "Sonnet (Haiku p/ mensagens curtas)"
+    },
+    "31": {
+      "cenario": "Primeiro uso",
+      "perfil": "P-S",
+      "modelo": "Sonnet (Haiku p/ mensagens curtas)"
+    }
+  },
+  "assentos_conselho": {
+    "relator": {
+      "tier": "opus",
+      "papel": "análise e julgamento",
+      "esforco": "high"
+    },
+    "merito": {
+      "tier": "opus",
+      "papel": "análise e julgamento",
+      "esforco": "high"
+    },
+    "coerencia": {
+      "tier": "opus",
+      "papel": "análise e julgamento",
+      "esforco": "high"
+    },
+    "escrita": {
+      "tier": "opus",
+      "papel": "análise e julgamento",
+      "esforco": "high"
+    },
+    "conformidade": {
+      "tier": "opus",
+      "papel": "análise e julgamento",
+      "esforco": "high"
+    },
+    "art942": {
+      "tier": "opus",
+      "papel": "ampliação — análise e julgamento",
+      "esforco": "high"
+    },
+    "autor": {
+      "tier": "sonnet",
+      "papel": "redação da peça (propõe, não julga)",
+      "esforco": "medium"
+    },
+    "delegacao_mecanica": {
+      "tier": "sonnet",
+      "papel": "re-render, conferência de arquivo, formatação",
+      "esforco": "medium"
+    },
+    "triagem": {
+      "tier": "haiku",
+      "papel": "resumo bruto, OCR, classificação inicial",
+      "esforco": "low"
+    }
+  },
+  "restricoes": {
+    "autor_distinto_dos_revisores": true,
+    "regra": "o autor da peça não ocupa assento de revisão (anti auto-certificação, conselho_gate) e roda em tier distinto do da turma: autor em sonnet, julgadores em opus"
+  },
+  "limite": "o perfil registra o modelo PEDIDO ao criar o subagente; o EXECUTADO é conferido contra o transcript que o harness grava por subagente (verificar_modelo.py) — auditoria, nunca gate. O modelo da conversa principal é escolha do advogado (/model): o plugin recomenda, PERGUNTA em fase de decisão (checkpoint_modelo) e segue com a resposta.",
+  "checkpoint_modelo": {
+    "_": "espelho da governança §8 'CHECKPOINT DE MODELO' e do mapa §2-A. Divergência entre o tier ideal da fase e o modelo da sessão PARA e PERGUNTA em fase de decisão; em fase de execução apenas avisa.",
+    "pausa_para_perguntar": true,
+    "recusa_executar": false,
+    "uma_vez_por_fase": true,
+    "pergunta_no_downgrade": false,
+    "fases_decisao": [
+      "estrategia",
+      "mapa_argumentativo",
+      "pesquisa_confronto_tese",
+      "analise_autos",
+      "conselho_sessao_principal"
+    ],
+    "fases_execucao": [
+      "redacao",
+      "visual_law",
+      "juntada",
+      "ingestao",
+      "comunicacao_cliente"
+    ],
+    "opcoes": [
+      "trocar",
+      "seguir_com_ressalva",
+      "subagente_com_model_fixado"
+    ]
+  },
+  "conferencia_execucao": {
+    "script": "scripts/verificar_modelo.py das skills dissero-peticao e dissero-caso-complexo (fonte única: _shared/verificar_modelo.py)",
+    "fonte": "<HOME>/.claude/projects/<projeto>/<session_id>/subagents/agent-<agente_id>.jsonl (escrito pelo harness)",
+    "estados": [
+      "CONFERIDO",
+      "DIVERGENTE",
+      "HERDADO",
+      "SEM_PEDIDO",
+      "SEM_AGENTE",
+      "NAO_VERIFICAVEL"
+    ],
+    "gate": "nenhum — o conselho_gate.py ignora todo campo de modelo"
+  },
+  "esforco": {
+    "parametrizavel_pelo_plugin": true,
+    "regra": "o plugin PEDE o esforço do subagente que cria, junto com o modelo (parâmetro effort da ferramenta de subagente, quando o ambiente o oferece); sem o parâmetro, o subagente roda no padrão e o verificar_modelo.py registra o que rodou. O esforço da SESSÃO continua sendo do advogado: o plugin recomenda no anúncio da fase.",
+    "niveis": [
+      "low",
+      "medium",
+      "high",
+      "xhigh",
+      "max"
+    ],
+    "equivalencia": "medium produz o mesmo comportamento que omitir o parâmetro",
+    "natureza": "sinal de comportamento, não orçamento de tokens: em esforço baixo o modelo ainda pensa em problema difícil, só pensa menos",
+    "suportado_por_tier": {
+      "fable": true,
+      "opus": true,
+      "sonnet": true,
+      "haiku": true
+    },
+    "padrao_claude_code": "medium",
+    "observado": "o transcript do harness registra o effort de cada mensagem do assistente; o verificar_modelo.py o confere contra o esperado por assento (auditoria, nunca gate). Antes de 23/10/2026 o padrão era high em Opus e Sonnet e o Haiku não registrava esforço.",
+    "fonte": "titular, 23/10/2026: todos os modelos (Fable, Opus, Sonnet e Haiku) têm medium por padrão",
+    "por_perfil_analise": {
+      "P-A": "high",
+      "P-O": "high",
+      "P-S": "medium",
+      "P-H": "low"
+    },
+    "por_tipo_de_fase": {
+      "decisao": "high",
+      "execucao": "medium",
+      "triagem": "low"
+    }
+  }
+}

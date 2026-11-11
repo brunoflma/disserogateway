@@ -1,0 +1,120 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "dsr:squad_state.v1",
+  "title": "SQUAD_STATE DISSERO",
+  "description": "Contrato do estado do squad, carregado e aplicado por squad.py a cada leitura do estado (schema_mini).",
+  "type": "object",
+  "required": ["squad", "objetivo", "area", "polo", "politica_dados", "checkpoints", "max_ciclos", "etapa_atual", "ciclo", "documentos", "retornos", "etapas"],
+  "properties": {
+    "schema_version": {"const": "dsr.squad_state.v1"},
+    "squad": {"type": "string", "minLength": 1},
+    "objetivo": {"type": "string", "minLength": 1},
+    "area": {"enum": ["administrativo-licitacoes", "advocacia-publica", "aeronautico", "agrario", "ambiental", "bancario", "civel", "consumidor", "criminal", "desportivo", "digital-lgpd", "eleitoral", "empresarial-recuperacao", "etica-oab", "execucao-cobranca", "familia-sucessoes", "imobiliario", "internacional-imigracao", "leiloes", "medico-saude", "militar", "notarial-registral", "previdenciario", "propriedade-intelectual", "recursos-tribunais-superiores", "seguros", "trabalhista", "transito", "tributario-societario", "geral"]},
+    "polo": {"enum": ["defesa", "autor", "reu", "reclamante", "reclamado", "assistente", "terceiro"]},
+    "politica_dados": {"enum": ["local", "hibrida"]},
+    "checkpoints": {
+      "type": "array",
+      "items": {"enum": ["foco", "memoria", "pesquisa", "estrategia", "redacao", "minuta", "revisao", "final", "checklist_externo"]}
+    },
+    "oficios": {
+      "description": "A turma deste caso, copiada do catalogo pelo `init` e nao relida depois: edicao no catalogo entraria calada num caso em andamento, e o assento aprovado na parada 1 deixaria de ser o que dispara. Opcional no contrato: estado sem `oficios` tem a turma lida do catalogo pelo `plano`, que DIZ que leu.",
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["id", "titulo", "model", "camada"],
+        "properties": {
+          "id": {"type": "string", "minLength": 1},
+          "titulo": {"type": "string", "minLength": 1},
+          "model": {"enum": ["opus", "sonnet", "haiku"]},
+          "camada": {"enum": ["leitor", "especialista"]},
+          "roteiros": {"type": "array", "items": {"type": "string", "minLength": 1}}
+        }
+      }
+    },
+    "plano_turma": {
+      "description": "RESUMO do plano da turma (`dsr.turma_plano.v1`), gravado pelo subcomando `plano`. O plano inteiro - fatia por fatia, com a espinha do caso - vive no artefato apontado por `artefato`: guardar as fatias aqui misturaria dois contratos num arquivo so, e o estado, lido e validado a CADA comando, cresceria com o tamanho dos autos.",
+      "type": "object",
+      "required": ["acao", "total_fatias", "total_agentes", "ondas", "artefato"],
+      "properties": {
+        "acao": {"enum": ["planejada", "escalar"]},
+        "total_fatias": {"type": "integer"},
+        "total_agentes": {"type": "integer"},
+        "ondas": {"type": "integer"},
+        "paginas_planejadas": {"type": "integer"},
+        "cobertura_completa": {"type": "boolean"},
+        "espinha_ref": {"type": "string", "minLength": 64},
+        "artefato": {"type": "string", "minLength": 1},
+        "gerado_em": {"type": "string"}
+      }
+    },
+    "max_ciclos": {"type": "integer", "minimum": 1},
+    "etapa_atual": {"enum": ["foco", "memoria", "pesquisa", "estrategia", "redacao", "minuta", "revisao", "final", "checklist_externo"]},
+    "ciclo": {"type": "integer", "minimum": 1},
+    "criado_em": {"type": "string"},
+    "documentos": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["id", "sensibilidade", "rota"],
+        "properties": {
+          "id": {"type": "string", "minLength": 1},
+          "sensibilidade": {"enum": ["publico", "restrito", "sigiloso"]},
+          "rota": {"enum": ["local", "remota"]},
+          "autorizado_remoto": {"type": "boolean"},
+          "retencao": {"type": "string"},
+          "registrado_em": {"type": "string"}
+        }
+      }
+    },
+    "retornos": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["ciclo", "etapa", "motivo"],
+        "properties": {
+          "ciclo": {"type": "integer", "minimum": 1},
+          "etapa": {"enum": ["foco", "memoria", "pesquisa", "estrategia", "redacao", "minuta", "revisao", "final", "checklist_externo"]},
+          "motivo": {"type": "string", "minLength": 1},
+          "em": {"type": "string"},
+          "artefato": {"type": ["string", "null"]},
+          "etapas_reabertas": {"type": "object"}
+        }
+      }
+    },
+    "escalonamentos": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["em", "motivo"],
+        "properties": {"em": {"type": "string"}, "motivo": {"type": "string", "minLength": 1}}
+      }
+    },
+    "etapas": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "object",
+        "required": ["status", "evidencias"],
+        "properties": {
+          "status": {"enum": ["planejada", "em_execucao", "concluida", "aguardando_aprovacao", "bloqueada"]},
+          "agente": {"type": "string"},
+          "agente_conferido": {"enum": ["ledger", "autodeclarado"]},
+          "evidencias": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": ["tipo", "ref"],
+              "properties": {"tipo": {"type": "string", "minLength": 1}, "ref": {"type": "string", "minLength": 1}}
+            }
+          },
+          "aprovacao": {
+            "type": "object",
+            "required": ["por", "em"],
+            "properties": {"por": {"type": "string", "minLength": 1}, "em": {"type": "string"}}
+          },
+          "iniciada_em": {"type": "string"},
+          "concluida_em": {"type": "string"}
+        }
+      }
+    }
+  }
+}

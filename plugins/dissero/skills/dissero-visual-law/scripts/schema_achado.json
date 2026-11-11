@@ -1,0 +1,366 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "dsr:achado:v2",
+  "title": "Contrato de achados jurídicos Dissero v2",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "achados"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": "dsr.achados.v2"
+    },
+    "tema": {
+      "type": "string"
+    },
+    "gerado_em": {
+      "type": "string"
+    },
+    "achados": {
+      "type": "array",
+      "items": {
+        "$ref": "#/definitions/achado"
+      }
+    },
+    "estrategia": {
+      "type": "object",
+      "additionalProperties": false,
+      "title": "Parecer de estratégia da Relação: tese central e enfrentamento dos contrários. Opcional; sem ele a Relação sai só com os precedentes",
+      "properties": {
+        "tese_central": {
+          "type": "string",
+          "minLength": 20,
+          "title": "Em prosa, o que a peça sustenta e por que estes precedentes a sustentam"
+        },
+        "distinguishing": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 20
+          },
+          "title": "Passos do distinguishing, um por item, na ordem em que a peça os usa"
+        },
+        "contrarios": {
+          "type": "string",
+          "minLength": 20,
+          "title": "Como a peça enfrenta os precedentes contrários listados"
+        }
+      }
+    }
+  },
+  "definitions": {
+    "nullable_string": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "achado": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "reference",
+        "nature",
+        "authority",
+        "citation",
+        "discovery",
+        "official_url",
+        "syllabus_literal",
+        "full_text",
+        "verification",
+        "selected_for_use",
+        "use_status"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 6
+        },
+        "reference": {
+          "type": "string",
+          "minLength": 6
+        },
+        "nature": {
+          "enum": [
+            "acordao",
+            "sumula",
+            "tema",
+            "norma",
+            "decisao_administrativa"
+          ]
+        },
+        "authority": {
+          "description": "Nota de força do precedente pela ordem do art. 927 do CPC: A = controle concentrado do STF e súmula vinculante (I e II); B = IAC, IRDR, RE e REsp repetitivos e tese de repercussão geral (III) e acórdão em REsp julgado sob o regime da relevância da questão de direito federal infraconstitucional (III-A, incluído pela Lei 15.484/2026); C = súmula do STF em matéria constitucional ou do STJ em matéria infraconstitucional e orientação do plenário ou do órgão especial (IV e V); D = acórdão colegiado fora do art. 927; E = decisão monocrática. Tabela na skill dissero-pesquisa-juridica, references/metodologia-pesquisa.md, §1.",
+          "enum": [
+            "A",
+            "B",
+            "C",
+            "D",
+            "E"
+          ]
+        },
+        "citation": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "court",
+            "case_number",
+            "rapporteur",
+            "judgment_date",
+            "identifier",
+            "status",
+            "norm_type",
+            "norm_number",
+            "norm_date",
+            "provision",
+            "validity"
+          ],
+          "properties": {
+            "court": {
+              "$ref": "#/definitions/nullable_string"
+            },
+            "case_number": {
+              "$ref": "#/definitions/nullable_string"
+            },
+            "rapporteur": {
+              "$ref": "#/definitions/nullable_string"
+            },
+            "judgment_date": {
+              "$ref": "#/definitions/nullable_string"
+            },
+            "identifier": {
+              "$ref": "#/definitions/nullable_string"
+            },
+            "status": {
+              "$ref": "#/definitions/nullable_string"
+            },
+            "norm_type": {
+              "$ref": "#/definitions/nullable_string"
+            },
+            "norm_number": {
+              "$ref": "#/definitions/nullable_string"
+            },
+            "norm_date": {
+              "$ref": "#/definitions/nullable_string"
+            },
+            "provision": {
+              "$ref": "#/definitions/nullable_string"
+            },
+            "validity": {
+              "$ref": "#/definitions/nullable_string"
+            }
+          }
+        },
+        "discovery": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "provider",
+            "url"
+          ],
+          "properties": {
+            "provider": {
+              "type": "string",
+              "minLength": 2
+            },
+            "url": {
+              "$ref": "#/definitions/nullable_string"
+            }
+          }
+        },
+        "official_url": {
+          "$ref": "#/definitions/nullable_string"
+        },
+        "syllabus_literal": {
+          "$ref": "#/definitions/nullable_string"
+        },
+        "full_text": {
+          "$ref": "#/definitions/nullable_string"
+        },
+        "verification": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "result",
+            "method",
+            "checked_at",
+            "final_url",
+            "signals",
+            "human_attestation"
+          ],
+          "properties": {
+            "result": {
+              "enum": [
+                "confirmed",
+                "blocked",
+                "partial",
+                "not_found",
+                "mismatch"
+              ]
+            },
+            "method": {
+              "enum": [
+                "automatic",
+                "human",
+                "none"
+              ]
+            },
+            "checked_at": {
+              "$ref": "#/definitions/nullable_string"
+            },
+            "final_url": {
+              "$ref": "#/definitions/nullable_string"
+            },
+            "signals": {
+              "type": "object"
+            },
+            "human_attestation": {
+              "type": [
+                "object",
+                "null"
+              ],
+              "additionalProperties": false,
+              "required": [
+                "actor",
+                "date",
+                "official_url",
+                "declaration",
+                "syllabus_sha256"
+              ],
+              "properties": {
+                "actor": {
+                  "type": "string",
+                  "minLength": 2
+                },
+                "date": {
+                  "type": "string",
+                  "minLength": 10
+                },
+                "official_url": {
+                  "type": "string",
+                  "minLength": 8
+                },
+                "declaration": {
+                  "type": "string",
+                  "minLength": 20
+                },
+                "syllabus_sha256": {
+                  "type": "string",
+                  "minLength": 64
+                }
+              }
+            }
+          }
+        },
+        "selected_for_use": {
+          "type": "boolean"
+        },
+        "use_status": {
+          "enum": [
+            "allowed",
+            "pending",
+            "prohibited"
+          ]
+        },
+        "reconferencia": {
+          "type": "object",
+          "title": "Desfecho da reconferência automática: resultado, host, motivo"
+        },
+        "diagnostico_link": {
+          "type": "object",
+          "title": "Classe da official_url: documento|processo|busca|nao_abre|efemera|conferencia_por_codigo|agregador|ausente"
+        },
+        "conferencia": {
+          "type": "object",
+          "title": "Conferência por código: processo + código do documento (e-SAJ)"
+        },
+        "fonte_aceita_pelo_advogado": {
+          "type": "object",
+          "title": "Aceite datado do advogado sobre fonte não oficial"
+        },
+        "atalho_documento_sessao": {
+          "type": "object",
+          "title": "URL com credencial de sessão: atalho, jamais fonte"
+        },
+        "fonte_corrigida": {
+          "type": "object",
+          "title": "Registro da troca de official_url"
+        },
+        "official_url_anterior": {
+          "$ref": "#/definitions/nullable_string"
+        },
+        "acentuacao_normalizada": {
+          "type": "object",
+          "title": "Normalização de diacrítico do literal, com invariante"
+        },
+        "syllabus_literal_ascii_original": {
+          "$ref": "#/definitions/nullable_string"
+        },
+        "full_text_ascii_original": {
+          "$ref": "#/definitions/nullable_string"
+        },
+        "url_origem": {
+          "$ref": "#/definitions/nullable_string",
+          "title": "Procedência da official_url quando ela não veio de discovery.url: 'aberta na sessão', 'rodapé do documento', 'fornecida pelo advogado'. URL sem procedência é URL inventada"
+        },
+        "pendencia_fonte": {
+          "type": "object",
+          "title": "Fonte oficial a obter, declarada: desde, falta, como_obter, identificacao. Ausência declarada é honesta; ausência calada é defeito"
+        },
+        "url_descartada": {
+          "type": "object",
+          "title": "URL removida por não abrir o julgado, com motivo"
+        },
+        "estrategia_uso": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "posicao",
+            "como_usar"
+          ],
+          "title": "Para que serve este precedente na peça. Opcional; é o que faz da Relação um memorando de pesquisa",
+          "properties": {
+            "posicao": {
+              "enum": [
+                "favoravel",
+                "contrario",
+                "principiologico",
+                "suporte_fatico"
+              ],
+              "title": "favoravel: sustenta a tese · contrario: precisa ser enfrentado na peça · principiologico: base teórica, não precedente aplicável · suporte_fatico: prova o fato, não a tese"
+            },
+            "como_usar": {
+              "type": "string",
+              "minLength": 20,
+              "title": "Em linguagem de advogado: onde entra, com que ressalva, que distinguishing exige"
+            }
+          }
+        },
+        "situacao_tema": {
+          "enum": [
+            "afetado_com_suspensao",
+            "afetado_sem_suspensao",
+            "julgado",
+            "revisado",
+            "cancelado"
+          ],
+          "title": "Situação do tema, repetitivo, repercussão geral, IRDR ou IAC. Só em achado de tema ou de nota B; obrigatório em tema confirmed. Afetado (com ou sem suspensão) não tem tese firmada e não entra como confirmed; cancelado não vai à peça. Dizer se a suspensão favorece ou prejudica o cliente é análise de risco, não prognóstico"
+        },
+        "conferencia_negada": {
+          "type": "object",
+          "title": "Veto do advogado na folha de conferência: por, em, motivo. NÃO CONFERE tira o julgado da peça e o motivo fica gravado"
+        },
+        "procedencia_literal": {
+          "type": "array",
+          "title": "Procedência do teor transcrito: um registro por campo literal, com nível (verbatim|normalizado|ausente), origem, SHA-256 da extração e do próprio literal. Gravado por atestar_literal.py; sem procedência verbatim o achado não sustenta citação",
+          "items": {
+            "type": "object"
+          }
+        }
+      }
+    }
+  }
+}

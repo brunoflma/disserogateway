@@ -1,0 +1,133 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "dsr:comparacao_calculos:v1",
+  "title": "Comparacao de memorias de calculo Dissero v1",
+  "_leia": "Saida do comparar_calculos.py. A comparacao APONTA divergencia entre duas ou tres memorias e NAO afirma qual esta correta: nao ha neste contrato campo de veredito, de acerto ou de erro, e nao deve haver. `referencia` e apenas o denominador do percentual. Subconjunto Draft-07 do schema_mini (const/enum/type/minLength/required/additionalProperties/items/$ref). ATENCAO: `minItems` aparece abaixo como DOCUMENTACAO do minimo pretendido - o schema_mini NAO o implementa e portanto nao o cobra; o minimo real e garantido pelo codigo (MIN_MEMORIAS no comparador) e conferido em teste, nao por este arquivo.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version", "status", "comparador_version", "contrato_comparado", "moeda",
+    "escopo", "criterio_casamento", "referencia", "origens", "arredondamento",
+    "limiar_materialidade_pct", "competencias", "totais", "campos_nao_projetados",
+    "ausencias_declaradas", "avisos", "warnings"
+  ],
+  "definitions": {
+    "campo_nao_projetado": {
+      "_leia": "Campo que o contrato de origem tem e que a comparacao NAO transforma em rubrica, com o motivo. Campo descartado em silencio num comparador de calculo e divergencia que nao aparece. Campo que nao esta nem projetado nem declarado aqui faz o comparador RECUSAR a memoria (campo_desconhecido).",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["onde", "motivo"],
+      "properties": {
+        "onde": { "type": "string", "minLength": 1 },
+        "motivo": { "type": "string", "minLength": 20 }
+      }
+    },
+    "vinculo_externo": {
+      "type": ["object", "null"],
+      "additionalProperties": false,
+      "required": ["tipo", "id", "sha256"],
+      "properties": {
+        "tipo": { "enum": ["decision", "tabela", "regime"] },
+        "id": { "type": "string", "minLength": 1 },
+        "sha256": { "type": "string", "minLength": 64 }
+      }
+    },
+    "origem": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["origem_id", "rotulo", "ordem", "engine_version", "memoria_sha256", "vinculo_externo"],
+      "properties": {
+        "origem_id": { "type": "string", "minLength": 1 },
+        "rotulo": { "type": ["string", "null"] },
+        "ordem": { "type": "integer" },
+        "engine_version": { "type": "string", "minLength": 1 },
+        "memoria_sha256": { "type": "string", "minLength": 64 },
+        "vinculo_externo": { "$ref": "#/definitions/vinculo_externo" }
+      }
+    },
+    "valor_de_origem": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["origem_id", "valor"],
+      "properties": {
+        "origem_id": { "type": "string", "minLength": 1 },
+        "valor": { "type": "string", "minLength": 1 }
+      }
+    },
+    "divergencia": {
+      "_leia": "percentual e null quando a base e zero - nunca 0 e nunca 100. acima_do_limiar e null quando nenhum limiar foi declarado: o comparador nao tem limiar de materialidade padrao porque qualquer numero ali seria arbitrario e pareceria juridico.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["origem_id", "diferenca_absoluta", "percentual", "percentual_indefinido_porque", "acima_do_limiar"],
+      "properties": {
+        "origem_id": { "type": "string", "minLength": 1 },
+        "diferenca_absoluta": { "type": "string", "minLength": 1 },
+        "percentual": { "type": ["string", "null"] },
+        "percentual_indefinido_porque": { "type": ["string", "null"] },
+        "acima_do_limiar": { "type": ["boolean", "null"] }
+      }
+    },
+    "rubrica": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["rubrica_id", "grandeza", "valores", "divergencias"],
+      "properties": {
+        "rubrica_id": { "type": "string", "minLength": 1 },
+        "grandeza": { "enum": ["monetario", "valor_por_hora", "fator", "taxa_percentual"] },
+        "valores": { "type": "array", "minItems": 2, "items": { "$ref": "#/definitions/valor_de_origem" } },
+        "divergencias": { "type": "array", "minItems": 1, "items": { "$ref": "#/definitions/divergencia" } }
+      }
+    },
+    "linha_competencia": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["competencia", "rubricas"],
+      "properties": {
+        "competencia": { "type": "string", "minLength": 10 },
+        "rubricas": { "type": "array", "items": { "$ref": "#/definitions/rubrica" } }
+      }
+    },
+    "ausencia": {
+      "_leia": "Ausencia declarada e EXCLUSAO, nunca zero. Tratar rubrica ausente como valor zero produziria divergencia que e artefato de leitura.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["origem_id", "competencia", "rubrica_id", "motivo", "efeito"],
+      "properties": {
+        "origem_id": { "type": "string", "minLength": 1 },
+        "competencia": { "type": ["string", "null"] },
+        "rubrica_id": { "type": ["string", "null"] },
+        "motivo": { "type": "string", "minLength": 3 },
+        "efeito": { "const": "excluida_da_comparacao_nao_tratada_como_zero" }
+      }
+    }
+  },
+  "properties": {
+    "schema_version": { "const": "dsr.comparacao_calculos.v1" },
+    "status": { "const": "MINUTA_PARA_REVISAO" },
+    "comparador_version": { "type": "string", "minLength": 1 },
+    "contrato_comparado": { "type": "string", "minLength": 1 },
+    "moeda": { "type": ["string", "null"] },
+    "escopo": { "enum": ["tudo", "totais"] },
+    "criterio_casamento": { "const": "identificador_declarado" },
+    "referencia": { "type": "string", "minLength": 1 },
+    "origens": { "type": "array", "minItems": 2, "items": { "$ref": "#/definitions/origem" } },
+    "arredondamento": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["diferenca_absoluta", "percentual_modo", "percentual_escala", "aplicado_uma_vez_no_fim"],
+      "properties": {
+        "diferenca_absoluta": { "const": "exata_sem_arredondamento" },
+        "percentual_modo": { "const": "ROUND_HALF_EVEN" },
+        "percentual_escala": { "type": "integer" },
+        "aplicado_uma_vez_no_fim": { "type": "boolean" }
+      }
+    },
+    "limiar_materialidade_pct": { "type": ["string", "null"] },
+    "competencias": { "type": "array", "items": { "$ref": "#/definitions/linha_competencia" } },
+    "totais": { "type": "array", "items": { "$ref": "#/definitions/rubrica" } },
+    "campos_nao_projetados": { "type": "array", "items": { "$ref": "#/definitions/campo_nao_projetado" } },
+    "ausencias_declaradas": { "type": "array", "items": { "$ref": "#/definitions/ausencia" } },
+    "avisos": { "type": "array", "items": { "type": "string" } },
+    "warnings": { "type": "array", "minItems": 1, "items": { "type": "string", "minLength": 1 } }
+  }
+}
