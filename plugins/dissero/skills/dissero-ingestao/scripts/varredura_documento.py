@@ -716,7 +716,124 @@ def _streams(dados):
             break
         dec = decodificar_stream(m.group(1))
         total += len(dec)
-        yield dec
+        yield m.start(), dec
+
+
+
+
+
+
+
+
+
+
+
+
+
+_RE_OBJ_INICIO = re.compile(rb"(?<![0-9])(\d{1,10})\s+\d{1,5}\s+obj\b")
+_RE_REF = re.compile(rb"(\d{1,10})\s+\d{1,5}\s+R\b")
+_RE_E_PAGINA = re.compile(rb"/Type\s*/Page(?![A-Za-z])")
+_RE_E_PAGES = re.compile(rb"/Type\s*/Pages\b")
+_RE_E_CATALOGO = re.compile(rb"/Type\s*/Catalog\b")
+
+
+
+
+_RE_E_OBJSTM = re.compile(rb"/Type\s*/ObjStm\b")
+_MAX_PAGINAS_NO_AVISO = 8
+SEM_PAGINA = "página não identificada"
+
+
+def _valor_de(corpo, chave):
+    'O que vem depois de `/Chave` num dicionário de objeto: a lista `[...]` inteira, ou a'
+
+    m = re.search(rb"/" + chave + rb"\s*(\[[^\]]*\]|\d{1,10}\s+\d{1,5}\s+R)", corpo)
+    return [int(n) for n in _RE_REF.findall(m.group(1))] if m else []
+
+
+class _MapaDePaginas:
+    """Objeto do PDF → número da página (1 = primeira), lido da estrutura, sem renderizar."""
+
+    def __init__(self, dados):
+        self.inicios, self.numeros, corpos = [], [], {}
+        marcas = [(m.start(), int(m.group(1))) for m in _RE_OBJ_INICIO.finditer(dados)]
+        for i, (pos, num) in enumerate(marcas):
+            fim = marcas[i + 1][0] if i + 1 < len(marcas) else len(dados)
+            self.inicios.append(pos)
+            self.numeros.append(num)
+
+
+
+            corte = dados.find(b"stream", pos, fim)
+            corpos[num] = bytes(dados[pos:fim if corte < 0 else corte])
+        paginas = [n for n, c in corpos.items() if _RE_E_PAGINA.search(c)]
+        self.catalogos = {n for n, c in corpos.items() if _RE_E_CATALOGO.search(c)}
+        self.comprimidos = {n for n, c in corpos.items() if _RE_E_OBJSTM.search(c)}
+        ordem = self._ordem_da_arvore(corpos, set(paginas))
+
+
+        self.confiavel = bool(paginas) and len(ordem) == len(paginas)
+        self.pagina_de = {}
+        if self.confiavel:
+            for indice, num in enumerate(ordem, 1):
+                self.pagina_de[num] = indice
+                for chave in (rb"Contents", rb"Annots"):
+                    for ref in _valor_de(corpos[num], chave):
+                        self.pagina_de.setdefault(ref, indice)
+
+    @staticmethod
+    def _ordem_da_arvore(corpos, paginas):
+        raizes = [n for n, c in corpos.items() if _RE_E_PAGES.search(c) and b"/Parent" not in c]
+        if len(raizes) != 1:
+            return []
+        ordem, vistos, pilha = [], set(), [raizes[0]]
+        while pilha:
+            num = pilha.pop()
+            if num in vistos or num not in corpos:
+                continue
+            vistos.add(num)
+            if num in paginas:
+                ordem.append(num)
+            else:
+                pilha.extend(reversed(_valor_de(corpos[num], rb"Kids")))
+        return ordem
+
+    def objeto_em(self, pos):
+        """O número do objeto que contém o byte `pos`, ou None."""
+        lo, hi = 0, len(self.inicios)
+        while lo < hi:
+            meio = (lo + hi) // 2
+            if self.inicios[meio] <= pos:
+                lo = meio + 1
+            else:
+                hi = meio
+        return self.numeros[lo - 1] if lo else None
+
+    def lugar_em(self, pos):
+        """'catálogo', um número de página, ou None quando a estrutura não diz."""
+        num = self.objeto_em(pos)
+        if num is None:
+            return None
+        if num in self.catalogos:
+            return "catálogo"
+        return self.pagina_de.get(num)
+
+
+def _texto_do_lugar(lugares):
+    "De um conjunto de lugares (números de página, 'catálogo', None) para o português do"
+
+    paginas = sorted(l for l in lugares if isinstance(l, int))
+    partes = []
+    if "catálogo" in lugares:
+        partes.append("configuração geral do documento (vale para todas as páginas)")
+    if paginas:
+        mostradas = ", ".join(str(p) for p in paginas[:_MAX_PAGINAS_NO_AVISO])
+        resto = len(paginas) - _MAX_PAGINAS_NO_AVISO
+        rotulo = "página" if len(paginas) == 1 else "páginas"
+        partes.append(f"{rotulo} {mostradas}" + (f" e mais {resto}" if resto > 0 else ""))
+    if None in lugares:
+        partes.append(SEM_PAGINA if not partes else "outros pontos de página não identificada")
+    return "; ".join(partes)
 
 
 def varrer_pdf(dados):
@@ -734,10 +851,17 @@ def varrer_pdf(dados):
                 "aviso": "arquivo ilegível NÃO é arquivo limpo",
                 "achados": [], "camada_profunda": TEM_CAMADA_PROFUNDA}
 
+    mapa = _MapaDePaginas(dados)
     for ident, sev, rx, desc in _TOKENS_PDF:
         m = re.search(rx, dados)
-        if m:
-            achados.append(_achado(ident, sev, desc, m.group(0).decode("latin-1")))
+        if not m:
+            continue
+        if ident == "acao_automatica":
+
+            onde = _texto_do_lugar({mapa.lugar_em(x.start()) for x in re.finditer(rx, dados)})
+            achados.append(_achado(ident, sev, f"{desc}; onde: {onde}", m.group(0).decode("latin-1"), onde))
+            continue
+        achados.append(_achado(ident, sev, desc, m.group(0).decode("latin-1")))
 
 
     eofs = dados.count(b"%%EOF")
@@ -749,7 +873,25 @@ def varrer_pdf(dados):
 
     tem_imagem = bool(re.search(rb"/Subtype\s*/Image|/DCTDecode|/JPXDecode|/CCITTFaxDecode",
                                 dados))
-    for dec in _streams(dados):
+
+
+    invisiveis = {}
+    ja_acusados = {a["id"] for a in achados}
+    for pos, dec in _streams(dados):
+        if mapa.objeto_em(pos) in mapa.comprimidos:
+
+
+            for ident, sev, rx, desc in _TOKENS_PDF:
+                m = re.search(rx, dec)
+                if m and ident not in ja_acusados:
+                    ja_acusados.add(ident)
+                    achados.append(_achado(ident, sev, f"{desc}; onde: {SEM_PAGINA} (o arquivo guarda a "
+                                           "estrutura comprimida)", m.group(0).decode("latin-1"), SEM_PAGINA))
+            continue
+        soltos = []
+        _invisiveis(dec.decode("latin-1", "replace"), soltos, "content stream")
+        for a in soltos:
+            invisiveis.setdefault(a["id"], (a, set()))[1].add(mapa.lugar_em(pos))
         for bloco in _RE_BT_ET.findall(dec):
             if not _RE_MOSTRA_TEXTO.search(bloco):
                 continue
@@ -770,7 +912,9 @@ def varrer_pdf(dados):
                         "texto_invisivel_render", "alta",
                         "texto em modo de renderização invisível (3 Tr) SEM nenhuma imagem "
                         "no arquivo — não há camada de OCR que justifique", amostra))
-        _invisiveis(dec.decode("latin-1", "replace"), achados, "content stream")
+    for a, lugares in invisiveis.values():
+        onde = _texto_do_lugar(lugares)
+        achados.append(_achado(a["id"], a["severidade"], f"{a['descricao']}; onde: {onde}", a["trecho"], onde))
 
     return _resultado(achados, "pdf")
 
