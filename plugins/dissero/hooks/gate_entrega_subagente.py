@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-'gate_entrega_subagente.py — hook SubagentStop: rede de segurança do gate de entrega.'
+'gate_entrega_subagente.py — hook SubagentStop: a devolução do agente de capítulo.'
 
 
 
@@ -19,36 +19,7 @@
 
 
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-import sys, os, json, re, time
+import sys, os, json, re
 
 try:
     sys.stdout.reconfigure(encoding="utf-8")
@@ -62,22 +33,6 @@ try:
     import gate_entrega as _ge
 except Exception:
     _ge = None
-
-
-
-PRAZO_HOOK_S = 40
-
-FOLGA_S = 5
-
-
-def _detectar(nome, inp, cwd=None):
-    'A entrega de peça desta chamada, pela detecção do gate PreToolUse, com o .docx achado também'
-
-
-    if _ge is None:
-        return None
-    with _ge._modo_caminho(nome, inp, cwd if cwd is not None else os.getcwd()):
-        return _ge._detectar_entrega(nome, inp)
 
 
 def _tool_uses(obj):
@@ -104,42 +59,6 @@ def _tool_uses(obj):
     return out
 
 
-def _coletar(chamadas, out, vistos, cwd=None):
-    """Acrescenta a `out` cada chamada que é entrega de peça, sem repetir a mesma chamada."""
-    for nome, inp in chamadas:
-        alvo = _detectar(nome, inp, cwd)
-        if not alvo:
-            continue
-        try:
-            chave = (nome, json.dumps(inp, sort_keys=True, ensure_ascii=False))
-        except Exception:
-            chave = (nome, repr(inp))
-        if chave not in vistos:
-            vistos.add(chave)
-            out.append((alvo, nome, inp))
-
-
-def _entregas(path, cwd=None):
-    '[(alvo, nome da ferramenta, input)] de cada entrega de peça do transcript, na ordem.'
-
-
-    return _entregas_de(_chamadas_brutas(path), cwd)
-
-
-def _entregas_de(chamadas, cwd=None):
-    """[(alvo, nome da ferramenta, input)] de cada chamada que é entrega de peça, sem repetir."""
-    out, vistos = [], set()
-    _coletar(chamadas, out, vistos, cwd)
-    return out
-
-
-def _chamadas(path):
-    """(nome, input) de cada tool_use do transcript, como em `_entregas`."""
-    if _ge is None:
-        return []
-    return _chamadas_brutas(path)
-
-
 def _chamadas_brutas(path):
     '(nome, input) de cada tool_use do transcript: JSONL (uma linha por evento) ou, sem nada'
 
@@ -163,208 +82,8 @@ def _chamadas_brutas(path):
     return out
 
 
-def _copia_de_pasta(chamadas, cwd):
-    'Motivo do block quando o subagente copiou ou arquivou uma pasta de caso com .docx para fora'
-
-
-    if isinstance(chamadas, str):
-        chamadas = _chamadas(chamadas)
-    for nome, inp in chamadas:
-        with _ge._modo_caminho(nome, inp, cwd):
-            recusa = _ge._recusa_pasta_de_caso(nome, inp, _ge._cwd_da_chamada(nome, inp, cwd))
-        if recusa:
-            return recusa
-    return None
-
-
-def _leitor_com_transcript(chamadas):
-    'Leitor de script que, quando o arquivo já não está em disco, usa o conteúdo do último Write'
-
-    escritas = {}
-    for nome, inp in chamadas:
-        fp, conteudo = inp.get("file_path"), inp.get("content")
-        if nome == "Write" and isinstance(fp, str) and isinstance(conteudo, str):
-            try:
-                escritas[_ge._chave_caminho(os.path.abspath(_ge._caminho_local(fp)))] = conteudo
-            except (OSError, ValueError):
-                continue
-
-    def ler(caminho):
-        texto, motivo = _ge._ler_script(caminho)
-        if texto is None and motivo == "nao_achado":
-            k = _ge._chave_caminho(caminho)
-            if k in escritas:
-                return escritas[k], None
-        return texto, motivo
-    return ler
-
-
-def _expandir_scripts(chamadas, cwd):
-    '(chamadas do transcript mais uma chamada sintética com o conteúdo de cada script que elas'
-
-    leitor = _leitor_com_transcript(chamadas)
-    out, fila, i = list(chamadas), list(chamadas), 0
-    while i < len(fila) and len(out) < 500:
-        nome, inp = fila[i]
-        i += 1
-        with _ge._modo_caminho(nome, inp, cwd):
-            novas, recusa = _ge._scripts_da_chamada(nome, inp, _ge._cwd_da_chamada(nome, inp, cwd), leitor)
-        if recusa:
-            return out, recusa
-        out += novas
-        fila += novas
-    return out, None
-
-
-def _nao_entendido(chamadas, cwd):
-    """Motivo do block da primeira chamada que cita .docx e que o gate não lê por inteiro, ou None."""
-    for nome, inp in chamadas:
-        with _ge._modo_caminho(nome, inp, cwd):
-            recusa = _ge._recusa_nao_entendido(nome, inp, _ge._cwd_da_chamada(nome, inp, cwd), depois=True)
-        if recusa:
-            return recusa
-    return None
-
-
-def _pendencias(chamadas, cwd):
-    'Motivo do block quando o subagente pediu a terceira via (`entregar --minuta-com-pendencias`,'
-
-
-
-    for nome, inp in chamadas:
-        with _ge._modo_caminho(nome, inp, cwd):
-            pedidos = _ge._pedidos_de_pendencias(nome, inp, _ge._cwd_da_chamada(nome, inp, cwd))
-        if pedidos:
-            return ("Subagente pediu a entrega da minuta com pendências, e subagente nunca entrega "
-                    "com pendências: a ordem é do advogado, a sessão principal é quem pergunta a "
-                    "ele. Diga ao advogado o que saiu e confira com `estado_peca.py pode-entregar "
-                    "--state <PECA_STATE do caso> --strict --docx <arquivo>`.")
-    return None
-
-
-def _entrega_no_transcript(path):
-    """O .docx da primeira entrega de peça do transcript, ou None."""
-    achados = _entregas(path)
-    return achados[0][0] if achados else None
-
-
 def _block(reason):
     return {"decision": "block", "reason": reason}
-
-
-def _julgar_chamada(alvo, nome, inp, cwd):
-    '(PECA_STATE que governa, origens em disco) de uma entrega do transcript, ou o block.'
-
-
-
-
-    cwd = _ge._cwd_da_chamada(nome, inp, cwd)
-
-
-    state_path, fora, recusa = _ge._state_da_entrega(nome, inp, alvo, cwd, depois=True)
-    if recusa:
-        return _block(f"Subagente entregou PEÇA ({_ge._nome(alvo)}) {recusa}")
-    recusa = _ge._recusa_entre_casos(nome, inp, alvo, cwd, depois=True)
-    if recusa:
-        return _block(f"Subagente entregou PEÇA ({_ge._nome(alvo)}) {recusa}")
-    recusa = _ge._recusa_origem(nome, inp, cwd, depois=True)
-    if recusa:
-        return _block(f"Subagente entregou PEÇA sem liberação: {recusa}")
-    conferir = []
-    if fora:
-
-
-        state_path, conferir, recusa = _ge._state_fora_de_caso(state_path, fora, nome, inp, cwd,
-                                                               depois=True)
-        if recusa:
-            return _block(f"Subagente entregou PEÇA ({_ge._nome(alvo)}) {recusa}")
-
-    origens = _ge._origens_da_entrega(nome, inp, cwd, depois=True) + conferir
-    recusa = _ge._recusa_upload(nome, inp, state_path, origens)
-    if recusa:
-        return _block(f"Subagente entregou PEÇA ({_ge._nome(alvo)}) {recusa}")
-    return state_path, origens
-
-
-def _decidir_entrega_sub(evento, runner=None, relogio=time.monotonic):
-    """Entregas de peça do subagente: dict de block OU None (sem bloqueio)."""
-    inicio = relogio()
-    if not isinstance(evento, dict):
-        return None
-    cwd = evento.get("cwd") if (isinstance(evento.get("cwd"), str) and evento.get("cwd").strip()) else os.getcwd()
-    chamadas = _chamadas(evento.get("agent_transcript_path"))
-    if not chamadas:
-        return None
-
-    chamadas, recusa = _expandir_scripts(chamadas, cwd)
-    if recusa:
-        return _block(f"Subagente rodou um script que o gate de entrega não leu, e a peça pode ter "
-                      f"saído sem conferência: {recusa} Diga ao advogado e confira o que saiu com "
-                      f"`estado_peca.py pode-entregar --state <PECA_STATE do caso> --strict --docx "
-                      f"<arquivo>`.")
-    recusa = _pendencias(chamadas, cwd)
-    if recusa:
-        return _block(recusa)
-    recusa = _nao_entendido(chamadas, cwd)
-    if recusa:
-        return _block(f"Subagente rodou um comando com .docx que o gate de entrega não lê por "
-                      f"inteiro, e a peça pode ter saído sem conferência: {recusa} Diga ao advogado "
-                      f"e confira o que saiu com `estado_peca.py pode-entregar --state <PECA_STATE "
-                      f"do caso> --strict --docx <arquivo>`.")
-    recusa = _copia_de_pasta(chamadas, cwd)
-    if recusa:
-        return _block(f"Subagente: {recusa}")
-    entregas = _entregas_de(chamadas, cwd)
-    if not entregas:
-        return None
-
-    runner = runner or _ge._runner_default
-
-
-
-    grupos = {}
-    for alvo, nome, inp in entregas:
-        with _ge._modo_caminho(nome, inp, cwd):
-
-            if _ge._arquivamento_em_versoes(nome, inp, alvo, _ge._cwd_da_chamada(nome, inp, cwd),
-                                            depois=True):
-                continue
-            r = _julgar_chamada(alvo, nome, inp, cwd)
-        if isinstance(r, dict):
-            return r
-        state_path, origens = r
-        g = grupos.setdefault(state_path, {"origens": [], "hashes": set(), "sem_origem": False})
-        if not origens:
-            g["sem_origem"] = True
-        for o in origens:
-            try:
-                h = _ge._sha256_arquivo(o)
-            except OSError:
-                continue
-            if h not in g["hashes"]:
-                g["hashes"].add(h)
-                g["origens"].append(o)
-
-    for state_path, g in grupos.items():
-        recusa = _ge._recusa_canonico(state_path, g["origens"])
-        if recusa:
-            return _block(f"Subagente entregou PEÇA sem liberação: {recusa}")
-
-    julgar = [(sp, o) for sp, g in grupos.items()
-              for o in g["origens"] + ([None] if g["sem_origem"] else [])]
-    for i, (state_path, origem) in enumerate(julgar):
-        if relogio() - inicio + _ge.PRAZO_PODE_ENTREGAR_S + FOLGA_S > PRAZO_HOOK_S:
-            faltam = ", ".join(os.path.basename(o) if o else "a peça registrada no PECA_STATE"
-                               for _sp, o in julgar[i:])
-            return _block(f"Subagente entregou {len(julgar)} peças, e o prazo deste hook "
-                          f"({PRAZO_HOOK_S} s) só comportou julgar {i}. Ficaram sem julgamento: "
-                          f"{faltam}. Rode `estado_peca.py pode-entregar --state <PECA_STATE do "
-                          f"caso> --strict --docx <arquivo>` em cada uma e diga ao advogado o "
-                          f"resultado.")
-        recusa = _ge._julgar_uma(state_path, origem, runner)
-        if recusa:
-            return _block(f"Subagente entregou PEÇA sem liberação: {recusa}")
-    return None
 
 
 
@@ -790,16 +509,12 @@ def _decidir_devolucao(evento):
                   f"memória do motor de cálculo. Não preencha lacuna para fechar a devolução.")
 
 
-def decidir_sub(evento, runner=None, relogio=time.monotonic):
-    'Núcleo: dado o evento SubagentStop, retorna dict de block OU None (sem bloqueio). A entrega'
+def decidir_sub(evento):
+    'Núcleo: dado o evento SubagentStop, retorna dict de block OU None (sem bloqueio). Se o'
 
 
 
 
-    if _ge is not None and _ge._rito_estrito():
-        saida = _decidir_entrega_sub(evento, runner=runner, relogio=relogio)
-        if saida:
-            return saida
     if not isinstance(evento, dict):
         return None
     return _decidir_devolucao(evento)
@@ -837,64 +552,20 @@ def _cli(argv):
     return 0 if not erros else 1
 
 
-def _transcript_pode_ter_peca(raw):
-    'O transcript do evento menciona `.docx` ou o tipo MIME do Word? Evento ou transcript'
-
-    try:
-        caminho = json.loads(raw).get("agent_transcript_path")
-        if not (isinstance(caminho, str) and os.path.isfile(caminho)):
-            return False
-        with open(caminho, encoding="utf-8", errors="replace") as fh:
-            texto = fh.read()
-    except Exception:
-        return False
-    return (_ge.pode_ser_peca(texto) if _ge is not None
-            else bool(re.search(r'\.docx|wordprocessingml|google-apps\.document', texto, re.I)))
-
-
-def _block_falha(erro, ausente=False, repetida=False):
-    'Block da falha do próprio gate. Nomeia só o tipo do erro: a mensagem dele pode trazer o'
-
-
-
-    if repetida:
-        if ausente:
-            motivo = "o arquivo do gate de entrega (hooks/gate_entrega.py) não carregou"
-            remedio = "atualize ou reinstale o plugin"
-        else:
-            motivo = f"o gate de entrega falhou ao conferir as entregas deste subagente ({erro})"
-            remedio = ("confira se o Python 3 roda (python --version) e atualize ou reinstale "
-                       "o plugin")
-        return _block(f"Gate de entrega do plugin: Pare de tentar concluir a entrega. Avise o "
-                      f"advogado que a peça não foi conferida porque {motivo} e diga o que "
-                      f"instalar ou consertar: {remedio}. A entrega não é liberada.")
-    return _block(f"Subagente: o gate de entrega falhou ao conferir as entregas deste subagente "
-                  f"({erro}) e não as libera sem a conferência. Diga ao advogado que a peça "
-                  f"entregue por este subagente não foi conferida pelo gate, e rode "
-                  f"`estado_peca.py pode-entregar --state <PECA_STATE do caso> --strict --docx "
-                  f"<arquivo>` em cada peça entregue.")
-
-
 def main():
-    'Lê o evento do stdin e imprime o block, quando há. A falha do gate (exceção interna, ou o'
-
+    'Lê o evento do stdin e imprime o block, quando há. Falha aberta: a falha do próprio gate'
 
     try:
         raw = sys.stdin.read()
     except Exception:
         raw = ""
-    ev = {}
     try:
         ev = json.loads(raw) if raw and raw.strip() else {}
         if _ge is None:
             raise ImportError("gate_entrega")
         saida = decidir_sub(ev)
-    except Exception as e:
-        repetida = isinstance(ev, dict) and ev.get("stop_hook_active") is True
-
-        estrito = os.environ.get("DSR_GATE_RITO_ESTRITO", "").strip() == "1"
-        saida = (_block_falha(type(e).__name__, ausente=_ge is None, repetida=repetida)
-                 if estrito and _transcript_pode_ter_peca(raw) else None)
+    except Exception:
+        saida = None
     if saida:
         print(json.dumps(saida, ensure_ascii=False))
     return 0
