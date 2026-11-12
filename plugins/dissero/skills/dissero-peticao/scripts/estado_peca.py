@@ -98,9 +98,6 @@ LINT_PECA = os.path.join(AQUI, "..", "..", "dissero-visual-law", "scripts", "lin
 
 
 
-
-
-
 LINT_TIMEOUT_S = 8
 
 

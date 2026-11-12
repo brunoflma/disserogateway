@@ -1,4 +1,4 @@
-# Dissero 3.3.0
+# Dissero 3.3.1
 
 Elaboração jurídica no Claude, da leitura dos autos à peça com a sua voz.
 
@@ -10,5 +10,6 @@ sua banca.
 - Para começar, conte o caso na conversa: o Dissero conduz os próximos passos.
 - Toda peça é uma minuta para revisão do advogado. Assinatura, protocolo e decisão jurídica
   continuam com você.
-- Para atualizar: no Cowork (claude.ai ou Desktop), Personalização > Plugins > Dissero >
-  Upload new version, com o arquivo que o conector entrega; no Claude Code, pelo canal do plugin.
+- Para atualizar: no Cowork (claude.ai ou Desktop), pelo catálogo do Dissero, em Personalização >
+  Plugins; peça «atualizar o Dissero» na conversa e o conector devolve o passo a passo. No Claude
+  Code, pelo canal do plugin.

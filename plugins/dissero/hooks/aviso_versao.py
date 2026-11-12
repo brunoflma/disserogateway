@@ -41,6 +41,9 @@
 
 
 
+
+
+
 from __future__ import annotations
 
 import datetime as dt
@@ -252,10 +255,12 @@ MSG_PRAZO = (PROVENIENCIA + "Há a versão {pv} do plugin, publicada em {em}. Es
              "Claude Code e abra de novo para usar a versão nova. " + ESTADO)
 
 
+SE_NAO_MUDAR = ("Se a versão não mudar, ou se o plugin foi enviado por arquivo, peça na conversa "
+                "'atualizar o Dissero': o conector do Dissero devolve o passo a passo.")
 MSG_SINCRONIZAR = (PROVENIENCIA + "Há a versão {pv} do plugin, publicada em {em}. Esta cópia veio da sua conta "
-                   "e está na versão {local}. A cópia da conta não se atualiza sozinha. Primeiro, atualize o "
-                   "plugin na conta: em Personalizar > Plugins (Desktop) ou Personalização > Plugins "
-                   "(claude.ai), clique em Update no marketplace da Dissero. Depois, feche o Claude Code e abra de "
+                   "e está na versão {local}. Primeiro, atualize o plugin na conta: em Personalizar > Plugins "
+                   "(Desktop) ou Personalização > Plugins (claude.ai), sincronize o catálogo do Dissero e confira a "
+                   "versão na página do plugin. " + SE_NAO_MUDAR + " Depois, feche o Claude Code e abra de "
                    "novo. Ao abrir, ele sincroniza a cópia da conta e avisa que os plugins mudaram. " + ESTADO)
 
 
@@ -283,10 +288,9 @@ CONECTOR = (" Para a atualização passar a ser automática na aba Code, autoriz
 
 def _texto_conta(d, versao_local, pv, ligado):
     base = (PROVENIENCIA + f"Há a versão {pv} do plugin, publicada em {_data(d.get('em'))}. Esta cópia veio "
-            f"da sua conta e está na versão {versao_local}. A cópia da conta não se atualiza sozinha. Para "
-            f"atualizar, clique em Update no marketplace da Dissero, em Personalizar > Plugins (Desktop) ou "
-            f"Personalização > Plugins (claude.ai). Se o plugin foi enviado por arquivo, use Upload new "
-            f"version com o arquivo da versão nova.")
+            f"da sua conta e está na versão {versao_local}. Para atualizar, em Personalizar > Plugins "
+            f"(Desktop) ou Personalização > Plugins (claude.ai), sincronize o catálogo do Dissero e confira a "
+            f"versão na página do plugin. " + SE_NAO_MUDAR)
     if not ligado:
         base += CONECTOR
     return base + " " + ESTADO
