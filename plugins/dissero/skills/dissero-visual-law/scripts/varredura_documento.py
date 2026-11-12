@@ -84,6 +84,57 @@ ORDEM_SEV = {"alta": 3, "media": 2, "baixa": 1}
 _MAX_STREAM = 8_000_000
 
 
+
+
+
+
+
+
+
+_INVISIVEIS_PDF = frozenset((0x200B, 0x200C, 0x200D, 0x2060, 0xFEFF))
+_RE_BFCHAR = re.compile(rb"beginbfchar(.*?)endbfchar", re.S)
+_RE_BFRANGE = re.compile(rb"beginbfrange(.*?)endbfrange", re.S)
+_RE_HEX = re.compile(rb"<([0-9A-Fa-f\s]*)>")
+_RE_LINHA_RANGE = re.compile(rb"<([0-9A-Fa-f]+)>\s*<([0-9A-Fa-f]+)>\s*(\[[^\]]*\]|<[0-9A-Fa-f\s]*>)")
+
+
+def _unidades_utf16(hexa):
+    h = re.sub(rb"\s+", b"", hexa)
+    try:
+        return [int(h[i:i + 4], 16) for i in range(0, len(h) - len(h) % 4, 4)]
+    except ValueError:
+        return []
+
+
+def _cmap_devolve_invisivel(dec):
+    """True se o stream é uma tabela ToUnicode que devolve caractere de largura zero. Nunca levanta."""
+    try:
+        if b"beginbfchar" not in dec and b"beginbfrange" not in dec:
+            return False
+        for bloco in _RE_BFCHAR.findall(dec):
+            pares = _RE_HEX.findall(bloco)
+            for destino in pares[1::2]:
+                if any(u in _INVISIVEIS_PDF for u in _unidades_utf16(destino)):
+                    return True
+        for bloco in _RE_BFRANGE.findall(dec):
+            for ini, fim, dst in _RE_LINHA_RANGE.findall(bloco):
+                if dst.startswith(b"["):
+                    if any(u in _INVISIVEIS_PDF for d in _RE_HEX.findall(dst) for u in _unidades_utf16(d)):
+                        return True
+                    continue
+                us = _unidades_utf16(dst[1:-1])
+                if not us:
+                    continue
+                if any(u in _INVISIVEIS_PDF for u in us[:-1]):
+                    return True
+                n = min(max(int(fim, 16) - int(ini, 16), 0), 0xFFFF)
+                if any(us[-1] <= alvo <= us[-1] + n for alvo in _INVISIVEIS_PDF):
+                    return True
+    except Exception:
+        return False
+    return False
+
+
 def _achado(ident, severidade, descricao, trecho="", parte=""):
     '`parte` é ONDE, dentro do arquivo, o achado está: `""` para o corpo'
 
@@ -888,10 +939,11 @@ def varrer_pdf(dados):
                     achados.append(_achado(ident, sev, f"{desc}; onde: {SEM_PAGINA} (o arquivo guarda a "
                                            "estrutura comprimida)", m.group(0).decode("latin-1"), SEM_PAGINA))
             continue
-        soltos = []
-        _invisiveis(dec.decode("latin-1", "replace"), soltos, "content stream")
-        for a in soltos:
-            invisiveis.setdefault(a["id"], (a, set()))[1].add(mapa.lugar_em(pos))
+        if _cmap_devolve_invisivel(dec):
+            invisiveis.setdefault("caractere_invisivel", (_achado(
+                "caractere_invisivel", "media",
+                "caractere de largura zero no texto de uma fonte do documento — some na tela, "
+                "entra no texto extraído", "(caractere invisível removido da amostra)"), set()))[1].add(None)
         for bloco in _RE_BT_ET.findall(dec):
             if not _RE_MOSTRA_TEXTO.search(bloco):
                 continue

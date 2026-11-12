@@ -174,7 +174,11 @@ def _travar(p):
         try:
             os.close(os.open(trava, os.O_CREAT | os.O_EXCL | os.O_WRONLY))
             return trava
-        except FileExistsError:
+        except (FileExistsError, PermissionError):
+
+
+
+
             try:
                 if time.time() - os.path.getmtime(trava) > TRAVA_VELHA_S:
                     os.remove(trava)
