@@ -25,7 +25,8 @@ Proteções invioláveis:
   1. Parágrafos com <w:numPr> não são tocados.
   2. Drawings nunca são removidos (screenshots de prova têm descr="conteúdo gerado").
   3. Validação obrigatória ao final.
-Saída: 0 gerado · 1 uso · 2 OOXML inválido · 3 drawing perdido.
+Saída: 0 gerado · 1 uso · 2 OOXML inválido · 3 drawing perdido · 9 minuta de peça com tese
+jurídica sem a escolha do advogado ou, no método completo, com etapa por fazer (`escolha_do_metodo.py`).
 """
 import html
 import os
@@ -45,6 +46,14 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import visual_law_core as core
 import carimbo_timbrado
 import vocabulario_interno
+try:
+    import escolha_do_metodo
+except Exception:
+    escolha_do_metodo = None
+
+
+
+EXIT_FALTA_ESCOLHA_OU_ETAPA = 9
 
 
 FLAGS_CONHECIDAS = ("--identidade", "--manter-identidade", "--fragmento", "--minuta-pendencias")
@@ -97,6 +106,19 @@ def transform(src_docx, out_docx, identidade="fragmento", driver=None, minuta_pe
         texts_before = [core.straight_quotes(t) for t in
                         re.findall(r"<w:t[^>]*>([^<]*)</w:t>", before)]
         n_drawings_before = before.count("<w:drawing")
+
+        pend_pesquisa = []
+        if minuta_pendencias and escolha_do_metodo is not None:
+
+
+
+            _paras = [html.unescape("".join(re.findall(r"<w:t[^>]*>([^<]*)</w:t>", p)))
+                      for p in re.findall(r"<w:p[ >].*?</w:p>", before, re.S)]
+            pend_pesquisa, _parada = escolha_do_metodo.exigir_para_minuta(
+                "\n".join(_paras), os.path.dirname(os.path.abspath(src_docx)))
+            if _parada:
+                print(_parada)
+                sys.exit(EXIT_FALTA_ESCOLHA_OU_ETAPA)
 
         core.universal_pass(work, identidade=identidade)
 
@@ -199,6 +221,8 @@ def transform(src_docx, out_docx, identidade="fragmento", driver=None, minuta_pe
             print("MINUTA COM PENDÊNCIAS: faixa no corpo e marca gravadas. Não é a peça "
                   "liberada: não passou pela revisão completa e não se protocola como está.")
             _imprimir_pendencias(realcados_enc, realcados_marc)
+            for _frase in pend_pesquisa:
+                print(f"  · {_frase}")
         return same
     finally:
 

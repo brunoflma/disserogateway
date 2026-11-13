@@ -70,6 +70,14 @@ try:
     import perfil_advogado as _pa
 except Exception:
     _pa = None
+try:
+    import escolha_do_metodo
+except Exception:
+    escolha_do_metodo = None
+
+
+
+EXIT_FALTA_ESCOLHA_OU_ETAPA = 9
 
 
 
@@ -305,6 +313,18 @@ def build(md_path, out_docx, identidade=False, force=False, check_only=False,
         src = f.read()
 
     src = core.normalizar_datas(src)
+
+    if minuta_pendencias and escolha_do_metodo is not None:
+
+
+
+
+        _pend_escolha, _parada = escolha_do_metodo.exigir_para_minuta(
+            src, os.path.dirname(os.path.abspath(md_path)))
+        if _parada:
+            print(_parada)
+            sys.exit(EXIT_FALTA_ESCOLHA_OU_ETAPA)
+        pendencias.extend((p, None) for p in _pend_escolha)
 
     if minuta_pendencias:
         src, _marcadores = realcar_marcadores(src)

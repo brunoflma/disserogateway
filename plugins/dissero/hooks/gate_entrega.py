@@ -75,12 +75,13 @@ _CMD_ENTREGAR = (f'{"python" if os.name == "nt" else "python3"} "{ESTADO_PECA}" 
 
 
 
-_DESTINO_PENDENCIAS = "<caso>/entrega"
-_CMD_PENDENCIAS = ('`estado_peca.py entregar --state "<PECA_STATE.json do caso>" '
-                   f'--destino "{_DESTINO_PENDENCIAS}" --minuta-com-pendencias --ordem-do-advogado '
-                   '"<palavras dele>"`')
-_OFERTA_PENDENCIAS = ("Se o advogado ordenar, a minuta sai com as pendências marcadas, pelo "
-                      f"{_CMD_PENDENCIAS}; ofereça e deixe a escolha com ele.")
+_SITUACAO_ESCOLHA = '`escolha_do_metodo.py situacao --pasta "<pasta da peça>"`'
+_OFERTA_PENDENCIAS = ("Se a peça não liberar, a minuta com as pendências marcadas segue a escolha "
+                      f"que o advogado gravou no começo ({_SITUACAO_ESCOLHA} a mostra): na minuta "
+                      "rápida, gere e entregue a minuta pelo comando da referência da minuta com "
+                      "pendências; no método completo, faça ou tente (e registre) a etapa que o "
+                      "gerador apontar como faltante, e gere de novo. Sem escolha gravada, em peça "
+                      "com tese jurídica, pergunte a ele com o texto fixo antes.")
 _MSG_OFICIAL = ("Não copie a peça à mão (`cp`, `Copy-Item` ou outro comando). Entregue pelo "
                 "comando oficial, com o caminho literal do PECA_STATE.json do caso e da pasta de "
                 f"destino: `{_CMD_ENTREGAR}`. Ele confere a peça aprovada e faz a cópia. "
