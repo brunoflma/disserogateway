@@ -74,6 +74,7 @@
 
 
 
+
 import sys, os, re, json, argparse, subprocess, hashlib, math, shutil, tempfile, zipfile
 import datetime
 import xml.etree.ElementTree as ET
@@ -90,6 +91,10 @@ try:
     import caso_raiz
 except Exception:
     caso_raiz = None
+try:
+    import aprovacao_na_conversa
+except Exception:
+    aprovacao_na_conversa = None
 GATE_CONSELHO = os.path.join(AQUI, "conselho_gate.py")
 _RE_CASO_ID = re.compile(r"^caso-[0-9a-f]{12}$")
 LINT_PECA = os.path.join(AQUI, "..", "..", "dissero-visual-law", "scripts", "lint_peca.py")
@@ -479,7 +484,82 @@ def _relativo_ao_estado(state_path, caminho):
     return rel.replace(os.sep, "/")
 
 
-def _gravar(path, st):
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+SELO_REGISTRO = "selo_registro"
+
+
+def _par_do_selo(path):
+    return path + ".selo"
+
+
+def _selo_do_registro(d):
+    base = {k: v for k, v in d.items() if k != SELO_REGISTRO}
+    return hashlib.sha256(json.dumps(base, ensure_ascii=False, sort_keys=True,
+                                     separators=(",", ":")).encode("utf-8")).hexdigest()
+
+
+def _rastro_da_copia_nova(d):
+    fases = d.get("fases") if isinstance(d.get("fases"), dict) else {}
+    return bool(d.get("registro_alterado")) or any(
+        isinstance(v, dict) and "aprovacao_conversa" in v for v in fases.values())
+
+
+def situacao_do_registro(path):
+    '«selado», «sem_selo» (cópia anterior), «alterado» (selo que não bate, ou tirado) ou'
+
+    try:
+        with open(path, encoding="utf-8-sig") as fh:
+            d = json.load(fh)
+    except FileNotFoundError:
+        return "inexistente"
+    except Exception:
+        return "ilegivel"
+    if not isinstance(d, dict):
+        return "ilegivel"
+    par = None
+    if os.path.isfile(_par_do_selo(path)):
+        try:
+            with open(_par_do_selo(path), encoding="utf-8") as fh:
+                par = json.load(fh)
+        except Exception:
+            return "alterado"
+        if not (isinstance(par, dict) and par.get("selo")):
+            return "alterado"
+    if SELO_REGISTRO not in d:
+        return "alterado" if (par or _rastro_da_copia_nova(d)) else "sem_selo"
+    if d.get(SELO_REGISTRO) != _selo_do_registro(d) or par is None or par.get("selo") != d.get(SELO_REGISTRO):
+        return "alterado"
+    return "selado"
+
+
+def _escrever_selado(path, disco, novo=False):
+    disco = {k: v for k, v in disco.items() if k != SELO_REGISTRO}
+    if not novo and situacao_do_registro(path) == "alterado" and not disco.get("registro_alterado"):
+        disco["registro_alterado"] = {
+            "em": _agora_iso(),
+            "motivo": "o registro de andamento foi alterado fora do script depois da última gravação"}
+    disco[SELO_REGISTRO] = _selo_do_registro(disco)
+    open(path, "w", encoding="utf-8").write(json.dumps(disco, ensure_ascii=False, indent=2))
+    tmp = _par_do_selo(path) + ".parcial"
+    with open(tmp, "w", encoding="utf-8") as fh:
+        json.dump({"selo": disco[SELO_REGISTRO], "em": _agora_iso()}, fh)
+    os.replace(tmp, _par_do_selo(path))
+
+
+def _gravar(path, st, novo=False):
     disco = dict(st)
     if _full_str(disco.get("arquivo_canonico")):
         disco["arquivo_canonico"] = _relativo_ao_estado(path, disco["arquivo_canonico"])
@@ -487,7 +567,7 @@ def _gravar(path, st):
         disco["anexos"] = [dict(a, arquivo=_relativo_ao_estado(path, a["arquivo"]))
                            if isinstance(a, dict) and _full_str(a.get("arquivo")) else a
                            for a in disco["anexos"]]
-    open(path, "w", encoding="utf-8").write(json.dumps(disco, ensure_ascii=False, indent=2))
+    _escrever_selado(path, disco, novo)
 
 
 
@@ -775,7 +855,7 @@ def _recomeco(args):
             atual["atualizado"] = args.ts
 
 
-        open(args.state, "w", encoding="utf-8").write(json.dumps(atual, ensure_ascii=False, indent=2))
+        _escrever_selado(args.state, atual)
         return None, [], _saida("dispensa_registrada", atual, motivos, 0)
     if not getattr(args, "recomecar", False):
         return None, [], _saida("estado_existente", None, [
@@ -922,7 +1002,7 @@ def cmd_init(args):
                 f"visual_law (`avancar --fase visual_law --artefato <nome do .docx> "
                 f"--entrega-por-download`); sem a declaração, o `pode-entregar` barra no fim.")
     validar_contrato(st)
-    _gravar(args.state, st)
+    _gravar(args.state, st, novo=True)
     return _saida("inicializado", st, motivos, 0)
 
 
@@ -1214,9 +1294,50 @@ def _squad_do_caso(state_path):
 
 
 def _aprovacao_da_fase(st, state_path, F):
+    'O rótulo da aprovação, com o selo do registro conferido: registro alterado fora do script'
+
+    apr = _aprovacao_da_fase_sem_selo(st, state_path, F)
+    if not apr or apr.get("origem") not in ("checkpoint", "conversa"):
+        return apr
+    marca = st.get("registro_alterado")
+    if marca or situacao_do_registro(state_path) == "alterado":
+        quando = f" (marcado em {marca.get('em')})" if isinstance(marca, dict) and marca.get("em") else ""
+        return {"origem": "declarada", "detalhe": "o registro de andamento da peça foi alterado fora do "
+                f"script{quando}, e a aprovação gravada nele não vale como conferida"}
+    return apr
+
+
+def _aprovacao_da_fase_sem_selo(st, state_path, F):
     'Rótulo da aprovação do advogado na fase F, RE-DERIVADO do estado do mundo (arquivo e'
 
 
+
+
+
+
+
+    apr = _aprovacao_por_checkpoint(st, state_path, F)
+    if not apr or apr.get("origem") != "declarada":
+        return apr
+    reg = st["fases"].get(F) if isinstance(st["fases"].get(F), dict) else {}
+    conv = reg.get("aprovacao_conversa")
+    if not isinstance(conv, dict):
+        return apr
+    if conv.get("estado") != "conferida":
+        return dict(apr, detalhe=f"{apr['detalhe']}; na conversa, "
+                    f"{conv.get('motivo') or 'a aprovação não foi conferida'}")
+    sha = reg.get("artefato_sha256")
+    art = reg.get("artefato").strip() if _full_str(reg.get("artefato")) else ""
+    if _full_str(sha):
+        arquivo = _arquivo_do_artefato(state_path, art)
+        if not os.path.isfile(arquivo) or _sha256(arquivo) != sha:
+            return dict(apr, detalhe=f"o arquivo «{art}» mudou ou sumiu depois da resposta do advogado "
+                        "à pergunta de aprovação; a aprovação dele não alcança o texto de agora")
+    return {"origem": "conversa", "fonte": conv.get("fonte"), "resposta": conv.get("resposta")}
+
+
+def _aprovacao_por_checkpoint(st, state_path, F):
+    """A aprovação pelo checkpoint do squad (A3), ou declarada com o motivo."""
     reg = st["fases"].get(F) if isinstance(st["fases"].get(F), dict) else {}
     if reg.get("status") != "concluida":
         return None
@@ -1282,6 +1403,11 @@ def _frase_aprovacao(F, apr):
                 f"por {apr['por']} em {apr['em']}.")
     if apr["origem"] == "dispensada_por_urgencia":
         return f"Aprovação do advogado ({nome}): dispensada por urgência do prazo."
+    if apr["origem"] == "conversa":
+        resp = " ".join(str(apr.get("resposta") or "").split())
+        resp = resp if len(resp) <= 80 else resp[:79] + "…"
+        return (f"Aprovação do advogado ({nome}): conferida na conversa, na resposta dele à pergunta "
+                f"de aprovação («{resp}»).")
     return f"Aprovação do advogado ({nome}): declarada, sem registro que a confirme — {apr['detalhe']}."
 
 
@@ -1528,12 +1654,19 @@ def cmd_avancar(args):
         st["atualizado"] = args.ts
     avisos = []
     reg.pop("aprovacao", None)
+    reg.pop("aprovacao_conversa", None)
     reg.pop("coerencia_pedidos", None)
     if novo_status == "concluida":
         st["fase_atual"] = F
         avisos += avisos_mapa
 
         if F in FASES_COM_APROVACAO:
+            if ev.get("dispensa_por_urgencia") is not True:
+                reg["aprovacao_conversa"] = (
+                    aprovacao_na_conversa.conferir(F, state=args.state, artefato=args.artefato.strip())
+                    if aprovacao_na_conversa is not None else
+                    {"estado": "nao_conferida", "fonte": None, "resposta": None,
+                     "motivo": "o leitor da conversa não está nesta cópia do plugin"})
             apr = _aprovacao_da_fase(st, args.state, F)
             reg["aprovacao"] = apr
             avisos.append(_frase_aprovacao(F, apr))
@@ -2406,12 +2539,17 @@ PROP_MINUTA_PENDENCIAS = "DSRMinutaPendencias"
 BUILD_DOCX = os.path.join(AQUI, "..", "..", "dissero-visual-law", "scripts", "build_docx.py")
 ORDEM_MIN_CHARS = 8
 
+
+
+
+
+
 TERCEIRA_VIA_O_QUE = (
-    "Primeiro proponha cumprir as pendências; é o recomendado antes da entrega. Se o advogado "
-    "ordenar, nas palavras dele, o documento pode sair agora como MINUTA COM PENDÊNCIAS: leva a "
-    "marca permanente de minuta, os trechos em aberto ficam realçados, a lista do que falta "
-    "acompanha a entrega e a revisão fica sob a responsabilidade dele. Também pode não gerar "
-    "nada agora. A escolha é dele.")
+    "A peça ainda não está liberada. A minuta com pendências sai pelo caminho que o advogado "
+    "escolheu no começo: na minuta rápida, sai agora, com a marca permanente de minuta, os trechos "
+    "em aberto realçados e a lista do que falta; no método completo, primeiro se faz ou se tenta a "
+    "etapa que falta, e a minuta sai em seguida. A revisão e o protocolo continuam com ele.")
+ESCOLHA_DO_METODO = os.path.join(AQUI, "escolha_do_metodo.py")
 
 
 def _entrega_do_caso(state):
@@ -2424,9 +2562,11 @@ def _entrega_do_caso(state):
 
 
 def _comando_terceira_via(state):
-    return (f'python "{os.path.abspath(os.path.join(AQUI, "estado_peca.py"))}" entregar '
-            f'--state "{os.path.abspath(state)}" --destino "{_entrega_do_caso(state)}" '
-            f'--minuta-com-pendencias --ordem-do-advogado "<palavras literais do advogado>"')
+    pasta = os.path.dirname(os.path.abspath(state))
+    return (f'python "{os.path.abspath(ESCOLHA_DO_METODO)}" situacao --pasta "{pasta}" '
+            f'(diz a escolha e a etapa que falta); na minuta rápida, ou com as etapas do método '
+            f'completo feitas ou tentadas: python "{os.path.abspath(BUILD_DOCX)}" '
+            f'"{pasta}{os.sep}<base>.md" "{pasta}{os.sep}<base>-minuta.docx" --identidade --minuta-pendencias')
 
 
 def _terceira_via(state):
@@ -2912,11 +3052,10 @@ def cmd_entregar(args):
     ordem = _ordem_normalizada(ordem_crua)
     if via and len(ordem) < ORDEM_MIN_CHARS:
         return _recusa_entrega(None, "contrato_invalido",
-                               f"A minuta com pendências só sai por ordem do advogado: passe "
-                               f"--ordem-do-advogado com as palavras dele, literais, tiradas da "
-                               f"mensagem em que ele ordenou (pelo menos {ORDEM_MIN_CHARS} "
-                               f"caracteres). Sem a ordem dele, ofereça a escolha e espere a "
-                               f"resposta.", exit_code=2)
+                               f"Este caminho exige --ordem-do-advogado com as palavras dele "
+                               f"(pelo menos {ORDEM_MIN_CHARS} caracteres), e não é mais o da minuta: "
+                               f"ela sai pelo gerador, seguindo a escolha que o advogado gravou no "
+                               f"começo: {_comando_terceira_via(args.state)}.", exit_code=2)
     if not via and ordem_crua is not None:
         return _recusa_entrega(None, "contrato_invalido",
                                "--ordem-do-advogado só vale com --minuta-com-pendencias.",

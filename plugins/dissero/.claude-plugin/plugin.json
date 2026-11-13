@@ -1,7 +1,7 @@
 {
   "name": "dissero",
   "description": "Elaboração jurídica no Claude, da leitura dos autos à peça com a sua voz. O Dissero organiza os fatos, calcula o prazo, lê os documentos, confere os fundamentos na fonte e propõe a estratégia para você aprovar. Entrega a minuta em Word, no papel e na voz da banca, com documentos numerados, guia de juntada e os pontos de revisão à vista, depois de uma revisão proporcional ao risco. Toda peça é minuta: a decisão, a assinatura e o protocolo continuam com o advogado.",
-  "version": "3.3.1",
+  "version": "3.3.2",
   "author": {
     "name": "Dissero"
   }
