@@ -1,4 +1,4 @@
-# Dissero 3.3.2
+# Dissero 3.3.3
 
 Elaboração jurídica no Claude, da leitura dos autos à peça com a sua voz.
 
@@ -6,6 +6,11 @@ Esta é a cópia instalada do plugin. Ela traz o que precisa rodar no seu ambien
 verificações, os cálculos e a montagem do Word) e o registro desta instalação. As regras de
 trabalho chegam pelo conector `dissero`, com o seu login, na versão liberada para a
 sua banca.
+
+Vincule os conectores Dissero e Zetema com a mesma Conta Google liberada pela banca.
+O cadastro é sincronizado: com a licença ativa do Dissero, o Zetema dispensa novo cadastro.
+Cada conector precisa de autorização própria. O guia está em
+https://dissero.bfldevlabs.studio/setup.
 
 - Para começar, conte o caso na conversa: o Dissero conduz os próximos passos.
 - Toda peça é uma minuta para revisão do advogado. Assinatura, protocolo e decisão jurídica

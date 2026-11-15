@@ -260,7 +260,8 @@ def _nota_conferencia(reg):
         return "escolha não conferida: registro anterior à conferência das palavras"
     if c.get("estado") == "conferida":
         return "escolha conferida nas mensagens dele"
-    return f"escolha não conferida nas mensagens dele: {c.get('motivo') or 'sem registro legível da conversa'}"
+
+    return "escolha não conferida nas mensagens dele: falta confirmar a resposta do advogado nesta conversa"
 
 
 def montar(modo, palavras, agora=None, anterior=None, conferencia=None):

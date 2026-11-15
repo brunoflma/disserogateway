@@ -3,6 +3,10 @@
     "dissero": {
       "type": "http",
       "url": "https://dissero.bfldevlabs.studio/mcp"
+    },
+    "zetema": {
+      "type": "http",
+      "url": "https://zetema.bfldevlabs.studio/mcp"
     }
   }
 }
