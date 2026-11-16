@@ -1848,7 +1848,8 @@ def _reverificar_conselho(cs_path, peca_risco, transcritos=None, session_id=None
                 cmd += ["--transcritos", _transc.strip()]
 
 
-            if not light:
+
+            if peca_risco == "alto":
                 cmd += ["--painel"]
         r = subprocess.run(cmd, capture_output=True, text=True, encoding="utf-8")
         o = json.loads((r.stdout or "").strip().splitlines()[-1])

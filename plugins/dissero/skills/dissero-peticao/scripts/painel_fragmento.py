@@ -178,19 +178,30 @@ SCRIPT_DO_MODELO = "painel-conselho.js"
 TAG_SCRIPT_DO_MODELO = '<script src="painel-conselho.js"></script>'
 
 
+SCRIPT_DO_MODELO_LIGHT = "painel-conselho-light.js"
+MSG_LIGHT_AUSENTE = (" Na Revisão Light, o script e '" + SKILL_DO_MODELO + "/references/"
+                     + SCRIPT_DO_MODELO_LIGHT + "', gravado na mesma pasta do .html.")
+
+
 class ModeloIncompleto(ValueError):
     pass
 
 
-def ler_modelo(caminho_html):
-    """O documento completo do plenario: o .html com o script dele inline."""
+def ler_modelo(caminho_html, light=False):
+    'O documento completo do plenario: o .html com o script dele inline. Com `light`, o script'
+
     with open(caminho_html, encoding="utf-8") as f:
         html = f.read()
     if TAG_SCRIPT_DO_MODELO not in html:
+        if light:
+            raise ModeloIncompleto("modelo do plenario sem a tag do script (%s): copia anterior a "
+                                   "Revisao Light, que nao tem como montar o painel dela."
+                                   % caminho_html + MSG_LIGHT_AUSENTE)
         return html
-    caminho_js = os.path.join(os.path.dirname(os.path.abspath(caminho_html)), SCRIPT_DO_MODELO)
+    nome = SCRIPT_DO_MODELO_LIGHT if light else SCRIPT_DO_MODELO
+    caminho_js = os.path.join(os.path.dirname(os.path.abspath(caminho_html)), nome)
     if not os.path.isfile(caminho_js):
-        raise ModeloIncompleto(MSG_MODELO_AUSENTE % caminho_js)
+        raise ModeloIncompleto(MSG_MODELO_AUSENTE % caminho_js + (MSG_LIGHT_AUSENTE if light else ""))
     with open(caminho_js, encoding="utf-8") as f:
         js = f.read()
     return html.replace(TAG_SCRIPT_DO_MODELO, "<script>" + js + "</script>", 1)
@@ -510,7 +521,7 @@ def montar_documento(painel_html, estado, state_path=None):
 
 
 CORTE_WIDGET, CORTE_WIDGET_CICLO = 600, 300
-TEXTOS_LONGOS = ("fundamentacao", "argumento_debate", "argumento", "fundamento", "texto")
+TEXTOS_LONGOS = ("fundamentacao", "argumento_debate", "argumento", "fundamento", "texto", "trecho")
 SEM_RENDER = ("painel", "lint")
 
 
@@ -533,6 +544,27 @@ def _cortar_textos(o, corte):
     if isinstance(o, list):
         return [_cortar_textos(v, corte) for v in o]
     return o
+
+
+def e_light(estado):
+    """Sessao da Revisao Light (`variante: light`): o painel e o dela, nao o plenario."""
+    return isinstance(estado, dict) and estado.get("variante") == "light"
+
+
+def com_catalogo(estado):
+    'Revisao Light: o estado com o catalogo de itens de cada mandato (`catalogo_light`), para o'
+
+
+
+    if not e_light(estado):
+        return estado
+    try:
+        sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+        import conselho_sessao_base as _b
+        cat = {m: [[i, t] for i, t, _a in itens] for m, itens in _b.CATALOGO_LIGHT.items()}
+    except Exception:
+        return estado
+    return dict(estado, catalogo_light=cat)
 
 
 def projetar(estado):
@@ -1146,18 +1178,6 @@ def main():
                          ensure_ascii=False))
         return 2
 
-
-    html = ""
-    if not args.placar or args.documento:
-        if not os.path.isfile(args.painel):
-            return _erro(MSG_MODELO_AUSENTE % args.painel)
-        try:
-            html = ler_modelo(args.painel)
-        except ModeloIncompleto as e:
-            return _erro(str(e))
-        except OSError as e:
-            return _erro("falha ao ler o painel: %s" % e)
-
     estado = None
     if args.state:
         if not os.path.isfile(args.state):
@@ -1166,6 +1186,22 @@ def main():
             estado = json.loads(_ler_texto(args.state))
         except Exception as e:
             return _erro("CONSELHO_STATUS.json ilegivel: %s" % e)
+    light = e_light(estado)
+    if light and args.placar:
+        return _erro("a Revisao Light nao tem placar: o painel dela ja e leve. Rode sem --placar e "
+                     "mostre o painel inteiro a cada movimento (regimento §1-B).")
+
+
+    html = ""
+    if not args.placar or args.documento:
+        if not os.path.isfile(args.painel):
+            return _erro(MSG_MODELO_AUSENTE % args.painel + (MSG_LIGHT_AUSENTE if light else ""))
+        try:
+            html = ler_modelo(args.painel, light)
+        except ModeloIncompleto as e:
+            return _erro(str(e))
+        except OSError as e:
+            return _erro("falha ao ler o painel: %s" % e)
 
 
 
@@ -1192,7 +1228,7 @@ def main():
     try:
 
         frag = (montar_placar(estado) if args.placar
-                else montar(html, projetar(estado), caminho_estado))
+                else montar(html, projetar(com_catalogo(estado)), caminho_estado))
     except ValueError as e:
         return _erro(str(e))
     except (TypeError, AttributeError) as e:
@@ -1207,7 +1243,7 @@ def main():
     documento = ""
     if args.documento:
         try:
-            _gravar_atomico(args.documento, montar_documento(html, estado, caminho_estado))
+            _gravar_atomico(args.documento, montar_documento(html, com_catalogo(estado), caminho_estado))
             documento = args.documento
         except (ValueError, OSError) as e:
             return _erro("falha ao gravar o documento autonomo: %s" % e)

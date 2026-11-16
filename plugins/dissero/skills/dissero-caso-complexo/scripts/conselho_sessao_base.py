@@ -517,14 +517,15 @@ def _proclamar_light(st, args):
     return {"placar": st["relator"]["placar"], "decisao": certo + "_light"}
 
 
-def _proximo_light(state):
-    return (f'Despache UM revisor (subagente distinto do autor; sem a ferramenta, o próprio agente em série, só '
-            f'em risco baixo), rode `conselho_sessao.py lint --state "{os.path.abspath(state)}"` e registre cada '
-            f'mandato na ordem (merito, coerencia, escrita, conformidade) com `mandato --id <mandato> --agente-id '
-            f'<id> --voto aprovar|devolver --fundamentacao "..." --itens <lista do catálogo>`, depois a síntese '
-            f'(`mandato --id relator`) e `proclamar`.')
+def _proximo_light(state, painel="painel_fragmento.py --registrar"):
+    return (f'Mostre ao advogado o painel da Revisão Light (`{painel}`, pela via da superfície, e `exibir --fase '
+            f'distribuicao`). Despache UM revisor (subagente distinto do autor; sem a ferramenta, o próprio agente '
+            f'em série, só em risco baixo), rode `conselho_sessao.py lint --state "{os.path.abspath(state)}"` e '
+            f'registre cada mandato na ordem (merito, coerencia, escrita, conformidade) com `mandato --id <mandato> '
+            f'--agente-id <id> --voto aprovar|devolver --fundamentacao "..." --itens <lista do catálogo>`, depois a '
+            f'síntese (`mandato --id relator`) e `proclamar`, emitindo e mostrando o painel a cada um.')
 
 # Tudo o que o principal usa, inclusive os nomes com sublinhado (o `import *` os pularia).
 __all__ = [_n for _n, _v in list(globals().items())
            if not _n.startswith("__") and type(_v) is not type(sys)]
-# selo dsr: sha256=55b9bb516510a81137c047b5faf83ab27a461594a75a360adc634f9caa9253c4
+# selo dsr: sha256=c3bd7f9b0240856a6b393b67829a3cbe8b47cbb2a32314030a24afb43666a608

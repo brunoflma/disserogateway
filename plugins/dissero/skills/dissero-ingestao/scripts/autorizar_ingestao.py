@@ -60,7 +60,7 @@ def _limiar():
 def _nota_limiar(limiar):
     """A frase do limiar, com a redação do gate."""
     if limiar == 0:
-        return "o limiar sem aval está desativado; páginas, sozinhas, não provam custo zero"
+        return "o limiar sem aval está desativado; páginas, sozinhas, não dispensam o aval"
     return (f"o limiar sem aval está configurado em {limiar} páginas: job com estimativa de "
             f"até {limiar} páginas passa sem aval, e sem estimativa o aval é exigido")
 
@@ -110,7 +110,7 @@ def main(argv=None):
         sys.stdout.reconfigure(encoding="utf-8")
     except Exception:
         pass
-    ap = argparse.ArgumentParser(description="Registra o aval de gasto em ingestão/OCR (Dissero §14)")
+    ap = argparse.ArgumentParser(description="Registra o aval de ingestão/OCR na nuvem (Dissero §14)")
     ap.add_argument("--session-id", dest="session_id", required=True)
     ap.add_argument("--max-chamadas", dest="max_chamadas", type=int, default=1)
     ap.add_argument("--max-paginas", dest="max_paginas", type=int, default=None)
@@ -129,7 +129,7 @@ def main(argv=None):
             return _saida({"ok": True, "existe": False, "caminho": alvo,
                            "chamadas_autorizadas": PADRAO_CHAMADAS,
                            "limiar_paginas_livre": limiar,
-                           "nota": "sem aval registrado — ingestão paga BLOQUEADA (§14); "
+                           "nota": "sem aval registrado — ingestão na nuvem BLOQUEADA (§14); "
                                    + _nota_limiar(limiar)})
         try:
             d = json.loads(open(alvo, encoding="utf-8").read())
@@ -139,7 +139,7 @@ def main(argv=None):
         return _saida({"ok": True, "existe": True, "caminho": alvo, "autorizacao": d,
                        "vale_para_esta_sessao": bool(vale),
                        "chamadas_autorizadas": (d.get("max_chamadas") if vale else PADRAO_CHAMADAS),
-                       "nota": "" if vale else "aval de OUTRA sessão: o gate o ignora (ingestão paga "
+                       "nota": "" if vale else "aval de OUTRA sessão: o gate o ignora (ingestão na nuvem "
                                                "segue bloqueada)"})
 
     try:
