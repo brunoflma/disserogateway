@@ -412,7 +412,7 @@ def cmd_abrir(args):
     _gravar(args.state, st)
     extra = {"fase": "distribuicao", "cadeiras": len(CADEIRAS), "state": args.state,
              "variante": st.get("variante", "completo"),
-             "proximo_passo": _proximo_light(args.state) if luz else _proximo_passo_painel(args.state)}
+             "proximo_passo": _proximo_light(args.state, _cmd_painel(args.state)) if luz else _proximo_passo_painel(args.state)}
     return _saida("aberta", [f"sessão criada em {args.state}"], 0, extra=extra)
 
 
@@ -559,6 +559,14 @@ def _exige_painel_emitido(st, quem, state):
                        "painel_defasado" if falta[0] == "d" else "painel_nao_emitido")
 
 
+def _painel_light(st, passo, quem, state):
+    """Light em risco alto: a fase que passa não se emite depois (o gate a exige)."""
+    if st.get("risco") == "alto" and passo not in _fases(st, "emissoes"):
+        raise Contrato([f"painel da Revisão Light não emitido em '{passo}', e {quem} sai dela; depois não se "
+                        f"emite mais. Rode `{_cmd_painel(state)}`, mostre ao advogado e repita."],
+                       "painel_light_nao_emitido")
+
+
 def cmd_fase(args):
     st = _carregar(args.state)
     f0 = st.get("fase")
@@ -659,9 +667,10 @@ def cmd_proclamar(args):
     _recusa_se_proclamada(st, args.state, "outra proclamação")
     if st.get("variante") == "light":
         x = _proclamar_light(st, args)
+        _painel_light(st, "votacao", "a proclamação", args.state)
         _toca(st, args.ts)
         _gravar(args.state, st)
-        return _saida("proclamado", [], 0, extra=x)
+        return _saida("proclamado", [], 0, extra=_defasado(args.state, st, f0, x))
     if args.resultado not in RESULTADOS:
         raise Contrato([f"--resultado deve ser um de {RESULTADOS}"])
     r = st.setdefault("relator", {})
@@ -708,10 +717,13 @@ def cmd_proclamar(args):
 def cmd_mandato(args):
     """Revisão Light: um mandato (ou a síntese, `--id relator`) do revisor único."""
     st = _carregar(args.state)
+    f0 = st.get("fase")
+    if st.get("variante") == "light" and f0 == "distribuicao":
+        _painel_light(st, "distribuicao", "o 1º mandato", args.state)
     x = _mandato(st, args, _prov("hash_julgado", st, args.state))
     _toca(st, args.ts)
     _gravar(args.state, st)
-    return _saida("mandato_registrado", [], 0, extra=x)
+    return _saida("mandato_registrado", [], 0, extra=_defasado(args.state, st, f0, x))
 
 
 def cmd_exibir(args):
@@ -890,4 +902,4 @@ def main():
 
 if __name__ == "__main__":
     sys.exit(main())
-# selo dsr: sha256=641aaf8c5ebb3e27f48481cc2ad89d22af271e1602af2f7696796742b6ad884b
+# selo dsr: sha256=1f9011d1d76f0454c19c258dfcadee9d8b5a1da62f2eb0242000eafb2c52986c

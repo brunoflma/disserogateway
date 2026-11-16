@@ -44,6 +44,13 @@
 
 
 
+
+
+
+
+
+
+
 from __future__ import annotations
 
 import argparse
@@ -77,6 +84,21 @@ CONECTORES = {
         "assinaturas": ("iniciar_ingestao", "consultar_catalogo", "consultar_ingestao",
                         "ler_markdown", "buscar_trechos", "consultar_seguranca", "reindexar_indice"),
         "capacidades": ("leitura_nuvem", "seguranca_teor"),
+        "consultar_antes": True,
+    },
+    "fons": {
+        "rotulo": "Fons — caderno do caso (da casa), com guia de uso e controle de acesso próprios",
+        "casa": True,
+
+        "preferencia_no_perfil": False,
+
+
+        "assinaturas": ("listar_notebooks", "obter_notebook", "perguntar_ao_notebook", "consultar_resposta_notebook",
+                        "ler_texto_fonte_notebook", "listar_fontes_notebook", "resumir_notebook",
+                        "ler_historico_notebook", "preparar_consulta_documental", "associar_gemini_notebook",
+                        "preparar_fonte_gemini_notebook"),
+        "capacidades": ("caderno_caso",),
+        "consultar_antes": True,
     },
     "zetema": {
         "rotulo": "Zetema — pesquisa jurídica da casa: fontes oficiais ao vivo, documento oficial por hash, jurimetria, "
@@ -140,6 +162,7 @@ CONECTORES = {
         "rotulo": "JurisprudênciaIA avulso — servidor da casa, o mesmo que o Zetema integra como jurisprudenciaia_*",
         "casa": True,
         "integrado_ao_zetema": True,
+        "preferencia_no_perfil": False,
         "assinaturas": ("consultar_jurisprudenciaia", "buscar_precedentes_qualificados", "analisar_tese_juridica",
                         "comparar_teses_juridicas", "linha_do_tempo_precedentes", "listar_overruling_tema",
                         "historico_alteracoes_norma", "buscar_citacoes_dispositivo", "analisar_jurimetria"),
@@ -183,12 +206,36 @@ SEM_ASSINATURA_CONHECIDA = tuple(c for c, v in CONECTORES.items() if not v["assi
 
 
 CASA_PESQUISA = "zetema"
+AVULSO_DA_CASA = "jurisprudenciaia"
 CAPACIDADES_DE_PESQUISA = ("descoberta_jurisprudencia", "confirmacao_oficial", "legislacao", "jurimetria")
-ORIENTACAO_ZETEMA = ("o Zetema, a pesquisa jurídica da casa, não está conectado nesta sessão: oriente o advogado a "
-                     "conectá-lo (no claude.ai, em Configurações → Conectores; no Claude Code, pelo conector zetema "
-                     "do plugin) e siga com o que houver; nada é inventado")
+CRITERIO_INSUFICIENCIA = ("insuficiente = nenhum precedente útil para a tese, nenhum do tribunal de destino, sem link "
+                          "oficial ou inteiro teor para confirmar, ou lacuna de cobertura declarada pela ferramenta")
+ORIENTACAO_ZETEMA = ("o Zetema, a pesquisa jurídica da casa, não está conectado nesta sessão: se a pesquisa ficar "
+                     "insuficiente, oriente o advogado a conectá-lo (no claude.ai, em Configurações → Conectores; no "
+                     "Claude Code, pelo conector zetema do plugin) e siga com o que houver; nada é inventado")
 REGRA_TERCEIROS = ("o que vier dos terceiros é pista de descoberta (discovery.provider e discovery.url) e passa pela "
                    "mesma confirmação oficial; uma rodada por tese, sem laço, respeitando a cota de cada um")
+
+
+
+CONSULTAR_ANTES = {
+    "eluxi": {
+        "assunto": "leitura de documento em nuvem (OCR) na ingestão",
+        "pergunta": "O Eluxi está conectado na sua conta. Quer que eu use a leitura dele para este documento?",
+        "registro": "antes de perguntar, dissero-ingestao/scripts/consulta_conector.py mostrar --conector eluxi "
+                    "--conectado; sim: o aval por autorizar_ingestao.py (é o que o gate_ingestao confere); "
+                    "não: consulta_conector.py registrar --resposta nao, e a rota local; vale para o caso",
+        "excecao": "documento sigiloso segue pela rota local, sem perguntar pelo Eluxi",
+    },
+    "fons": {
+        "assunto": "caderno do caso (estudo dos autos)",
+        "pergunta": "O Fons está conectado na sua conta. Quer que eu use o caderno do caso dele para estudar estes autos?",
+        "registro": "antes de perguntar, dissero-ingestao/scripts/consulta_conector.py mostrar --conector fons "
+                    "--conectado; a resposta se grava com consulta_conector.py registrar --resposta sim|nao e vale "
+                    "para o caso; não: os autos são lidos pela dissero-ingestao",
+        "excecao": "",
+    },
+}
 
 
 
@@ -212,10 +259,13 @@ CAPACIDADES = {
         "embarcada": "rota LOCAL da dissero-ingestao: parse_local.py (Word pela stdlib, PDF com camada de texto) "
                      "e leitura por partes (planejar_blocos.py); escaneado sem conector, conferência visual "
                      "(pdftoppm + leitura da imagem) ou escalar ao advogado",
+        "instrucao_por_conector": {"eluxi": "perguntar antes ao advogado (consultar_antes); com o sim, usar eluxi; "
+                                            "com o não, a rota local; sigiloso, a rota local sem perguntar"},
         "sem_conector": "degradada",
-        "aviso": "sem o Eluxi não há OCR: documento escaneado só se lê por imagem, página a página, ou "
-                 "escala ao advogado; documento volumoso é lido por partes (planejar_blocos.py), sem "
-                 "índice do OCR; o ilegível nunca é improvisado",
+
+        "aviso": "sem leitura em nuvem não há OCR: documento escaneado só se lê por imagem, página a página, ou "
+                 "escala ao advogado; documento volumoso é lido por partes (planejar_blocos.py); o ilegível "
+                 "nunca é improvisado",
     },
     "seguranca_teor": {
         "rotulo": "Varredura de instrução oculta no teor extraído",
@@ -226,9 +276,8 @@ CAPACIDADES = {
     "descoberta_jurisprudencia": {
         "rotulo": "Descoberta de precedentes",
         "ordem": ("zetema",),
-        "obrigatorio": "zetema",
-        "complementares": True,
-        "embarcada": "fontes públicas por script (normas_leg_br.py, consultar_dou.py) e o julgado que o advogado "
+        "terceiros": True,
+        "embarcada":"fontes públicas por script (normas_leg_br.py, consultar_dou.py) e o julgado que o advogado "
                      "indicar; a confirmação oficial continua embarcada",
         "sem_conector": "degradada",
         "aviso": "sem conector de descoberta, a pesquisa parte do que o advogado indicar; nada é inventado",
@@ -236,7 +285,6 @@ CAPACIDADES = {
     "confirmacao_oficial": {
         "rotulo": "Confirmação do julgado na fonte oficial",
         "ordem": ("zetema",),
-        "obrigatorio": "zetema",
         "embarcada": "verificar_citacao.py contra fontes_oficiais.json (host exato, hash) + folha de atestação humana "
                      "(folha_atestacao.py / registrar_confirmacao_manual.py)",
         "sem_conector": "embarcada", "aviso": "",
@@ -244,14 +292,12 @@ CAPACIDADES = {
     "legislacao": {
         "rotulo": "Legislação: redações e vigência",
         "ordem": ("zetema",),
-        "obrigatorio": "zetema",
         "embarcada": "normas_leg_br.py (todas as redações do dispositivo, vigência marcada)",
         "sem_conector": "embarcada", "aviso": "",
     },
     "jurimetria": {
         "rotulo": "Jurimetria e capa/movimentos do DataJud",
         "ordem": ("zetema",),
-        "obrigatorio": "zetema",
         "embarcada": "datajud_client.py com a chave pública do CNJ embutida (tempo_tramitacao.py, admissibilidade_numero.py)",
         "sem_conector": "embarcada", "aviso": "",
     },
@@ -264,6 +310,16 @@ CAPACIDADES = {
         "embarcada": "",
         "sem_conector": "lacuna",
         "aviso": "sem conector cadastral a qualificação vira [COMPLETAR] no briefing e o advogado a fornece; o plugin não pergunta o que a fonte responderia",
+    },
+    "caderno_caso": {
+        "rotulo": "Caderno do caso: estudo dos autos em caderno",
+        "ordem": ("fons",),
+        "instrucao_por_conector": {"fons": "perguntar antes ao advogado (consultar_antes); com o sim, usar fons "
+                                           "(o que ele responde é apoio, conferido nos autos antes da peça); com o "
+                                           "não, ler os autos pela dissero-ingestao"},
+
+        "embarcada": "ler os autos pela dissero-ingestao; o cenário do caderno não é oferecido nem mencionado",
+        "sem_conector": "embarcada", "aviso": "",
     },
 }
 
@@ -280,8 +336,11 @@ for _pref, _cid in PREFIXOS_EXCLUSIVOS.items():
         if _s.startswith(_pref):
             raise ValueError(f"assinatura cai no prefixo exclusivo de {_cid}: {_s}")
 for _capid in CAPACIDADES_DE_PESQUISA:
-    if CAPACIDADES[_capid].get("obrigatorio") != CASA_PESQUISA:
-        raise ValueError(f"capacidade de pesquisa sem a casa obrigatória: {_capid}")
+    if CASA_PESQUISA not in CAPACIDADES[_capid]["ordem"]:
+        raise ValueError(f"capacidade de pesquisa sem a casa: {_capid}")
+for _cid in CONSULTAR_ANTES:
+    if not CONECTORES[_cid].get("consultar_antes"):
+        raise ValueError(f"pergunta prévia de conector sem a marca consultar_antes: {_cid}")
 
 
 def sufixo(nome):
@@ -313,12 +372,9 @@ def conectores_presentes(ferramentas):
     return presentes
 
 
-def _complementares_da(capid):
-    'Quem pode complementar a capacidade além da casa obrigatória: os terceiros de pesquisa e o'
-
-    return [c for c, v in CONECTORES.items()
-            if c != CASA_PESQUISA and (not v["casa"] or v.get("integrado_ao_zetema"))
-            and capid in v["capacidades"]]
+def _terceiros_da(capid):
+    """Terceiros de pesquisa que atendem a capacidade (nunca a casa)."""
+    return [c for c, v in CONECTORES.items() if not v["casa"] and capid in v["capacidades"]]
 
 
 def preferencias_do_perfil(perfil):
@@ -354,6 +410,50 @@ def _ordem_com_preferencia(cap, prefs):
     return [c if c in parciais else next(fila) for c in ordem]
 
 
+def _rota_descoberta(capid, livre, presentes, prefs):
+    'Descoberta (16/11/2026): terceiros presentes = principal; a casa (o Zetema, ou o avulso quando'
+
+    principais = sorted((c for c in _terceiros_da(capid) if livre(c)),
+                        key=lambda c: (0 if prefs.get(c) == "preferir" else 1, c))
+    recusados = [c for c in _terceiros_da(capid) + [CASA_PESQUISA, AVULSO_DA_CASA]
+                 if c in presentes and not livre(c)]
+    casa_id = CASA_PESQUISA if livre(CASA_PESQUISA) else (AVULSO_DA_CASA if livre(AVULSO_DA_CASA) else None)
+    redundantes = [AVULSO_DA_CASA] if casa_id == CASA_PESQUISA and livre(AVULSO_DA_CASA) else []
+    papel = None if not casa_id else ("complemento" if principais else "principal")
+    conectores = principais + ([casa_id] if casa_id else [])
+    nomes = ", ".join(principais)
+    if principais and casa_id:
+        instrucao = (f"usar primeiro {nomes} (pesquisa principal, as ferramentas do advogado); acionar o {casa_id} "
+                     f"como complemento só se o resultado for insuficiente ({CRITERIO_INSUFICIENCIA}); " + REGRA_TERCEIROS)
+    elif principais:
+        instrucao = f"usar {nomes} como pesquisa principal; " + REGRA_TERCEIROS
+    elif casa_id:
+        instrucao = f"usar {casa_id} como pesquisa principal, depois de conferir_terceiros"
+    else:
+        instrucao = ""
+
+
+
+    sem_ass = [CONECTORES[c]["rotulo"].split(" (")[0].split(" —")[0] + f" ({c})" for c in SEM_ASSINATURA_CONHECIDA
+               if capid in CONECTORES[c]["capacidades"] and prefs.get(c) != "nao_usar"]
+    conferir = "" if principais or not sem_ass else (
+        "antes, confira nos nomes e descrições das ferramentas da sessão se há " + ", ".join(sem_ass)
+        + "; havendo, rode o inventário de novo com --conectores <id>, e ele passa a ser a pesquisa principal; "
+        "na dúvida, pergunte uma vez ao advogado se usa ferramenta de pesquisa própria")
+    orientacao = ("" if CASA_PESQUISA in presentes or prefs.get(CASA_PESQUISA) == "nao_usar"
+                  else ORIENTACAO_ZETEMA)
+    return conectores, recusados, instrucao, {
+        "principais": principais,
+        "zetema": papel if casa_id == CASA_PESQUISA else None,
+        "casa": {"conector": casa_id, "papel": papel} if casa_id else None,
+        "criterio_insuficiencia": CRITERIO_INSUFICIENCIA,
+        "conferir_terceiros": conferir,
+        "redundantes_com_zetema": redundantes,
+        "cotas": {c: CONECTORES[c]["cota"] for c in principais if CONECTORES[c].get("cota")},
+        "orientacao": orientacao,
+    }
+
+
 def inventariar(ferramentas=None, conectores=None, perfil=None):
     """Rota por capacidade a partir das ferramentas da sessão, dos ids já identificados e do perfil."""
     presentes = conectores_presentes(ferramentas) | {c for c in (conectores or ()) if c in CONECTORES}
@@ -363,100 +463,76 @@ def inventariar(ferramentas=None, conectores=None, perfil=None):
     def livre(cid):
         return cid in presentes and prefs.get(cid, "auto") != "nao_usar"
 
-    casa_presente = CASA_PESQUISA in presentes
-    pref_ignorada = casa_presente and prefs.get(CASA_PESQUISA) == "nao_usar"
     caps = {}
     for capid, cap in CAPACIDADES.items():
-        ordem = _ordem_com_preferencia(cap, prefs)
-        obrig = cap.get("obrigatorio")
         extra = {}
-        if obrig:
-            terceiros = _complementares_da(capid) if cap.get("complementares") else []
-            terceiros.sort(key=lambda c: (0 if prefs.get(c) == "preferir" else 1, c))
-            redundantes = [c for c in terceiros if livre(c) and casa_presente
-                           and CONECTORES[c].get("integrado_ao_zetema")]
-            complementares = [c for c in terceiros if livre(c) and c not in redundantes]
-            usaveis = ([obrig] if obrig in presentes else []) + complementares
-            recusados = [c for c in terceiros if c in presentes and not livre(c)]
-            extra = {"obrigatorio": obrig if obrig in presentes else None,
-                     "complementares": complementares,
-                     "redundantes_com_zetema": redundantes,
-                     "cotas": {c: CONECTORES[c]["cota"] for c in complementares if CONECTORES[c].get("cota")},
-                     "orientacao": "" if obrig in presentes else ORIENTACAO_ZETEMA}
+        if cap.get("terceiros"):
+            escolhidos, recusados, instrucao, extra = _rota_descoberta(capid, livre, presentes, prefs)
         else:
-            usaveis = [c for c in ordem if livre(c)]
+            ordem = _ordem_com_preferencia(cap, prefs)
+            escolhidos = [c for c in ordem if livre(c)][:1]
             recusados = [c for c in ordem if c in presentes and not livre(c)]
-            usaveis = usaveis[:1]
-            complementares = []
-        if usaveis:
-            escolhidos = usaveis
+            instrucao = ((cap.get("instrucao_por_conector") or {}).get(escolhidos[0]) or "usar " + escolhidos[0]
+                         if escolhidos else "")
+        if escolhidos:
             rota = "conector"
-            if obrig and complementares:
-                nomes = ", ".join(complementares)
-                if obrig in presentes:
-                    instrucao = (f"usar {obrig} primeiro (obrigatório: a pesquisa da casa, que já integra o "
-                                 f"JurisprudênciaIA); depois, como complemento de descoberta, {nomes}; " + REGRA_TERCEIROS)
-                else:
-                    instrucao = f"usar {nomes} só como complemento de descoberta; " + REGRA_TERCEIROS
-            else:
-                instrucao = (cap.get("instrucao_por_conector") or {}).get(escolhidos[0]) or "usar " + escolhidos[0]
         else:
-            escolhidos = []
             rota = "embarcada" if cap["sem_conector"] in ("embarcada", "degradada") else cap["sem_conector"]
             instrucao = cap["embarcada"] or cap["aviso"]
         caps[capid] = {
             "rotulo": cap["rotulo"], "rota": rota, "conectores": escolhidos,
             "recusados_pelo_advogado": recusados,
             "rota_embarcada": cap["embarcada"], "grau_sem_conector": cap["sem_conector"],
-            "aviso": (cap["aviso"] if not usaveis else ""), "instrucao": instrucao,
+            "aviso": (cap["aviso"] if not escolhidos else ""), "instrucao": instrucao,
             **extra,
         }
     em_uso = sorted({c for v in caps.values() for c in v["conectores"]})
+    desc = caps["descoberta_jurisprudencia"]
     estado = {}
     for cid, c in CONECTORES.items():
         pref = prefs.get(cid, "auto")
         pres = cid in presentes
-        if cid == CASA_PESQUISA and pres and pref == "nao_usar":
-            motivo = ("presente na sessão; o perfil pede nao_usar, mas a preferência foi ignorada na pesquisa "
-                      "porque o Zetema é a pesquisa da casa (fora da pesquisa ela vale)")
+        if pres and pref == "nao_usar":
+            motivo = "presente na sessão, mas o advogado optou por não usar (perfil conectores.%s = nao_usar)" % cid
         elif cid == CASA_PESQUISA and not pres:
             motivo = "ausente nesta sessão: " + ORIENTACAO_ZETEMA
-        elif pres and pref == "nao_usar":
-            motivo = "presente na sessão, mas o advogado optou por não usar (perfil conectores.%s = nao_usar)" % cid
+        elif pres and c.get("consultar_antes"):
+            motivo = "presente na sessão · perguntar ao advogado antes do primeiro uso (consultar_antes)"
         elif pres and c.get("integrado_ao_zetema"):
             motivo = ("presente na sessão · da casa: " + ("redundante com o Zetema, que já o integra (não gasta consulta)"
-                      if casa_presente else "complemento de descoberta sem o Zetema, nunca confirmação"))
+                      if cid in desc["redundantes_com_zetema"] else "no lugar do Zetema, que falta; nunca confirmação"))
         elif pres and not c["casa"]:
-            motivo = "presente na sessão · terceiro: complemento de descoberta, nunca confirmação"
+            motivo = "presente na sessão · terceiro: pesquisa principal de descoberta, nunca confirmação"
+        elif cid == CASA_PESQUISA:
+            motivo = "presente na sessão · na descoberta, " + (
+                "complemento por insuficiência dos terceiros" if desc["zetema"] == "complemento" else "pesquisa principal")
         elif pres:
             motivo = "presente na sessão" + (" · preferido pelo advogado" if pref == "preferir" else "")
         elif pref == "nao_usar":
             motivo = "ausente, e o advogado optou por não usar: não propor conectar"
+        elif c.get("consultar_antes"):
+            motivo = "ausente nesta sessão: não perguntar nem mencionar ao advogado (vale a rota embarcada)"
         else:
             motivo = "ausente nesta sessão (não é falha; vale a rota embarcada da capacidade)"
         estado[cid] = {"rotulo": c["rotulo"], "casa": c["casa"], "presente": pres,
                        "preferencia_perfil": pref, "usar": cid in em_uso, "motivo": motivo}
         if c.get("cota"):
             estado[cid]["cota"] = c["cota"]
-    if pref_ignorada:
-        avisos.append("zetema_preferencia_ignorada: o perfil pede nao_usar para o Zetema, mas a preferência foi "
-                      "ignorada nas capacidades de pesquisa porque o Zetema é a pesquisa da casa; fora delas "
-                      "(diligência cadastral) ela vale")
-    desc = caps["descoberta_jurisprudencia"]
+    consultar_antes = [{"conector": cid, **CONSULTAR_ANTES[cid]} for cid in CONSULTAR_ANTES if cid in em_uso]
     pesquisa = {
-        "obrigatorio": desc["obrigatorio"], "complementares": desc["complementares"],
-        "orientacao": desc["orientacao"], "preferencia_ignorada": pref_ignorada,
+        "principais": desc["principais"], "zetema": desc["zetema"], "casa": desc["casa"],
+        "criterio_insuficiencia": CRITERIO_INSUFICIENCIA, "orientacao": desc["orientacao"],
         "terceiros_sem_assinatura_conhecida": list(SEM_ASSINATURA_CONHECIDA),
-        "regra": ("Zetema sempre que presente, mesmo com outras ferramentas e com nao_usar; terceiros de pesquisa "
-                  "são complemento de descoberta, nunca confirmação; " + REGRA_TERCEIROS),
+        "regra": ("as ferramentas de pesquisa do advogado são a principal; o Zetema complementa só quando o "
+                  "resultado delas for insuficiente e, sem terceiro, é o principal; nao_usar vale; terceiro nunca "
+                  "confirma; " + REGRA_TERCEIROS),
     }
     resumo = {
         "conectores_presentes": sorted(presentes),
         "conectores_em_uso": em_uso,
 
-
         "conectores_recusados": sorted(c for c in presentes if prefs.get(c) == "nao_usar" and c not in em_uso),
-        "redundantes_com_zetema": list(desc.get("redundantes_com_zetema") or []),
+        "redundantes_com_zetema": list(desc["redundantes_com_zetema"]),
         "capacidades_por_conector": sorted(c for c, v in caps.items() if v["rota"] == "conector"),
         "capacidades_embarcadas": sorted(c for c, v in caps.items() if v["rota"] == "embarcada"),
         "capacidades_indisponiveis": sorted(c for c, v in caps.items() if v["rota"] in ("indisponivel", "lacuna")),
@@ -464,8 +540,10 @@ def inventariar(ferramentas=None, conectores=None, perfil=None):
     if desconhecidos:
         avisos.append("conectores desconhecidos ignorados: " + ", ".join(desconhecidos))
     return {"schema_version": SCHEMA, "sozinho_por_padrao": True, "conectores": estado,
-            "capacidades": caps, "pesquisa": pesquisa, "resumo": resumo, "avisos": avisos,
-            "regra": "ausência de conector não é falha nem indisponibilidade; detectar não é autorizar (§5, §13, §14)"}
+            "capacidades": caps, "pesquisa": pesquisa, "consultar_antes": consultar_antes,
+            "resumo": resumo, "avisos": avisos,
+            "regra": ("ausência de conector não é falha nem indisponibilidade; detectar não é autorizar (§5, §13, §14); "
+                      "conector de consultar_antes ausente não se pergunta nem se menciona")}
 
 
 def carregar_perfil(caminho=None):
@@ -520,8 +598,12 @@ def main(argv=None):
             print("Redundantes com o Zetema (ele já os integra; não gastam consulta): "
                   + ", ".join(r["redundantes_com_zetema"]))
         pq = inv["pesquisa"]
-        print("Pesquisa: Zetema " + ("obrigatório e presente" if pq["obrigatorio"] else "AUSENTE — " + pq["orientacao"])
-              + ("; complementares: " + ", ".join(pq["complementares"]) if pq["complementares"] else ""))
+        casa = pq["casa"] or {}
+        print("Pesquisa: principal = " + (", ".join(pq["principais"]) or casa.get("conector") or "rota embarcada")
+              + ("; " + casa["conector"] + " como complemento por insuficiência" if casa.get("papel") == "complemento" else "")
+              + ("; " + pq["orientacao"] if pq["orientacao"] else ""))
+        for c in inv["consultar_antes"]:
+            print(f"Perguntar antes ({c['conector']}): {c['pergunta']}")
         for capid, cap in inv["capacidades"].items():
             print(f"- {cap['rotulo']}: {cap['rota']} → {cap['instrucao']}")
     print(json.dumps(inv, ensure_ascii=False))

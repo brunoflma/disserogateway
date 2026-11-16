@@ -216,17 +216,21 @@ def decidir(evento, ledger_path=None, autorizacao_path=None):
         registrar(ledger, session_id, tool.strip(), paginas, sob_aval=False)
         return None
 
+
+
     if autorizacao is None:
-        estimativa = f"{paginas} página(s)" if paginas is not None else "custo DESCONHECIDO (sem estimativa)"
+        estimativa = f"{paginas} página(s)" if paginas is not None else "sem estimativa de páginas"
         return _deny(
-            f"INGESTÃO PAGA BLOQUEADA (governança §14): {estimativa} e não há aval do advogado "
-            f"registrado para esta sessão. O job roda server-side e cobra; chamada repetida "
-            f"REEXECUTA e cobra de novo. Peça o \"pode\" EXPRESSO e registre ANTES de chamar: "
-            f"`python scripts/autorizar_ingestao.py --session-id <id> --max-chamadas 1 "
+            f"INGESTÃO NA NUVEM BLOQUEADA (governança §14): {estimativa} e não há aval do advogado "
+            f"registrado para esta sessão. Cada chamada cria ou REEXECUTA o job no servidor. ANTES "
+            f"de chamar, pergunte com o texto fixo de `python dissero-ingestao/scripts/consulta_conector.py mostrar "
+            f"--conector eluxi --conectado --session-id <id>`; com o sim EXPRESSO, registre: "
+            f"`python dissero-ingestao/scripts/autorizar_ingestao.py --session-id <id> --max-chamadas 1 "
             f"[--max-paginas N] --escopo \"...\"` (ele resolve a raiz do caso e carimba "
-            f"'concedido_em'). O limiar sem aval está "
+            f"'concedido_em'); com o não, `consulta_conector.py registrar --conector eluxi "
+            f"--resposta nao` e siga pela rota local. O limiar sem aval está "
             f"{'desativado' if limiar == 0 else f'configurado em {limiar} páginas'}; "
-            f"páginas, sozinhas, não provam custo zero.")
+            f"páginas, sozinhas, não dispensam o aval.")
 
     teto_chamadas = autorizacao.get("max_chamadas")
     if not isinstance(teto_chamadas, int) or isinstance(teto_chamadas, bool) or teto_chamadas < 1:
@@ -234,18 +238,19 @@ def decidir(evento, ledger_path=None, autorizacao_path=None):
     ja = contar_liberadas(ledger, session_id)
     if ja >= teto_chamadas:
         return _deny(
-            f"INGESTÃO PAGA BLOQUEADA (governança §14): a sessão já liberou {ja} chamada(s) de "
+            f"INGESTÃO NA NUVEM BLOQUEADA (governança §14): a sessão já liberou {ja} chamada(s) de "
             f"ingestão e o aval vigente cobre {teto_chamadas} (escopo: "
             f"{autorizacao.get('escopo') or 'não declarado'}). Cada chamada cria ou REEXECUTA um "
-            f"job pago. Peça novo aval ao advogado e atualize {AUTORIZACAO_NAME} ANTES de chamar.")
+            f"job no servidor. Pergunte de novo ao advogado, para este documento, e com o sim "
+            f"atualize {AUTORIZACAO_NAME} ANTES de chamar.")
 
     teto_paginas = autorizacao.get("max_paginas")
     if (isinstance(teto_paginas, int) and not isinstance(teto_paginas, bool) and teto_paginas > 0
             and paginas is not None and paginas > teto_paginas):
         return _deny(
-            f"INGESTÃO PAGA BLOQUEADA (governança §14): a chamada declara {paginas} páginas e o "
+            f"INGESTÃO NA NUVEM BLOQUEADA (governança §14): a chamada declara {paginas} páginas e o "
             f"aval autoriza até {teto_paginas} (escopo: {autorizacao.get('escopo') or 'não declarado'}). "
-            f"Confirme o gasto maior com o advogado e refaça o aval com --max-paginas.")
+            f"Confirme com o advogado a leitura maior e refaça o aval com --max-paginas.")
 
     registrar(ledger, session_id, tool.strip(), paginas, sob_aval=True)
     return None

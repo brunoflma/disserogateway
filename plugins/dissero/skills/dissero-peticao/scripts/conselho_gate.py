@@ -73,6 +73,8 @@
 
 
 
+
+
 import sys, os, json, argparse, time
 
 try:
@@ -809,6 +811,44 @@ def _verificar_painel(st, estado="<caso>/CONSELHO_STATUS.json"):
     return []
 
 
+
+
+PASSOS_LIGHT = ("distribuicao", "votacao", "fim")
+
+
+def _verificar_painel_light(st, estado="<caso>/CONSELHO_STATUS.json"):
+    'O painel da Revisão Light em risco alto: emitido e exibido nos três passos, e o da decisão'
+
+    painel = _d(st.get("painel"))
+    emissoes = [e for e in (painel.get("emissoes") if isinstance(painel.get("emissoes"), list) else [])
+                if isinstance(e, dict)]
+    exibicoes = [e for e in (painel.get("exibicoes") if isinstance(painel.get("exibicoes"), list) else [])
+                 if isinstance(e, dict)]
+    cmd = f"painel_fragmento.py --state \"{estado}\" --registrar"
+    sem = [p for p in PASSOS_LIGHT if p not in {_stepkey(_s(e.get("fase"))) for e in emissoes}]
+    atual = _stepkey(_s(st.get("fase")))
+    passou = [p for p in sem if atual in PASSOS_LIGHT and PASSOS_LIGHT.index(p) < PASSOS_LIGHT.index(atual)]
+    if passou:
+
+        return [f"painel_light_nao_emitido: o painel da Revisão Light não foi emitido em {', '.join(sem)}, e "
+                f"{', '.join(passou)} já passou: o painel dela não se emite mais. O remédio é refazer a revisão "
+                f"no ciclo seguinte (`conselho_sessao.py novo-ciclo --state \"{estado}\"`), emitindo e "
+                f"mostrando o painel a cada movimento"]
+    if sem:
+        return [f"painel_light_nao_emitido: o painel da Revisão Light não foi emitido em {', '.join(sem)}. "
+                f"Rode `{cmd}` a cada movimento (abertura, cada mandato, decisão) e mostre-o ao advogado"]
+    if _fim_defasado(st, emissoes):
+        return ["painel_defasado: o painel da decisão da Revisão Light foi emitido antes do último mandato ou "
+                f"da proclamação. Reemita-o com `{cmd}`, mostre-o e declare com `conselho_sessao.py exibir "
+                f"--state \"{estado}\" --superficie widget|artifact|arquivo --fase fim`"]
+    sem = [p for p in PASSOS_LIGHT if p not in {_stepkey(_s(e.get("fase"))) for e in exibicoes}]
+    if sem:
+        return [f"painel_light_nao_exibido: o painel da Revisão Light foi emitido e não exibido em "
+                f"{', '.join(sem)}. Mostre-o pela via da superfície e declare com `conselho_sessao.py exibir "
+                f"--state \"{estado}\" --superficie widget|artifact|arquivo --fase <fase>`"]
+    return []
+
+
 def _ler_status(caminho):
     'O status, relido no PermissionError do Windows: quem grava troca o arquivo atômico'
 
@@ -1090,6 +1130,10 @@ def julgar_light(st, args, lint_ok, pend):
                          f"exit={_d(st.get('lint')).get('exit_code')})")
     if pend:
         bloqueios.append(f"{len(pend)} pendência(s) de jurisprudência impede(m) protocolo: {pend}")
+
+
+    if getattr(args, "painel", False):
+        bloqueios += _verificar_painel_light(st, estado)
     if bloqueios:
         print(json.dumps({"ok": True, "liberado": False, "resultado": "aprovado_light_mas_bloqueado",
                           "placar": placar, "motivos": bloqueios}, ensure_ascii=False))
