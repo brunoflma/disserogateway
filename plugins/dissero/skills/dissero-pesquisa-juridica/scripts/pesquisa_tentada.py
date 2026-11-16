@@ -248,42 +248,64 @@ def gravar(pasta, reg):
     return caminho
 
 
-def ler(pasta):
-    '(registro, None) quando há registro válido na pasta; (None, motivo em português) quando não'
+
+
+
+CAUSAS = ("sem_registro", "registro_ilegivel", "registro_adulterado", "achados_mudou", "achados_sumiu",
+          "achados_invalidos", "sem_consultas", "sem_motivo", "sem_resultado_declarado")
+
+
+def diagnosticar(pasta):
+    '(registro, None, None, arquivo de achados ou None) quando há registro válido na pasta;'
+
 
 
     caminho = os.path.join(pasta or ".", NOME)
     if not os.path.isfile(caminho):
-        return None, "não há registro de pesquisa na pasta da peça"
+        return None, "sem_registro", "não há registro de pesquisa na pasta da peça", None
     try:
         with open(caminho, encoding="utf-8") as fh:
             reg = json.load(fh)
     except Exception:
-        return None, "o registro de pesquisa está ilegível"
+        return None, "registro_ilegivel", "o registro de pesquisa está ilegível", None
     if (not isinstance(reg, dict) or reg.get("schema_version") != SCHEMA
             or reg.get("gerado_por") != "pesquisa_tentada.py" or reg.get("selo") != _selo(reg)):
-        return None, "o registro de pesquisa não foi gravado pelo script (ou foi alterado depois)"
+        return (None, "registro_adulterado",
+                "o registro de pesquisa não foi gravado pelo script (ou foi alterado depois)", None)
     r = reg.get("resultado")
     if r == "achados":
         a = reg.get("achados") if isinstance(reg.get("achados"), dict) else {}
         arq = a.get("arquivo") or ""
-        arq = arq if os.path.isabs(arq) else os.path.join(pasta, arq)
-        if not os.path.isfile(arq) or _sha_arquivo(arq) != a.get("sha256"):
-            return None, "o arquivo de achados do registro mudou ou sumiu: registre a pesquisa de novo"
+        arq = os.path.abspath(arq if os.path.isabs(arq) else os.path.join(pasta or ".", arq))
+        if not os.path.isfile(arq):
+            return (None, "achados_sumiu", "o arquivo de achados do registro sumiu do lugar onde foi "
+                    "registrado: registre a pesquisa de novo", arq)
+        if _sha_arquivo(arq) != a.get("sha256"):
+            return (None, "achados_mudou", "o arquivo de achados mudou depois do registro da pesquisa "
+                    "(atestação ou edição posterior): registre a pesquisa de novo", arq)
         if _ler_achados(arq)[1]:
-            return None, "o arquivo de achados do registro não vale mais: registre a pesquisa de novo"
+            return (None, "achados_invalidos",
+                    "o arquivo de achados do registro não vale mais: registre a pesquisa de novo", arq)
     elif r == "sem_resultado":
         cs = reg.get("consultas")
         if not isinstance(cs, list) or not cs or not all(
                 isinstance(c, dict) and _consulta(f"{c.get('fonte', '')}: {c.get('termos', '')}") for c in cs):
-            return None, "o registro de pesquisa sem resultado não traz as consultas feitas"
+            return None, "sem_consultas", "o registro de pesquisa sem resultado não traz as consultas feitas", None
     elif r == "impossivel":
         imp = reg.get("impedimento") if isinstance(reg.get("impedimento"), dict) else {}
         if imp.get("motivo") not in MOTIVOS or _detalhe_generico(imp.get("detalhe")):
-            return None, "o registro de impossibilidade não diz o motivo"
+            return None, "sem_motivo", "o registro de impossibilidade não diz o motivo", None
     else:
-        return None, "o registro de pesquisa não diz o resultado"
-    return reg, None
+        return None, "sem_resultado_declarado", "o registro de pesquisa não diz o resultado", None
+    return reg, None, None, (arq if r == "achados" else None)
+
+
+def ler(pasta):
+    '(registro, None) quando há registro válido na pasta; (None, motivo em português) quando não'
+
+
+    reg, _causa, motivo, _arq = diagnosticar(pasta)
+    return reg, motivo
 
 
 _MOTIVO_PT = {"conector_ausente": "não havia conector de pesquisa de jurisprudência ligado nesta sessão",
@@ -305,16 +327,75 @@ def pendencia(reg):
     return None
 
 
-def recusa(porque, problema):
-    """O texto da parada do gerador: o remédio é rodar a pesquisa, não entregar assim."""
+def _q(caminho):
+    return '"' + str(caminho) + '"'
+
+
+def comando_registrar(pasta, arquivo_achados):
+    'O comando exato para registrar de novo a pesquisa com achados: o script desta cópia, a'
+
+
+    script = os.path.abspath(__file__)
+    return (f"python {_q(script)} registrar --pasta {_q(os.path.abspath(pasta or '.'))} "
+            f"--achados {_q(os.path.abspath(arquivo_achados))}")
+
+
+_PRIMEIRA_LINHA = {
+    "achados_mudou": "o arquivo de achados mudou depois do registro da pesquisa (atestação ou edição "
+                     "posterior); a pesquisa foi tentada, mas o registro não vale para o arquivo atual.",
+    "achados_sumiu": "o arquivo de achados do registro da pesquisa não está mais onde foi registrado; "
+                     "a pesquisa foi tentada, mas o registro aponta para um arquivo que sumiu.",
+    "achados_invalidos": "o arquivo de achados do registro da pesquisa não vale mais (vazio ou fora do "
+                         "contrato); o registro precisa ser refeito.",
+    "registro_adulterado": "o registro da pesquisa não foi gravado pelo script ou foi alterado depois de "
+                           "gravado, e não vale.",
+    "registro_ilegivel": "o registro da pesquisa está ilegível, e não vale.",
+    "sem_consultas": "o registro de pesquisa sem resultado não traz as consultas feitas, e não vale.",
+    "sem_motivo": "o registro de impossibilidade da pesquisa não diz o motivo, e não vale.",
+    "sem_resultado_declarado": "o registro da pesquisa não diz o resultado, e não vale.",
+}
+
+
+def recusa(porque, problema, causa=None, pasta=None, arquivo=None):
+    'O texto da parada do gerador. A PRIMEIRA linha diz a causa real (`causa`, de `CAUSAS`):'
+
+
+
+    if causa in ("achados_mudou", "achados_sumiu", "achados_invalidos") and arquivo:
+        cmd = comando_registrar(pasta, arquivo)
+        passo1 = {
+            "achados_mudou": "Confira que o arquivo de achados atual é o que vale (se quem o reescreveu foi a\n"
+                             "     atestação dos trechos literais, é ele). Se for, não refaça a pesquisa.",
+            "achados_sumiu": "Localize o arquivo de achados. Se ele foi movido, troque o caminho de --achados\n"
+                             "     abaixo pelo lugar atual; se ele se perdeu, rode a pesquisa de novo pela skill\n"
+                             "     dissero-pesquisa-juridica e registre o arquivo que ela gravar.",
+            "achados_invalidos": "Corrija o arquivo de achados pela skill dissero-pesquisa-juridica (ou, se a\n"
+                                 "     pesquisa não achou nada, registre com --sem-resultado e as consultas feitas).",
+        }[causa]
+        return (
+            f"PARADA: {_PRIMEIRA_LINHA[causa]}\n"
+            f"  A pesquisa é exigida porque {porque}.\n"
+            f"  Arquivo de achados do registro: {arquivo}\n"
+            "  O que fazer AGORA, nesta mesma resposta, sem perguntar ao advogado:\n"
+            f"  1. {passo1}\n"
+            "  2. Registre a pesquisa de novo na pasta da peça, com este comando (o registro com achados\n"
+            "     só pede a pasta e o arquivo):\n"
+            f"     {cmd}\n"
+            "  3. Gere a minuta de novo, com o mesmo comando.\n"
+            "  Não entregue a peça por outro caminho.")
+    primeira = (f"PARADA: {_PRIMEIRA_LINHA[causa]}" if causa in _PRIMEIRA_LINHA else
+                "PARADA: a minuta com pendências ainda não sai, porque a pesquisa de jurisprudência não foi tentada.")
+    pasta_cmd = _q(os.path.abspath(pasta)) if pasta else '"<pasta da peça>"'
+    script = _q(os.path.abspath(__file__))
     return (
-        "PARADA: a minuta com pendências ainda não sai, porque a pesquisa de jurisprudência não foi tentada.\n"
+        primeira + "\n"
         f"  Por quê: {porque}, e {problema}.\n"
         "  O que fazer AGORA, nesta mesma resposta, sem perguntar ao advogado:\n"
         "  1. Abra a skill dissero-pesquisa-juridica e rode a pesquisa das teses da peça pelos conectores\n"
         "     de jurisprudência da sessão. Confirmado o que der, use na peça só o confirmado.\n"
-        "  2. Registre o resultado na pasta da peça, com o `pesquisa_tentada.py registrar` da própria\n"
-        "     skill de pesquisa: `--achados <achados.json>` se achou; `--sem-resultado --consulta\n"
+        "  2. Registre o resultado na pasta da peça, com\n"
+        f"     python {script} registrar --pasta {pasta_cmd}\n"
+        "     seguido de: `--achados \"<achados.json>\"` se achou; `--sem-resultado --consulta\n"
         "     \"<fonte>: <termos>\"` se buscou e não achou; `--impossivel --motivo <conector_ausente|\n"
         "     conector_falhou|sigilo> --detalhe \"<o que aconteceu>\"` se não pôde pesquisar.\n"
         "  3. Gere a minuta de novo, com o mesmo comando.\n"
@@ -331,9 +412,9 @@ def exigir(texto, pasta):
     tem, porque = tem_tese_juridica(texto)
     if not tem:
         return None, [], None
-    reg, problema = ler(pasta)
+    reg, causa, problema, arquivo = diagnosticar(pasta)
     if reg is None:
-        return None, [], recusa(porque, problema)
+        return None, [], recusa(porque, problema, causa=causa, pasta=pasta, arquivo=arquivo)
     pend = []
     frase = pendencia(reg)
     if frase:
@@ -429,9 +510,16 @@ def main(argv=None):
         if not tem:
             print(json.dumps({"ok": True, "exige_pesquisa": False}, ensure_ascii=False))
             return 0
-    reg, problema = ler(a.pasta)
+    reg, causa, problema, arquivo = diagnosticar(a.pasta)
     if reg is None:
-        print(json.dumps({"ok": False, "codigo": "pesquisa_nao_tentada", "mensagem": problema}, ensure_ascii=False))
+
+
+        saida = {"ok": False, "codigo": "pesquisa_nao_tentada" if causa == "sem_registro" else causa,
+                 "causa": causa, "mensagem": problema}
+        if arquivo:
+            saida["arquivo_achados"] = arquivo
+            saida["comando"] = comando_registrar(a.pasta, arquivo)
+        print(json.dumps(saida, ensure_ascii=False))
         return 1
     print(json.dumps({"ok": True, "exige_pesquisa": True, "resultado": reg["resultado"],
                       "pendencia_na_minuta": pendencia(reg)}, ensure_ascii=False))

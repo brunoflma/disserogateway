@@ -118,6 +118,69 @@ except Exception as _e:
 
 
 
+try:
+    import procedencia_literal as _procedencia_literal
+except Exception:
+    _procedencia_literal = None
+
+
+def _teor_conferido_sem_liberacao(achado):
+    'True quando o achado tem o teor conferido VERBATIM contra o documento do tribunal (registro'
+
+
+    if _procedencia_literal is None or not isinstance(achado, dict):
+        return False
+    if achado.get("use_status") in ("allowed", "prohibited"):
+        return False
+    regs = achado.get("procedencia_literal")
+    if not isinstance(regs, list) or not any(
+            isinstance(r, dict) and r.get("campo", "syllabus_literal") == "syllabus_literal"
+            for r in regs):
+        return False
+    try:
+        nivel, _motivo = _procedencia_literal.conferir_achado(achado)
+    except Exception:
+        return False
+    return nivel == "verbatim"
+
+
+_REMEDIO_ENDERECO_L11 = (
+    "registre a atestação com o endereço oficial do documento: `atestar_literal.py achados.json "
+    "--documentos <PDFs> --atestar --url-oficial <id>=https://<endereço no portal do tribunal> "
+    "-o achados.json`")
+
+
+
+_PROXIMO_PASSO_L25 = (
+    ("exige migração",
+     "Próximo passo: migre o registro para v3 — `atestar_literal.py` já migra ao gravar a "
+     "atestação, ou `python converter_achados_v2_v3.py achados.json -o achados.json` — e então "
+     "faça a pesquisa de precedente contrário (a v3 migrada nasce com ela não iniciada). "
+     "ATENÇÃO: enquanto a pesquisa contrária não estiver concluída e a cobertura revisada, a "
+     "v3 migrada faz o L25 passar de pendência a ERRO e a peça fica REPROVADA, não mais "
+     "minuta; migre junto com a pesquisa contrária, ou ateste o teor com `--manter-v2` até lá."),
+    ("pesquisa contrária concluída",
+     "Próximo passo: faça a busca de precedente CONTRÁRIO à tese (skill de pesquisa jurídica, com "
+     "os termos da tese adversa) e registre no achados.json, em estrategia.pesquisa_contraria, o "
+     "estado (concluida_sem_achado ou concluida_com_achado), as consultas feitas (fonte, termos, "
+     "data) e os IDs dos contrários achados; depois revise a cobertura_precedente e relinte."),
+    ("precedente contrário ainda não foi concluída",
+     "Próximo passo: faça a busca de precedente CONTRÁRIO à tese e registre o resultado em "
+     "estrategia.pesquisa_contraria (estado, consultas, IDs dos contrários); depois relinte."),
+    ("cobertura inexistente não pode manter",
+     "Próximo passo: conclua a pesquisa de precedente contrário e revise a cobertura_precedente "
+     "(com cobertura_revisada_em e cobertura_valida_ate) antes de manter o precedente favorável."),
+)
+
+
+def _com_proximo_passo_l25(mensagem):
+    for chave, passo in _PROXIMO_PASSO_L25:
+        if chave in mensagem:
+            return f"{mensagem}. {passo}"
+    return mensagem
+
+
+
 
 
 
@@ -2383,9 +2446,11 @@ def main(argv):
             achados = dados.get("achados", [])
             erros_estrategia, pendencias_estrategia = (
                 estrategia_precedentes.avaliar_linguagem(texto_total, dados))
-            erros.extend(f"L25 ESTRATÉGIA: {item}" for item in erros_estrategia)
+            erros.extend(f"L25 ESTRATÉGIA: {_com_proximo_passo_l25(item)}"
+                         for item in erros_estrategia)
             pendencias.extend(
-                f"L25 PESQUISA: {item}" for item in pendencias_estrategia)
+                f"L25 PESQUISA: {_com_proximo_passo_l25(item)}"
+                for item in pendencias_estrategia)
 
             if dados.get("schema_version") == "dsr.achados.v3":
                 _estr = (dados.get("estrategia")
@@ -2434,6 +2499,7 @@ def main(argv):
                             f"{_isen.get('autorizado_por')} — {_isen.get('razao')}")
             prec_nums = set()
             prec_status = {}
+            prec_teor_conferido = set()
             st_registros = []
             for a in achados:
                 if not isinstance(a, dict):
@@ -2447,7 +2513,8 @@ def main(argv):
                     _s = _RX_SIGLA.search(str(_cit.get("court") or ""))
                     _regs = [(a["nature"], _ident, "vinculante" in _txt.lower(),
                               _s.group(1).upper() if _s else None, _ident)]
-                st_registros += [r + (a.get("use_status"),) for r in _regs]
+                st_registros += [r + (a.get("use_status"), _teor_conferido_sem_liberacao(a))
+                                 for r in _regs]
             prec_por_num = {}
             for a in achados:
                 if isinstance(a, dict):
@@ -2457,6 +2524,8 @@ def main(argv):
                     prec_nums |= numeros
                     for numero in numeros:
                         prec_status.setdefault(numero, []).append(a.get("use_status"))
+                        if _teor_conferido_sem_liberacao(a):
+                            prec_teor_conferido.add(numero)
         except Exception as e:
             erros.append(f"CRUZAMENTO: --precedentes ilegível — {e}")
             prec_nums = None
@@ -2478,6 +2547,11 @@ def main(argv):
                 proibidos = sum(
                     1 for a in (achados or [])
                     if isinstance(a, dict) and a.get("use_status") == "prohibited")
+                teor_ok = sum(1 for a in (achados or []) if _teor_conferido_sem_liberacao(a))
+                _teor_frase = (
+                    f" Destes, {teor_ok} com o teor já conferido contra o documento do "
+                    f"tribunal — teor conferido; falta endereço oficial/atestação: "
+                    f"{_REMEDIO_ENDERECO_L11}." if teor_ok else "")
                 pendencias.append(
                     f"L11 RELAÇÃO TOTAL PENDENTE: a Relação de Precedentes tem {total_achados} "
                     f"achado(s) e NENHUM com `use_status=allowed` ({pendentes} pending, "
@@ -2487,7 +2561,8 @@ def main(argv):
                     f"(`python scripts/folha_atestacao.py achados.json -o "
                     f"CONFERENCIA_PENDENTE.json`) e registre o PDF que ele trouxer "
                     f"(`atestar_literal.py --documentos --atestar`) ou a resposta dele "
-                    f"(`registrar_confirmacao_manual.py --lista`) — antes de relintar.")
+                    f"(`registrar_confirmacao_manual.py --lista`) — antes de relintar."
+                    + _teor_frase)
 
         if prec_nums is not None:
             for rot, cit in st_citadas.items():
@@ -2501,9 +2576,17 @@ def main(argv):
                                  f"(use_status=prohibited): a conferência na fonte oficial a negou. "
                                  f"Tire-a da peça e gere a peça de novo")
                 elif not any(r[5] == "allowed" for r in casam):
-                    pendencias.append(f"{rot} consta na Relação, ainda SEM conferência na fonte "
-                                      f"oficial (use_status≠allowed) — pode permanecer na minuta; "
-                                      f"antes do protocolo, ou se confere, ou sai da peça")
+                    if any(len(r) > 6 and r[6] for r in casam):
+                        pendencias.append(
+                            f"{rot} consta na Relação com o teor conferido verbatim contra o "
+                            f"documento oficial — teor conferido; falta endereço oficial/"
+                            f"atestação (use_status≠allowed): pode permanecer na minuta; antes "
+                            f"do protocolo, {_REMEDIO_ENDERECO_L11}, ou ela sai da peça")
+                    else:
+                        pendencias.append(
+                            f"{rot} consta na Relação, ainda SEM conferência na fonte "
+                            f"oficial (use_status≠allowed) — pode permanecer na minuta; "
+                            f"antes do protocolo, ou se confere, ou sai da peça")
             for txt, em_tbl, _, _ in textos:
                 t = txt.strip()
                 if not _eh_entrada_julgado(t, em_tbl):
@@ -2524,6 +2607,15 @@ def main(argv):
                             f"Relação de Precedentes (use_status=prohibited): a conferência na "
                             f"fonte oficial o negou. Tire-o da peça, ou substitua-o por julgado "
                             f"conferido, e gere a peça de novo")
+                    elif "allowed" not in prec_status.get(n, []) and n in prec_teor_conferido:
+
+
+                        pendencias.append(
+                            f"julgado nº {n} consta na Relação com o teor conferido verbatim "
+                            f"contra o documento do tribunal — teor conferido; falta endereço "
+                            f"oficial/atestação (use_status≠allowed): pode permanecer na "
+                            f"minuta; antes do protocolo, {_REMEDIO_ENDERECO_L11}, ou ele sai "
+                            f"da peça")
                     elif "allowed" not in prec_status.get(n, []):
 
 

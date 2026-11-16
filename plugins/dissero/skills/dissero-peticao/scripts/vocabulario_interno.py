@@ -62,6 +62,7 @@ SUBSTITUICOES = [
 
 
 
+
     (r"\bDataJud\b", "a base de dados processuais"),
     (r"\bLexML\b", "o repositório de legislação"),
 
@@ -91,6 +92,15 @@ SUBSTITUICOES = [
     (r"\bCONV-\d+\b", "a convenção do escritório"),
     (r"\bnesta sess(?:ão|ao)\b", "nesta pesquisa"),
 ]
+
+
+
+
+MARCAS_PESQUISA_LIBERADAS = (
+    "Zetema", "JurisprudênciaIA", "JurisprudenciaIA", "IAJus", "IAJUS", "Jusratio", "JusIA", "Jus IA",
+    "MinutaIA", "Fidelia", "FundamentaIA", "Fundamenta IA", "Juspilot", "Jurisprudências.ai",
+    "Exordial", "Jurisconsulto", "Wikijurídica", "Jusbrasil",
+)
 
 _SUBS = [(re.compile(rx, re.IGNORECASE), novo) for rx, novo in SUBSTITUICOES]
 

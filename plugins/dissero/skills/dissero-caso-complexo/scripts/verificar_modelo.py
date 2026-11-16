@@ -266,8 +266,8 @@ def conferir(pedido, modelos, agente_id=None):
 
 
 
-ESFORCO_ESPERADO = {"relator": "high", "merito": "high", "coerencia": "high", "escrita": "high",
-                    "conformidade": "high", "art942": "high", "autor": "medium"}
+ESFORCO_ESPERADO = {"relator": "medium", "merito": "medium", "coerencia": "medium", "escrita": "medium",
+                    "conformidade": "medium", "art942": "medium", "autor": "medium"}
 
 
 def conferir_esforco(assento, efforts):

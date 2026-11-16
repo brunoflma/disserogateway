@@ -86,7 +86,7 @@
     "conselho_inalterado": true,
     "nunca_presumido": true,
     "leitor": "skills/dissero-orquestrador/scripts/recomendar_modelo.py --cenario N",
-    "_esforco": "O esforço da análise inicial é o da fase de DECISÃO: high, com Fable ou com Opus (esforco.por_perfil_analise). Antes de 23/10/2026 o Fable recomendava medium, quando o padrão do Claude Code era high."
+    "_esforco": "O esforço da análise inicial é o da fase de DECISÃO: medium, o padrão da Anthropic, com Fable ou com Opus (esforco.por_perfil_analise; titular, 16/11/2026)."
   },
   "cenarios": {
     "1": {
@@ -229,32 +229,32 @@
     "relator": {
       "tier": "opus",
       "papel": "análise e julgamento",
-      "esforco": "high"
+      "esforco": "medium"
     },
     "merito": {
       "tier": "opus",
       "papel": "análise e julgamento",
-      "esforco": "high"
+      "esforco": "medium"
     },
     "coerencia": {
       "tier": "opus",
       "papel": "análise e julgamento",
-      "esforco": "high"
+      "esforco": "medium"
     },
     "escrita": {
       "tier": "opus",
       "papel": "análise e julgamento",
-      "esforco": "high"
+      "esforco": "medium"
     },
     "conformidade": {
       "tier": "opus",
       "papel": "análise e julgamento",
-      "esforco": "high"
+      "esforco": "medium"
     },
     "art942": {
       "tier": "opus",
       "papel": "ampliação — análise e julgamento",
-      "esforco": "high"
+      "esforco": "medium"
     },
     "autor": {
       "tier": "sonnet",
@@ -270,7 +270,23 @@
       "tier": "haiku",
       "papel": "resumo bruto, OCR, classificação inicial",
       "esforco": "low"
+    },
+    "revisor_light": {
+      "tier": "sonnet",
+      "papel": "Revisão Light: um revisor percorre em série os quatro mandatos e a síntese do relator",
+      "esforco": "medium",
+      "modelo_por_plano": {
+        "free": "sonnet",
+        "pro": "sonnet",
+        "_demais": "herdado"
+      },
+      "nota": "no gratuito e no Pro o revisor pede Sonnet em esforço médio, para não esgotar o limite da conta; nos demais planos, e com plano não declarado, pede o modelo da sessão ('herdado'), também em esforço médio. Opus nunca é exigido."
     }
+  },
+  "conselho_por_plano": {
+    "_": "Sugestão da variante do Conselho pelo plano declarado no perfil (plataforma.plano). Só sugere: quem escolhe é o advogado (escolha_do_conselho.py). Plano ausente ou 'desconhecido' não sugere nada.",
+    "light": ["free", "pro"],
+    "completo": ["max", "teams"]
   },
   "restricoes": {
     "autor_distinto_dos_revisores": true,
@@ -336,15 +352,15 @@
     },
     "padrao_claude_code": "medium",
     "observado": "o transcript do harness registra o effort de cada mensagem do assistente; o verificar_modelo.py o confere contra o esperado por assento (auditoria, nunca gate). Antes de 23/10/2026 o padrão era high em Opus e Sonnet e o Haiku não registrava esforço.",
-    "fonte": "titular, 23/10/2026: todos os modelos (Fable, Opus, Sonnet e Haiku) têm medium por padrão",
+    "fonte": "titular, 23/10/2026: todos os modelos (Fable, Opus, Sonnet e Haiku) têm medium por padrão; titular, 16/11/2026: medium é o novo padrão da Anthropic, e a análise de decisão e o Conselho pedem medium",
     "por_perfil_analise": {
-      "P-A": "high",
-      "P-O": "high",
+      "P-A": "medium",
+      "P-O": "medium",
       "P-S": "medium",
       "P-H": "low"
     },
     "por_tipo_de_fase": {
-      "decisao": "high",
+      "decisao": "medium",
       "execucao": "medium",
       "triagem": "low"
     }

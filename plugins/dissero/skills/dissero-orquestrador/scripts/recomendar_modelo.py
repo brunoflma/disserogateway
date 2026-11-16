@@ -48,6 +48,8 @@
 
 
 
+
+
 from __future__ import annotations
 
 import argparse
@@ -269,8 +271,42 @@ def recomendar(cenario, perfis, perfil_advogado=None, modelo_sessao=None):
         "checkpoint_sugerido": checkpoint,
         "esforco_recomendado": esforco if _s(esforco) else None,
         "motivo": motivo + (f"; esforço recomendado para a análise em {analise_rec}: {esforco} (ajuste do advogado na sessão)" if _s(esforco) else ""),
-        "nao_muda": ["execucao", "conselho_por_assento"],
+
+
+        "conselho_sugerido": _conselho_sugerido(perfis, plano),
+
+
+        "revisor_light": _revisor_light(perfis, plano),
+        "nao_muda": ["execucao", "conselho_completo_por_assento", "escolha_do_conselho"],
     }
+
+
+def _conselho_sugerido(perfis, plano):
+    """'light' (gratuito, Pro), 'completo' (Max, Teams) ou None: sugestão, nunca decisão."""
+    cpp = perfis.get("conselho_por_plano") if isinstance(perfis.get("conselho_por_plano"), dict) else {}
+    for variante, planos in cpp.items():
+        if isinstance(planos, list) and plano in [str(x).strip().lower() for x in planos]:
+            return variante
+    return None
+
+
+def _revisor_light(perfis, plano):
+    "{'model', 'effort', 'motivo'} do revisor da Revisão Light pelo plano declarado, ou None se o"
+
+    rl = (perfis.get("assentos_conselho") or {}).get("revisor_light")
+    if not isinstance(rl, dict):
+        return None
+    por_plano = rl.get("modelo_por_plano") if isinstance(rl.get("modelo_por_plano"), dict) else {}
+    model = por_plano.get(plano) if plano else None
+    model = model if _s(model) else (por_plano.get("_demais") or "herdado")
+    effort = rl.get("esforco") if _s(rl.get("esforco")) else "medium"
+    if model == "herdado":
+        quem = f"plano {plano}" if plano else "plano não declarado"
+        motivo = f"{quem}: o revisor da Revisão Light usa o modelo da sessão, em esforço {effort}"
+    else:
+        motivo = (f"plano {plano}: o revisor da Revisão Light pede {model} em esforço {effort}, "
+                  f"para não esgotar o limite da conta")
+    return {"model": model, "effort": effort, "motivo": motivo}
 
 
 def main(argv=None):

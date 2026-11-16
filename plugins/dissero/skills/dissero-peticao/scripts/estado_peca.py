@@ -1810,9 +1810,18 @@ def _reverificar_conselho(cs_path, peca_risco, transcritos=None, session_id=None
 
 
 
+        light = isinstance(_cs, dict) and _cs.get("variante") == "light"
+        modo = ((_cs.get("isolamento") or {}).get("modo") if light and isinstance(_cs.get("isolamento"), dict)
+                else None)
+        if light and peca_risco == "alto" and modo != "subagentes":
+            return (False, "", ["conselho: light_serial_em_risco_alto — peça de risco alto não se libera pela "
+                                "Revisão Light em série; ela exige um revisor subagente distinto do autor"])
 
 
-        if peca_risco == "alto":
+
+
+
+        if peca_risco == "alto" or (light and modo == "subagentes"):
 
 
 
@@ -1839,13 +1848,14 @@ def _reverificar_conselho(cs_path, peca_risco, transcritos=None, session_id=None
                 cmd += ["--transcritos", _transc.strip()]
 
 
-            cmd += ["--painel"]
+            if not light:
+                cmd += ["--painel"]
         r = subprocess.run(cmd, capture_output=True, text=True, encoding="utf-8")
         o = json.loads((r.stdout or "").strip().splitlines()[-1])
     except Exception as e:
         return (False, "", [f"conselho: falha ao reverificar via conselho_gate.py: {e}"])
     liberado = (r.returncode == 0 and o.get("liberado") is True
-                and o.get("resultado") in ("aprovado", "liberado_optin"))
+                and o.get("resultado") in ("aprovado", "liberado_optin", "aprovado_light"))
     if not liberado:
         gate_motivos = o.get("motivos") if isinstance(o.get("motivos"), list) else []
         detalhe = "; ".join(str(m) for m in gate_motivos if str(m).strip())
@@ -2055,6 +2065,61 @@ def _origem_da_relacao(docx_path):
     return m.group(1) if m else None
 
 
+
+
+MARCA_LACUNAS = "relacao-lacunas:"
+_CAMPOS_LACUNAS = ("total", "sem_link", "descoberta", "sem_data", "sem_inteiro_teor")
+
+
+def _lacunas_da_relacao(docx_path):
+    'Contagem de lacunas carimbada na Relação, como dict de inteiros; None quando a Relação não'
+
+    try:
+        with zipfile.ZipFile(docx_path) as z:
+            xml = z.read("docProps/core.xml").decode("utf-8", "replace")
+    except Exception:
+        return None
+    m = re.search(re.escape(MARCA_LACUNAS) + r"([a-z_=0-9;]+)", xml)
+    if not m:
+        return None
+    pares = dict(p.split("=", 1) for p in m.group(1).split(";") if "=" in p)
+    try:
+        return {c: int(pares[c]) for c in _CAMPOS_LACUNAS}
+    except (KeyError, ValueError):
+        return None
+
+
+def _avisos_da_relacao(st, achados_path):
+    'Avisos (não bloqueiam) sobre a Relação registrada que saiu do `achados.json` de agora:'
+
+
+    h = _sha256(achados_path)
+    relacoes = [a["arquivo"] for a in _anexos(st)
+                if str(a.get("arquivo", "")).lower().endswith(".docx")
+                and os.path.isfile(a["arquivo"]) and _origem_da_relacao(a["arquivo"]) == h]
+    if not relacoes:
+        return []
+    lac = _lacunas_da_relacao(relacoes[0])
+    if lac is None:
+        return ["RELAÇÃO DE PRECEDENTES — CONTAGEM DE LACUNAS INDISPONÍVEL: a Relação registrada "
+                "foi gerada antes da contagem de precedentes sem link oficial e sem data de "
+                "julgamento, e não há como dizer se algum falta. Gere-a de novo com "
+                "`build_precedentes.py` para ter a contagem, ou confira link e data de cada "
+                "precedente antes do protocolo."]
+    if lac["sem_link"] <= 0 and lac["sem_data"] <= 0:
+        return []
+    partes = []
+    if lac["sem_link"] > 0:
+        txt = f"{lac['sem_link']} precedente(s) sem link oficial"
+        if lac["descoberta"] > 0:
+            txt += f" ({lac['descoberta']} só com link de descoberta, não conferido)"
+        partes.append(txt)
+    if lac["sem_data"] > 0:
+        partes.append(f"{lac['sem_data']} sem data de julgamento")
+    return [f"RELAÇÃO DE PRECEDENTES INCOMPLETA: {' e '.join(partes)}, de {lac['total']} "
+            f"precedente(s) na Relação. Conferir antes do protocolo."]
+
+
 def _conferir_relacao(st, achados_path):
     'Motivos de bloqueio quando a peça cita julgado e a Relação de Precedentes não sai junto,'
 
@@ -2160,7 +2225,10 @@ def _reverificar_lint(st, args, docx_path, ev, motivos, avisos_entrega):
             "liberada. Localize o `achados.json` na raiz do caso (ou passe via CLI) e "
             "reexecute `pode-entregar`.")
     if cita_julgado and prec_arg:
-        motivos.extend(_conferir_relacao(st, prec_arg))
+        bloqueios_relacao = _conferir_relacao(st, prec_arg)
+        motivos.extend(bloqueios_relacao)
+        if not bloqueios_relacao:
+            avisos_entrega.extend(_avisos_da_relacao(st, prec_arg))
     if cita_doc and not jnt_arg:
         motivos.append(
             "LINT FAIL-CLOSED: peça cita (Doc. NN) e o "

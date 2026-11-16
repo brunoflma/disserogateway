@@ -31,7 +31,21 @@
 
 
 
-import os, sys, json, re, argparse, shutil, hashlib, zipfile, tempfile
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+import os, sys, json, re, argparse, shutil, hashlib, zipfile, tempfile, datetime
 
 try:
     sys.stdout.reconfigure(encoding="utf-8")
@@ -142,7 +156,11 @@ def _rotulo(s):
 
 
 
-    return vocabulario_interno.sanitizar(acentuacao_pt.reacentuar(_esc(s)))
+
+
+
+    return acentuacao_pt.fora_de_url(acentuacao_pt.reacentuar(_esc(s)),
+                                     vocabulario_interno.sanitizar)
 
 
 def conferir_acentuacao(usados):
@@ -165,7 +183,132 @@ def texto_url(a):
     u = a.get("official_url")
     return u.strip() if isinstance(u, str) else ""
 
+
+def link_descoberta(a):
+    'URL de descoberta (`discovery.url`), só quando não há link oficial. É o endereço onde a'
+
+
+    if texto_url(a):
+        return ""
+    d = a.get("discovery")
+    u = d.get("url") if isinstance(d, dict) else None
+    u = u.strip() if isinstance(u, str) else ""
+    return u if re.match(r"^https?://", u) else ""
+
+
+NATUREZAS_JULGADO = ("acordao", "decisao_administrativa", None, "")
+
+
+def eh_julgado(a):
+    """Data de julgamento, órgão julgador e inteiro teor só se cobram de julgado."""
+    return a.get("nature") in NATUREZAS_JULGADO
+
+
+def _citacao(a):
+    c = a.get("citation")
+    return c if isinstance(c, dict) else {}
+
+
+def _inteiro_teor(a):
+    ft = a.get("full_text")
+    return ft if isinstance(ft, str) and ft.strip() else ""
+
 _ISO = re.compile(r"^(\d{4})-(\d{2})-(\d{2})")
+
+
+_DATA_BR = re.compile(r"^(\d{2})/(\d{2})/(\d{4})$")
+
+
+def data_julgamento(a):
+    '`citation.judgment_date` em DD/MM/AAAA; "" se ausente, irreconhecível ou inexistente no'
+
+    s = _citacao(a).get("judgment_date")
+    s = s.strip() if isinstance(s, str) else ""
+    m = _ISO.match(s)
+    if m:
+        ano, mes, dia = m.groups()
+    else:
+        m = _DATA_BR.match(s)
+        if not m:
+            return ""
+        dia, mes, ano = m.groups()
+    try:
+        datetime.date(int(ano), int(mes), int(dia))
+    except ValueError:
+        return ""
+    return f"{dia}/{mes}/{ano}"
+
+
+def linha_julgado(a):
+    '`**Julgado:** tribunal · órgão julgador · número · Rel. relator · julgado em DD/MM/AAAA`,'
+
+    c = _citacao(a)
+
+    def campo(chave, pendencia, texto_nosso=True):
+        v = c.get(chave)
+        v = v.strip() if isinstance(v, str) else ""
+        if not v:
+            return f"==[{pendencia} A CONFERIR]=="
+        return _rotulo(v) if texto_nosso else _esc(v)
+
+    relator = campo("rapporteur", "RELATOR")
+    if not relator.startswith("==[") and not re.match(r"^rel\b", relator, re.I):
+        relator = "Rel. " + relator
+    data = data_julgamento(a) or "==[DATA DO JULGAMENTO A CONFERIR]=="
+    partes = [campo("court", "TRIBUNAL"), campo("orgao_julgador", "ÓRGÃO JULGADOR"),
+              campo("case_number", "NÚMERO DO PROCESSO", texto_nosso=False), relator,
+              "julgado em " + data]
+    return "**Julgado:** " + " · ".join(partes)
+
+
+def lacunas(usados):
+    'O que falta na Relação: link oficial (todo precedente), data de julgamento e inteiro teor'
+
+    r = {"total": len(usados), "sem_link": [], "com_descoberta": 0, "sem_data": [],
+         "sem_inteiro_teor": []}
+    for i, a in enumerate(usados, 1):
+        ident = str(a.get("id") or "").strip() or f"#{i}"
+        if not texto_url(a):
+            r["sem_link"].append(ident)
+            if link_descoberta(a):
+                r["com_descoberta"] += 1
+        if eh_julgado(a):
+            if not data_julgamento(a):
+                r["sem_data"].append(ident)
+            if not _inteiro_teor(a):
+                r["sem_inteiro_teor"].append(ident)
+    return r
+
+
+def aviso_lacunas(lac):
+    """Linha única de aviso (a primeira da saída), ou "" quando nada falta."""
+    if not (lac["sem_link"] or lac["sem_data"] or lac["sem_inteiro_teor"]):
+        return ""
+
+    def ids(lista):
+        return ", ".join(lista[:20]) + (" …" if len(lista) > 20 else "")
+
+    grupos = [(rot, l) for rot, l in (("sem link", lac["sem_link"]),
+                                       ("sem data", lac["sem_data"]),
+                                       ("sem inteiro teor", lac["sem_inteiro_teor"])) if l]
+    return (f"AVISO: Relação incompleta: {len(lac['sem_link'])} de {lac['total']} sem link oficial "
+            f"({lac['com_descoberta']} com link de descoberta não conferido), "
+            f"{len(lac['sem_data'])} sem data de julgamento, "
+            f"{len(lac['sem_inteiro_teor'])} sem inteiro teor: "
+            + " · ".join(f"{rot}: {ids(l)}" for rot, l in grupos))
+
+
+MARCA_LACUNAS = "relacao-lacunas:"
+
+
+def marca_lacunas(lac):
+    """Contagem para as palavras-chave do .docx, ao lado da marca de origem."""
+    return (f"{MARCA_LACUNAS}total={lac['total']};sem_link={len(lac['sem_link'])};"
+            f"descoberta={lac['com_descoberta']};sem_data={len(lac['sem_data'])};"
+            f"sem_inteiro_teor={len(lac['sem_inteiro_teor'])}")
+
+
+EXIT_RELACAO_INCOMPLETA = 10
 
 
 def _data_br(v):
@@ -352,6 +495,8 @@ def montar_fonte(usados, caso="", estrategia=None):
         pendente = a.get("use_status") == "pending"
         estado = selo(a)
         linhas += [f"## {i} · {ref}" + ("  [A CONFERIR]" if pendente else ""), "", "::: caixa"]
+        if eh_julgado(a):
+            linhas += [linha_julgado(a), ""]
 
 
 
@@ -370,11 +515,16 @@ def montar_fonte(usados, caso="", estrategia=None):
         if ementa:
             linhas.append(f"**Ementa:** {ementa}")
             linhas.append("")
-        integral = _paragrafos(a.get("full_text"))
+        integral = _paragrafos(_inteiro_teor(a))
         if integral:
             linhas.append("**Inteiro teor:**")
             for p in integral:
                 linhas.append(p)
+            linhas.append("")
+        elif eh_julgado(a):
+
+
+            linhas.append("**Inteiro teor:** ==[INTEIRO TEOR NÃO OBTIDO — conferir na fonte oficial]==")
             linhas.append("")
 
         pend = a.get("pendencia_fonte") or {}
@@ -386,6 +536,12 @@ def montar_fonte(usados, caso="", estrategia=None):
         else:
             linhas.append("**Fonte:** ==[URL OFICIAL AUSENTE]==")
         linhas.append("")
+        desc = link_descoberta(a)
+        if desc:
+
+
+            linhas.append(f"**Link de descoberta (não conferido):** {_esc(desc)}")
+            linhas.append("")
         if not link and pend.get("falta"):
 
             linhas.append(f"**Pendência:** {_rotulo(pend['falta'])} — {_rotulo(pend.get('como_obter', ''))}")
@@ -418,9 +574,11 @@ def sha256_arquivo(caminho):
     return h.hexdigest()
 
 
-def carimbar_origem(docx, sha):
-    """Grava `MARCA_RELACAO<sha>` em `cp:keywords` do docProps/core.xml do .docx."""
-    marca = MARCA_RELACAO + sha
+def carimbar_origem(docx, sha, lacunas_marca=""):
+    'Grava `MARCA_RELACAO<sha>` em `cp:keywords` do docProps/core.xml do .docx, seguida de'
+
+
+    marca = MARCA_RELACAO + sha + (f"; {lacunas_marca}" if lacunas_marca else "")
     with zipfile.ZipFile(docx) as z:
         itens = [(i, z.read(i.filename)) for i in z.infolist()]
     saida = []
@@ -447,7 +605,7 @@ def carimbar_origem(docx, sha):
             os.remove(tmp)
 
 
-def build_precedentes(achados_json, out_docx, caso="", pdf=False):
+def build_precedentes(achados_json, out_docx, caso="", pdf=False, exigir_link_e_data=False):
     with open(achados_json, encoding="utf-8") as f:
         dados = json.load(f)
     if (not isinstance(dados, dict)
@@ -475,6 +633,17 @@ def build_precedentes(achados_json, out_docx, caso="", pdf=False):
         for linha in fora:
             print("  ·", linha)
         sys.exit(2)
+    lac = lacunas(usados)
+    aviso = aviso_lacunas(lac)
+    if aviso:
+
+        print(aviso)
+    if exigir_link_e_data and (lac["sem_link"] or lac["sem_data"]):
+        print(f"ERRO (saída {EXIT_RELACAO_INCOMPLETA}): --exigir-link-e-data e a Relação tem "
+              f"precedente sem link oficial ou julgado sem data de julgamento; nada foi gerado. "
+              f"Confira na fonte oficial e registre o link e a data no achado, ou gere sem a "
+              f"opção (a Relação sai com as pendências realçadas).")
+        sys.exit(EXIT_RELACAO_INCOMPLETA)
     if not catalogo:
         print("AVISO: o catálogo de fontes oficiais não acompanha esta skill. O host de cada "
               "confirmação, automática ou do advogado, é conferido na pesquisa, pelo validador "
@@ -509,7 +678,7 @@ def build_precedentes(achados_json, out_docx, caso="", pdf=False):
         build_docx.build(tmp_md, out_docx, identidade=False, force=True, jusmanizer_ativo=False)
     finally:
         shutil.rmtree(work, ignore_errors=True)
-    carimbar_origem(out_docx, sha256_arquivo(achados_json))
+    carimbar_origem(out_docx, sha256_arquivo(achados_json), marca_lacunas(lac))
 
     legados = [i for i, x in enumerate(usados, 1) if selo(x).startswith(SELO_LEGADO)]
     if legados:
@@ -545,5 +714,9 @@ if __name__ == "__main__":
     ap.add_argument("--caso", default="")
     ap.add_argument("--pdf", action="store_true",
                     help="gerar também o PDF ao lado do .docx (padrão: NÃO gera)")
+    ap.add_argument("--exigir-link-e-data", action="store_true",
+                    help=f"com precedente sem link oficial ou julgado sem data de julgamento, "
+                         f"não gera e sai com {EXIT_RELACAO_INCOMPLETA}")
     a = ap.parse_args()
-    build_precedentes(a.achados_json, a.out, a.caso, pdf=a.pdf)
+    build_precedentes(a.achados_json, a.out, a.caso, pdf=a.pdf,
+                      exigir_link_e_data=a.exigir_link_e_data)

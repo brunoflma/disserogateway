@@ -305,9 +305,10 @@ def cmd_novo_ciclo(args):
     novo_st = _estado_inicial(peca, st.get("risco"), novo, st.get("autor_id"),
                               st.get("isolamento", {}))
     novo_st["ciclos"] = ciclos
-    for k in ("session_id", "perfil_modelo", "modelo_autor_pedido"):
+    for k in ("session_id", "perfil_modelo", "modelo_autor_pedido", "variante", "escolha_conselho"):
         if st.get(k):
             novo_st[k] = st[k]
+    _trocar_variante(novo_st, st, args)
     if args.session_id is not None:
         novo_st["session_id"] = args.session_id.strip()
     _toca(novo_st, args.ts)
@@ -356,6 +357,7 @@ def cmd_dispensar(args):
 def cmd_abrir(args):
     if args.risco not in RISCOS:
         raise Contrato([f"--risco deve ser um de {RISCOS}"])
+    luz = _abrir_light(args)
     if args.modo not in MODOS or (args.risco, args.modo) == ("alto", "serial"):
         raise Contrato([f"--modo deve ser um de {MODOS}; em risco alto, 'subagentes' (no 'serial' "
                         f"um agente encena a turma)"])
@@ -398,6 +400,7 @@ def cmd_abrir(args):
                 f"`{_cmd_sessao(args.state, 'novo-ciclo', '--ciclo ' + str((antigo.get('ciclo') or 1) + 1))}`, que "
                 f"arquiva o anterior em 'ciclos'. Para recomeçar do zero, remova o arquivo à mão."])
     st = _estado_inicial(args.peca, args.risco, ciclo, args.autor_id, {"modo": args.modo})
+    st.update(luz)
     if args.session_id:
         st["session_id"] = args.session_id.strip()
     if args.perfil:
@@ -408,7 +411,8 @@ def cmd_abrir(args):
     _evento(st, "Relator", f"Sessão aberta — distribuição da peça '{args.peca}' (risco {args.risco}).", args.ts)
     _gravar(args.state, st)
     extra = {"fase": "distribuicao", "cadeiras": len(CADEIRAS), "state": args.state,
-             "proximo_passo": _proximo_passo_painel(args.state)}
+             "variante": st.get("variante", "completo"),
+             "proximo_passo": _proximo_light(args.state) if luz else _proximo_passo_painel(args.state)}
     return _saida("aberta", [f"sessão criada em {args.state}"], 0, extra=extra)
 
 
@@ -472,6 +476,7 @@ def cmd_cadeira(args):
     if args.id not in CADEIRAS:
         raise Contrato([f"--id deve ser um de {CADEIRAS}"])
     _recusa_se_dispensado(st, args.state, f"a cadeira '{args.id}'")
+    _recusa_se_light(st, "`cadeira`")
     c = _acha_cadeira(st, args.id)
     modelo = _modelo(args.modelo)
     if args.status is not None and args.status not in ST_CADEIRA:
@@ -510,6 +515,7 @@ def cmd_relator(args):
     st = _carregar(args.state)
     f0 = st.get("fase")
     _recusa_se_dispensado(st, args.state, "o relator")
+    _recusa_se_light(st, "`relator`")
     r = st.setdefault("relator", {})
     modelo = _modelo(args.modelo)
     if modelo:
@@ -587,6 +593,7 @@ def cmd_art942(args):
     st = _carregar(args.state)
     f0 = st.get("fase")
     _recusa_se_dispensado(st, args.state, "o voto da ampliação do art. 942")
+    _recusa_se_light(st, "o art. 942")
     if _prov("reabre", st) is not True:
         _recusa_se_proclamada(st, args.state, "a ampliação do art. 942")
     if args.voto is None:
@@ -650,6 +657,11 @@ def cmd_proclamar(args):
     f0 = st.get("fase")
     _recusa_se_dispensado(st, args.state, "a proclamação")
     _recusa_se_proclamada(st, args.state, "outra proclamação")
+    if st.get("variante") == "light":
+        x = _proclamar_light(st, args)
+        _toca(st, args.ts)
+        _gravar(args.state, st)
+        return _saida("proclamado", [], 0, extra=x)
     if args.resultado not in RESULTADOS:
         raise Contrato([f"--resultado deve ser um de {RESULTADOS}"])
     r = st.setdefault("relator", {})
@@ -691,6 +703,15 @@ def cmd_proclamar(args):
         tipo="proclamacao")
     _gravar(args.state, st)
     return _saida("proclamado", [], 0, extra=_defasado(args.state, st, f0, {"placar": r["placar"]}))
+
+
+def cmd_mandato(args):
+    """Revisão Light: um mandato (ou a síntese, `--id relator`) do revisor único."""
+    st = _carregar(args.state)
+    x = _mandato(st, args, _prov("hash_julgado", st, args.state))
+    _toca(st, args.ts)
+    _gravar(args.state, st)
+    return _saida("mandato_registrado", [], 0, extra=x)
 
 
 def cmd_exibir(args):
@@ -811,7 +832,7 @@ def main():
     sub.add_parser("conferir")
     p = {}
     for n in ("abrir", "novo-ciclo", "dispensar", "cadeira", "relator", "fase", "lint", "art942",
-              "proclamar", "exibir"):
+              "proclamar", "exibir", "mandato"):
         p[n] = sub.add_parser(n)
         p[n].add_argument("--state", default="CONSELHO_STATUS.json")
         p[n].add_argument("--session-id")
@@ -823,6 +844,10 @@ def main():
     opc("abrir", "peca", "risco", "autor-id", required=True)
     opc("abrir", "perfil", "modelo-autor")
     opc("abrir", "modo", default="subagentes")
+    opc("abrir", "variante", default="completo")
+    opc("novo-ciclo", "variante")
+    opc("mandato", "id", required=True)
+    opc("mandato", "agente-id", "voto", "fundamentacao", "itens", "modelo")
     opc("abrir", "ciclo", type=int)
     opc("novo-ciclo", "ciclo", type=int)
     opc("novo-ciclo", "peca")
@@ -865,4 +890,4 @@ def main():
 
 if __name__ == "__main__":
     sys.exit(main())
-# selo dsr: sha256=729887a62c177f883180468e83f74f6c4cf4f13779faf155b37139a18d51b4a1
+# selo dsr: sha256=641aaf8c5ebb3e27f48481cc2ad89d22af271e1602af2f7696796742b6ad884b
