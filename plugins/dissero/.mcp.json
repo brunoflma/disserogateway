@@ -7,6 +7,14 @@
     "zetema": {
       "type": "http",
       "url": "https://zetema.bfldevlabs.studio/mcp"
+    },
+    "eluxi": {
+      "type": "http",
+      "url": "https://eluxi.bfldevlabs.studio/mcp"
+    },
+    "fons": {
+      "type": "http",
+      "url": "https://fons.bfldevlabs.studio/mcp"
     }
   }
 }
