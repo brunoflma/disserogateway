@@ -34,8 +34,15 @@ um .docx parcial que perde conteúdo em silêncio.
 Saída: 0 gerado (ou válido, no --check) · 1 uso · 2 OOXML inválido · 3 dialeto ou Jusmanizer
 reprovado · 4 avisos sem --force · 5 --precedentes ilegível ou fora do contrato
 dsr.achados.v2 ou v3, `achado:` sem dataset ou com id inexistente, saída em uso · 6 timbrado não
-resolvido · 7 placeholder não resolvido ou timbrado colado no corpo · 8 jusmanizer.py ausente.
+resolvido · 7 placeholder não resolvido ou timbrado colado no corpo · 8 jusmanizer.py ausente ·
+9 MINUTA COM PENDÊNCIAS de peça com tese jurídica sem a escolha do advogado (minuta rápida ou
+método completo) ou, no método completo, com etapa anterior à redação ou a pesquisa de
+jurisprudência por fazer, ou com o registro da pesquisa que deixou de valer (por exemplo, o
+arquivo de achados mudou depois do registro): a primeira linha diz a causa real e o remédio.
 Na MINUTA COM PENDÊNCIAS, 2 também quando a marca não ficou gravada (o arquivo é apagado).
+Recusa anterior à escrita (3, 4, 5, 7, 9, fora do --check): nada é gerado, o .docx anterior no
+caminho de saída é renomeado para `<nome>.DEFASADO.docx` (substituindo um defasado mais antigo)
+e a última linha da saída repete a parada. 5 por arquivo de saída em uso não renomeia nada.
 """
 import html
 import json
@@ -322,8 +329,7 @@ def build(md_path, out_docx, identidade=False, force=False, check_only=False,
         _pend_escolha, _parada = escolha_do_metodo.exigir_para_minuta(
             src, os.path.dirname(os.path.abspath(md_path)))
         if _parada:
-            print(_parada)
-            sys.exit(EXIT_FALTA_ESCOLHA_OU_ETAPA)
+            parar_por_parada(_parada, EXIT_FALTA_ESCOLHA_OU_ETAPA, out_docx, check_only)
         pendencias.extend((p, None) for p in _pend_escolha)
 
     if minuta_pendencias:
@@ -355,7 +361,7 @@ def build(md_path, out_docx, identidade=False, force=False, check_only=False,
             print("ERRO: o corpo repete o timbrado do perfil:\n  " + _linha_timbrada.strip()
                   + "\n  Cabeçalho e rodapé entram pelo --identidade, não pelo texto. Remova essa linha (e as demais "
                   "do cabeçalho/rodapé coladas no corpo) e gere de novo.")
-            sys.exit(7)
+            _parar_sem_gerar(7, out_docx, check_only)
 
 
 
@@ -373,7 +379,7 @@ def build(md_path, out_docx, identidade=False, force=False, check_only=False,
         print("  Disponíveis: {{ADVOGADO_NOME}} {{NOME_CABECALHO}} {{OAB}} {{ESCRITORIO}}")
         print("               {{CIDADE_ASSINATURA}} {{EMAIL}} {{TELEFONE}}")
         print("  Confira o perfil: perfil_advogado.py --status")
-        sys.exit(7)
+        _parar_sem_gerar(7, out_docx, check_only)
 
 
     erros, avisos = validar_dialeto(src)
@@ -386,7 +392,7 @@ def build(md_path, out_docx, identidade=False, force=False, check_only=False,
         for e in erros:
             print(" ✗", e)
         print("Corrija a FONTE e gere de novo (nada foi escrito).")
-        sys.exit(3)
+        _parar_sem_gerar(3, out_docx, check_only)
 
 
 
@@ -419,13 +425,13 @@ def build(md_path, out_docx, identidade=False, force=False, check_only=False,
                     print(f"  · «{o['contexto']}»")
                 print("Reescreva esses trechos em português de advogado e gere de novo "
                       "(nada foi escrito).")
-                sys.exit(3)
+                _parar_sem_gerar(3, out_docx, check_only)
             if _jm["veredito"] == "erro" and minuta_pendencias:
                 pendencias.append((f"estilo de escrita a revisar ({len(_jm['ocorrencias'])} "
                                    f"ocorrência(s) listadas acima)", None))
             elif _jm["veredito"] == "erro":
                 print("Reescreva a FONTE pelo catálogo (estilo-escrita.md §2) e gere de novo.")
-                sys.exit(3)
+                _parar_sem_gerar(3, out_docx, check_only)
         else:
             print("Jusmanizer: limpo")
 
@@ -447,7 +453,7 @@ def build(md_path, out_docx, identidade=False, force=False, check_only=False,
         pendencias.append((PENDENCIA_ESTRUTURA, "; ".join(avisos)))
     elif avisos and not force:
         print("Há avisos. Revise, ou use --force para gerar mesmo assim.")
-        sys.exit(4)
+        _parar_sem_gerar(4, out_docx, check_only)
 
     base_docx = os.path.join(core.ASSETS_DIR, "base_template.docx")
     blocks = core.parse_blocks(src)
@@ -470,17 +476,17 @@ def build(md_path, out_docx, identidade=False, force=False, check_only=False,
             dados = json.load(open(precedentes, encoding="utf-8"))
         except Exception as e:
             print(f"ERRO: --precedentes ilegível ({precedentes}): {e}")
-            sys.exit(5)
+            _parar_sem_gerar(5, out_docx, check_only)
 
         if (not isinstance(dados, dict)
                 or dados.get("schema_version") not in ("dsr.achados.v2", "dsr.achados.v3")):
             print("ERRO: --precedentes fora do contrato dsr.achados.v2 ou dsr.achados.v3")
-            sys.exit(5)
+            _parar_sem_gerar(5, out_docx, check_only)
         try:
             blocks, n_injetados = core.injetar_achados(blocks, dados.get("achados") or [])
         except core.AchadoAusente as e:
             print(f"ERRO: {e}")
-            sys.exit(5)
+            _parar_sem_gerar(5, out_docx, check_only)
     else:
         pendentes = [l for _k, p in blocks if _k == "juris" for _c, em in p
                      for l in em if core.RX_REF_ACHADO.match(l or "")]
@@ -498,7 +504,7 @@ def build(md_path, out_docx, identidade=False, force=False, check_only=False,
                   "ementa NÃO seja digitada: sem o dataset não há de onde copiá-la.")
             for l in pendentes[:5]:
                 print("  ·", l)
-            sys.exit(5)
+            _parar_sem_gerar(5, out_docx, check_only)
 
 
 
@@ -540,7 +546,7 @@ def build(md_path, out_docx, identidade=False, force=False, check_only=False,
                   "na MINUTA COM PENDÊNCIAS: " + ", ".join(f"«{t}»" for t in _vazados[:15]))
             print("Reescreva esses trechos em português de advogado e gere de novo "
                   "(nada foi escrito).")
-            sys.exit(3)
+            _parar_sem_gerar(3, out_docx, check_only)
 
     def _montar(work, com_identidade):
         'Monta o pacote em `work` e devolve (n_links, advogado). Timbrado que não resolve'
@@ -650,6 +656,44 @@ def build(md_path, out_docx, identidade=False, force=False, check_only=False,
 
 
         shutil.rmtree(work, ignore_errors=True)
+
+
+def caminho_defasado(out_docx):
+    """Para onde vai o .docx anterior quando a geração para antes de escrever: `<nome>.DEFASADO.docx`."""
+    base, ext = os.path.splitext(out_docx)
+    return base + ".DEFASADO" + (ext or ".docx")
+
+
+def _parar_sem_gerar(codigo, out_docx, check_only=False):
+    'Encerra uma recusa ANTERIOR à escrita. Relato de 16/11/2026: o gerador parava sem gravar, o'
+
+
+
+
+    if check_only or not out_docx or out_docx == os.devnull:
+        sys.exit(codigo)
+    if not os.path.isfile(out_docx):
+        print(f"PARADA (saída {codigo}): nenhum .docx gerado; {out_docx} não existe.")
+        sys.exit(codigo)
+    destino = caminho_defasado(out_docx)
+    try:
+        os.replace(out_docx, destino)
+    except OSError as erro:
+        print(f"PARADA (saída {codigo}): nenhum .docx gerado; {out_docx} não foi atualizado e o anterior "
+              f"continua lá, DEFASADO (não foi possível renomeá-lo: {erro}); não o entregue como novo.")
+        sys.exit(codigo)
+    print(f"PARADA (saída {codigo}): nenhum .docx gerado; {out_docx} não foi atualizado (o anterior foi "
+          f"renomeado para {destino}, para não passar por novo).")
+    sys.exit(codigo)
+
+
+def parar_por_parada(parada, codigo, out_docx, check_only=False):
+    'Imprime a parada da escolha do método ou da etapa com a PRIMEIRA linha dizendo a saída, que'
+
+
+
+    print(re.sub(r"^PARADA:[ \t]*", f"PARADA (saída {codigo}): nada foi gerado — ", parada, count=1))
+    _parar_sem_gerar(codigo, out_docx, check_only)
 
 
 def _texto_oculto_na_saida(caminho):

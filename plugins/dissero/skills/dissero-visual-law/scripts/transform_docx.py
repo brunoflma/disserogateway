@@ -117,8 +117,11 @@ def transform(src_docx, out_docx, identidade="fragmento", driver=None, minuta_pe
             pend_pesquisa, _parada = escolha_do_metodo.exigir_para_minuta(
                 "\n".join(_paras), os.path.dirname(os.path.abspath(src_docx)))
             if _parada:
-                print(_parada)
-                sys.exit(EXIT_FALTA_ESCOLHA_OU_ETAPA)
+
+
+
+                import build_docx
+                build_docx.parar_por_parada(_parada, EXIT_FALTA_ESCOLHA_OU_ETAPA, out_docx)
 
         core.universal_pass(work, identidade=identidade)
 

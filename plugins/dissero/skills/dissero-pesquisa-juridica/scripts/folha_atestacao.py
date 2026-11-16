@@ -78,6 +78,7 @@ NOTAS_DE_PORTAL = {
 _ROTULOS_MOLDURA = (
     ("case_number", "Número"),
     ("court", "Tribunal"),
+    ("orgao_julgador", "Órgão julgador"),
     ("rapporteur", "Relator(a)"),
     ("judgment_date", "Julgamento"),
     ("identifier", "Identificador"),
@@ -268,7 +269,7 @@ def montar_lista(dados, fontes=None):
             moldura = f"moldura conferida na fonte em {conferida}"
         else:
             campos = [f"{rot.lower()} {texto(citation.get(c))}"
-                      for c, rot in _ROTULOS_MOLDURA[:4] if texto(citation.get(c))]
+                      for c, rot in _ROTULOS_MOLDURA[:5] if texto(citation.get(c))]
             moldura = "confira " + (", ".join(campos) if campos else "número, relator e data")
         linhas.append(f"{n}. {ref} · {moldura}")
         if url:

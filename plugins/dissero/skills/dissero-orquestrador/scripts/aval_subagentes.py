@@ -62,6 +62,10 @@
 
 
 
+
+
+
+
 import json
 import os
 
@@ -102,6 +106,28 @@ def _int(x):
 
 
     return x if (isinstance(x, int) and not isinstance(x, bool) and x > 0) else None
+
+
+def soma_acrescimos(d):
+    '(soma dos acréscimos válidos, itens recusados) — gêmeo do `soma_acrescimos` do gate.'
+
+
+
+
+
+    if not isinstance(d, dict) or "acrescimos" not in d:
+        return 0, []
+    lista = d.get("acrescimos")
+    if not isinstance(lista, list):
+        return 0, [lista]
+    soma, tortos = 0, []
+    for a in lista:
+        n = _int(a.get("agentes")) if isinstance(a, dict) else None
+        if n is None:
+            tortos.append(a)
+        else:
+            soma += n
+    return soma, tortos
 
 
 def contar_disparos(ledger_path, session_id):
@@ -252,10 +278,15 @@ def ler_aval(session_id, raiz=None):
 
     tortos = [(c, d[c]) for c in ("max_simultaneos", "ondas")
               if c in d and _int(d[c]) is None]
-    if tortos:
-        det["nota_tipo"] = ("; ".join(
-            "%s %r ignorado: o gate só aceita inteiro > 0" % (c, v) for c, v in tortos)
-            + " — regrave o aval com `autorizar_subagentes.py`")
+    extra, acr_tortos = soma_acrescimos(d)
+    det["acrescimo_total"] = extra
+    notas = ["%s %r ignorado: o gate só aceita inteiro > 0" % (c, v) for c, v in tortos]
+    if acr_tortos:
+        notas.append("acrescimos %r ignorado(s): o gate só soma item com `agentes` inteiro > 0"
+                     % (acr_tortos,))
+    if notas:
+        det["nota_tipo"] = ("; ".join(notas)
+                            + " — regrave o aval com `autorizar_subagentes.py`")
 
 
-    return _com_o_gasto(simult * ondas, det, session_id, raiz)
+    return _com_o_gasto(simult * ondas + extra, det, session_id, raiz)

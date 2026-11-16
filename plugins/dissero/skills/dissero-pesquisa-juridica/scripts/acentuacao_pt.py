@@ -199,11 +199,37 @@ def _trocar_palavras(texto, tabela):
     return _PALAVRA.sub(sub, texto)
 
 
+
+
+
+
+
+URL_RX = re.compile(r"(?:https?://|\bwww\.)[^\s<>\"'“”]+[^\s<>\"'“”.,;:!?)\]}]", re.I)
+
+
+def fora_de_url(texto, funcao):
+    'Aplica `funcao` só aos trechos de `texto` que não são URL e remonta na ordem. A URL'
+
+    if not texto:
+        return texto
+    partes, pos = [], 0
+    for m in URL_RX.finditer(texto):
+        partes.append(funcao(texto[pos:m.start()]))
+        partes.append(m.group(0))
+        pos = m.end()
+    partes.append(funcao(texto[pos:]))
+    return "".join(partes)
+
+
 def reacentuar(texto):
-    'Reacentua RÓTULO DE CITAÇÃO pelo dicionário fechado. Idempotente.'
+    'Reacentua RÓTULO DE CITAÇÃO pelo dicionário fechado. Idempotente. URL não é tocada.'
 
 
 
+    return fora_de_url(texto, _reacentuar_trecho)
+
+
+def _reacentuar_trecho(texto):
     if not texto:
         return texto
     for chave, alvo in COMPOSTOS.items():
@@ -226,6 +252,10 @@ def reacentuar_literal(texto):
 
 
 
+    return fora_de_url(texto, _reacentuar_literal_trecho)
+
+
+def _reacentuar_literal_trecho(texto):
     if not texto:
         return texto
     novo = texto
@@ -243,7 +273,7 @@ def residuos(texto):
 
 
     fora, vistos = [], set()
-    for m in _PALAVRA.finditer(texto or ""):
+    for m in _PALAVRA.finditer(URL_RX.sub(" ", texto or "")):
         p = m.group(0)
         if _DIACRITICO.search(p):
             continue

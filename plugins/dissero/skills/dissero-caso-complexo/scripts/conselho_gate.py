@@ -63,6 +63,16 @@
 
 
 
+
+
+
+
+
+
+
+
+
+
 import sys, os, json, argparse, time
 
 try:
@@ -89,6 +99,18 @@ try:
     import caso_raiz as _caso_raiz
 except Exception:
     _caso_raiz = None
+
+
+
+
+try:
+    import conselho_sessao_base as _base
+except Exception:
+    _base = None
+try:
+    import escolha_do_conselho as _escolha
+except Exception:
+    _escolha = None
 
 
 class CaminhoRecusado(Exception):
@@ -830,6 +852,8 @@ def validar_contrato(st):
     lb = _d(st.get("lint")).get("exit_code")
     if lb is not None and (isinstance(lb, bool) or not isinstance(lb, int)):
         m.append("lint.exit_code deve ser inteiro (bool/float/str não contam como 0)")
+    if st.get("variante") is not None and st.get("variante") not in ("completo", "light"):
+        m.append("variante inválida (use completo|light)")
     if st.get("conselho_dispensado") is not None and not isinstance(st.get("conselho_dispensado"), bool):
         m.append("conselho_dispensado deve ser booleano (string 'false'/1/'yes' são truthy e dispensariam o conselho indevidamente)")
 
@@ -901,6 +925,189 @@ def coletar_votos(st):
         else:
             motivos.append(f"voto incompleto no assento {c.get('id')} (agente_id + voto + fundamentação)")
     return votos, motivos
+
+
+
+
+
+
+
+
+
+
+LIGHT_RESSALVA = "REVISÃO LIGHT — revisão por um único revisor em série, não é deliberação colegiada."
+LIGHT_SERIAL = ("Revisão feita pelo próprio agente que conduziu a peça — sem separação autor/revisor.")
+LIGHT_OFERTA = ("Risco alto: antes do protocolo, o advogado pode pedir o Conselho completo, com cinco "
+                "julgadores independentes.")
+
+
+def _artefatos_light(st, estado, lint_ok, pend):
+    """{artefato: (True|False|None, descrição)}: None = não há o que conferir (sem PECA_STATE)."""
+    lint = _d(st.get("lint"))
+    divs = versoes_divergentes(st)
+    out = {"lint": (lint_ok, f"lint {lint.get('resultado')} (saída {lint.get('exit_code')})"),
+           "jurisprudencia": (not pend, f"{len(pend)} pendência(s) de jurisprudência"),
+           "versao": (bool(_s(lint.get("docx_sha256"))) and not divs,
+                      "versão linteada" + (" sem hash" if not _s(lint.get("docx_sha256")) else "")
+                      + (f" divergente ({len(divs)})" if divs else ""))}
+
+
+
+    decl, lado = _s(lint.get("peca_state")), os.path.join(os.path.dirname(estado), "PECA_STATE.json")
+    lidos, falta = [], None
+    for ps in dict.fromkeys(([os.path.abspath(decl)] if decl else []) + [os.path.abspath(lado)]):
+        if not os.path.isfile(ps):
+            if ps != os.path.abspath(lado):
+                falta = ps
+            continue
+        try:
+            lidos.append(_d(json.loads(open(ps, encoding="utf-8").read())))
+        except Exception:
+            lidos.append({})
+    for nome, fase in (("prazo", "prazo"), ("completude", "briefing")):
+        if falta:
+            out[nome] = (False, f"o PECA_STATE declarado não existe ({falta})")
+        elif not lidos:
+            out[nome] = (None, "sem PECA_STATE")
+        else:
+            stts = [_d(_d(pst.get("fases")).get(fase)).get("status") for pst in lidos]
+            ruim = [x for x in stts if x != "concluida"]
+            out[nome] = (not ruim, f"fase {fase} do PECA_STATE: {(ruim or stts)[0] or 'ausente'}")
+    return out
+
+
+def _cobertura_light(cad, artefatos):
+    """Motivos: catálogo de cada mandato e o declarado contra o artefato."""
+    m, n = [], 0
+    for a in ASSENTOS:
+        c = cad.get(a) or {}
+        itens = c.get("itens_conferidos")
+        m += _base.conferir_itens(a, itens, c.get("voto"))
+        decl = {_s(_d(i).get("id")): _d(i).get("resultado") for i in (itens if isinstance(itens, list) else [])}
+        for iid, _txt, art in _base.CATALOGO_LIGHT[a]:
+            n += 1
+            if not art or iid not in decl:
+                continue
+            real, desc = artefatos[art]
+            if (real is False and decl[iid] != "nao_conforme") or (real is True and decl[iid] == "nao_se_aplica"):
+                m.append(f"item_contra_artefato: o item {iid} do mandato {_NOMES_ASSENTO[a]} foi declarado "
+                         f"'{decl[iid]}', e o artefato diz outra coisa ({desc}); vale o artefato")
+    return m, n
+
+
+def julgar_light(st, args, lint_ok, pend):
+    estado = os.path.abspath(args.status)
+    pasta, risco = os.path.dirname(estado), st["risco"]
+    if _base is None or not hasattr(_base, "CATALOGO_LIGHT") or _escolha is None:
+        return _erro(["catalogo_indisponivel: o conselho_sessao_base.py e o escolha_do_conselho.py têm de "
+                      "estar ao lado do conselho_gate.py para julgar a Revisão Light"], 2, "contrato_invalido")
+    reg, porque = _escolha.ler(pasta)
+    if reg is None:
+        return _erro([f"light_sem_escolha: a sessão é da Revisão Light, e não há escolha do advogado gravada "
+                      f"em {pasta} ({porque}). Pergunte (`escolha_do_conselho.py pergunta`) e grave a resposta "
+                      f"dele (`escolha_do_conselho.py registrar`)."], 2, "light_sem_escolha")
+    if reg.get("variante") != "light":
+        return _erro([f"variante_contra_escolha: o advogado escolheu o {reg.get('variante')} "
+                      f"(«{reg.get('palavras')}»), e a sessão é da Revisão Light."], 2, "variante_contra_escolha")
+
+
+    d = _escolha.completo_deliberado(st)
+    d = d and (d[0], d[1], "nesta sessão")
+    ps_decl = _s(_d(st.get("lint")).get("peca_state"))
+    for p in dict.fromkeys([pasta] + ([os.path.dirname(os.path.abspath(ps_decl))] if ps_decl else [])):
+        if not d:
+            achado = _escolha.completo_na_pasta(p)
+            d = achado and (achado[0], achado[1], f"em {achado[2]}")
+    if d:
+        return _erro([f"{d[0]}: o Conselho completo já {'devolveu a peça' if d[0] == 'light_apos_devolucao' else 'votou'} "
+                      f"no ciclo {d[1]} ({d[2]}), e a Revisão Light não toma o lugar dele. A ressubmissão volta ao "
+                      f"completo (`conselho_sessao.py novo-ciclo --variante completo`)."], 1, d[0])
+    modo = _d(st.get("isolamento")).get("modo")
+    if modo not in ("subagentes", "serial"):
+        return _erro(["isolamento.modo da Revisão Light é subagentes ou serial"], 2, "contrato_invalido")
+    if risco == "alto" and modo != "subagentes":
+        return _erro(["light_serial_em_risco_alto: em risco alto, a Revisão Light exige um revisor que seja "
+                      "subagente distinto do autor; a light em série, pelo próprio agente, só em risco baixo"],
+                     1, "light_serial_em_risco_alto")
+    motivos = []
+    cad = {_s(_d(c).get("id")): _d(c) for c in (st.get("cadeiras") if isinstance(st.get("cadeiras"), list) else [])}
+    rel = _d(st.get("relator"))
+    ids = []
+    for a, c in [(a, cad.get(a) or {}) for a in ASSENTOS] + [("relator", rel)]:
+        if c.get("voto") in VOTOS and _s(c.get("fundamentacao")) and _id(c.get("agente_id")):
+            ids.append(_id(c.get("agente_id")))
+        else:
+            motivos.append(f"mandato incompleto: {_NOMES_ASSENTO[a]} (agente_id + voto + fundamentação)")
+    if len(set(ids)) > 1:
+        motivos.append(f"revisor_trocado: a Revisão Light tem um revisor só, e os mandatos vêm de {sorted(set(ids))}")
+    revisor, autor = (ids[0] if ids else ""), _id(st.get("autor_id"))
+    if modo == "subagentes" and revisor and revisor == autor:
+        motivos.append("AUTO-CERTIFICAÇÃO: com subagente, o revisor da Revisão Light não é o autor da peça")
+    cobertura, n_itens = _cobertura_light(cad, _artefatos_light(st, estado, lint_ok, pend))
+    motivos += cobertura
+    rota = ""
+    if modo == "subagentes" and revisor:
+        sid = st.get("session_id") if isinstance(st.get("session_id"), str) else None
+        transc = args.transcritos or os.environ.get("DSR_TRANSCRIPTS_DIR") or None
+        try:
+            leds = [no_caso(args.proveniencia, sid or args.session_id)] if args.proveniencia else _ledgers(st, estado)
+        except CaminhoRecusado as e:
+            leds, rota = [], ""
+            motivos.append(f"revisor_sem_proveniencia: proveniência não conferida: {e}")
+        provas = [_verificar_proveniencia(led, [revisor], sid, transc) for led in leds]
+        boa = [r for m_, r in provas if not m_]
+        if leds and not boa:
+            motivos.append(f"revisor_sem_proveniencia: o revisor '{revisor}' não consta no registro do harness "
+                           f"nem tem transcript de subagente desta sessão; com subagente, a Revisão Light exige a "
+                           f"proveniência do revisor em qualquer risco")
+        rota = (boa[0].get(revisor) if boa else "") or ""
+    fase = st.get("fase")
+    if fase not in ("aprovado", "devolvido"):
+        motivos.append(f"revisao_nao_proclamada: a Revisão Light está na fase '{fase}'; registre os mandatos e "
+                       f"rode `conselho_sessao.py proclamar` antes de pedir a entrega")
+    if motivos:
+        return _erro(motivos)
+    vs = [cad[a]["voto"] for a in ASSENTOS] + [rel["voto"]]
+    dev = vs.count("devolver")
+    placar = f"Revisão Light: {dev} devolução(ões) em 5 mandatos (veto)"
+    contado = "devolvido" if dev else "aprovado"
+    if fase != contado:
+        return _erro([f"resultado_contra_placar: a Revisão Light proclamou '{fase}', e o veto dá {contado} "
+                      f"({placar}). Submeta a peça de novo com `conselho_sessao.py novo-ciclo --state \"{estado}\"`."],
+                     1, "resultado_contra_placar")
+    if dev:
+        devs = [f"[{_NOMES_ASSENTO[a]}] {cad[a]['fundamentacao'] if a in cad else rel['fundamentacao']}"
+                for a, v in zip([*ASSENTOS, "relator"], vs) if v == "devolver"]
+        print(json.dumps({"ok": True, "liberado": False, "resultado": "devolvido_light", "placar": placar,
+                          "motivos": [f"{LIGHT_RESSALVA} DEVOLVIDA pelo veto: a divergência vai ao advogado, que "
+                                      f"decide entre corrigir e ressubmeter (`novo-ciclo`) ou pedir o Conselho "
+                                      f"completo (`novo-ciclo --variante completo`)."] + devs},
+                         ensure_ascii=False))
+        return 1
+    bloqueios = versoes_divergentes(st)
+    if not lint_ok:
+        bloqueios.append(f"lint não APROVADO (resultado={_d(st.get('lint')).get('resultado')}, "
+                         f"exit={_d(st.get('lint')).get('exit_code')})")
+    if pend:
+        bloqueios.append(f"{len(pend)} pendência(s) de jurisprudência impede(m) protocolo: {pend}")
+    if bloqueios:
+        print(json.dumps({"ok": True, "liberado": False, "resultado": "aprovado_light_mas_bloqueado",
+                          "placar": placar, "motivos": bloqueios}, ensure_ascii=False))
+        return 1
+    via = {"ledger": "registro do harness", "transcript": "transcript do harness"}.get(rota, "")
+    acordao = (f"{LIGHT_RESSALVA} Peça «{st['peca']}» APROVADA na Revisão Light: os quatro mandatos (Mérito, "
+               f"Coerência, Escrita, Conformidade) e a síntese do relator sem devolução, com o checklist de "
+               f"{n_itens} itens conferido. LINT APROVADO (exit 0, "
+               f"{'reexecutado sobre a peça julgada' if _d(st.get('lint')).get('reexecutado') is True else 'registrado sem reexecução'}); "
+               f"sem pendência de jurisprudência. "
+               + (f"Revisor subagente distinto do autor (proveniência pelo {via}). " if via else "")
+               + (LIGHT_SERIAL + " " if modo == "serial" else "")
+               + f"Escolha do advogado: «{_s(reg.get('palavras'))[:160]}» ({_escolha.nota_conferencia(reg)}). "
+               + (LIGHT_OFERTA + " " if risco == "alto" else "")
+               + "Minuta liberada para revisão final do advogado responsável.")
+    print(json.dumps({"ok": True, "liberado": True, "resultado": "aprovado_light", "placar": placar,
+                      "motivos": [], "acordao": acordao}, ensure_ascii=False))
+    return 0
 
 
 def main():
@@ -987,6 +1194,10 @@ def main():
         print(json.dumps({"ok": True, "liberado": True, "resultado": "liberado_optin",
                           "placar": "n/a (opt-in)", "motivos": [], "acordao": acordao}, ensure_ascii=False))
         return 0
+
+
+    if st.get("variante") == "light":
+        return julgar_light(st, args, lint_ok, pend)
 
 
     votos, motivos = coletar_votos(st)

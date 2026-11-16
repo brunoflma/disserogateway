@@ -1400,8 +1400,26 @@ def normalizar_datas(src):
                 literal = True
             out.append(ln)
             continue
-        out.append(ln if literal else _DATA_HIFEN_RX.sub(r"\1/\2/\3", ln))
+        out.append(ln if literal else _datas_fora_de_url(ln))
     return "".join(out)
+
+
+
+
+_URL_PROTEGIDA_RX = re.compile(r"(?:https?://|\bwww\.)[^\s<>\"'“”]+[^\s<>\"'“”.,;:!?)\]}]", re.I)
+
+
+def _datas_fora_de_url(ln):
+    'Troca o hífen da data só fora de URL: "data=10-05-2023" numa query string é parte do'
+
+
+    partes, pos = [], 0
+    for m in _URL_PROTEGIDA_RX.finditer(ln):
+        partes.append(_DATA_HIFEN_RX.sub(r"\1/\2/\3", ln[pos:m.start()]))
+        partes.append(m.group(0))
+        pos = m.end()
+    partes.append(_DATA_HIFEN_RX.sub(r"\1/\2/\3", ln[pos:]))
+    return "".join(partes)
 
 
 

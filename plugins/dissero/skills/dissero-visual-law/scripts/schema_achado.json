@@ -131,6 +131,10 @@
             "judgment_date": {
               "$ref": "#/definitions/nullable_string"
             },
+            "orgao_julgador": {
+              "description": "Órgão julgador dentro do tribunal (turma, câmara, seção, plenário). Opcional: achado anterior a este campo continua válido; ausente ou nulo, a Relação de Precedentes marca a lacuna para conferência.",
+              "$ref": "#/definitions/nullable_string"
+            },
             "identifier": {
               "$ref": "#/definitions/nullable_string"
             },

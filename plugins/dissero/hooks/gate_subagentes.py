@@ -43,6 +43,13 @@
 
 
 
+
+
+
+
+
+
+
 import sys, os, json, re
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
@@ -146,13 +153,26 @@ def _inteiro(v, padrao):
     return v if isinstance(v, int) and not isinstance(v, bool) and v > 0 else padrao
 
 
+def soma_acrescimos(autorizacao):
+    'Agentes acrescidos ao aval por `autorizar_subagentes.py --somar` (novo ciclo na sessão).'
+
+
+
+
+    lista = autorizacao.get("acrescimos") if isinstance(autorizacao, dict) else None
+    if not isinstance(lista, list):
+        return 0
+    return sum(a["agentes"] for a in lista
+               if isinstance(a, dict) and _inteiro(a.get("agentes"), 0) > 0)
+
+
 def teto(autorizacao):
-    """Orçamento de subagentes da sessão: max_simultaneos × ondas."""
+    """Orçamento de subagentes da sessão: max_simultaneos × ondas + soma dos acréscimos."""
     if not autorizacao:
         return PADRAO_SIMULTANEOS * PADRAO_ONDAS, PADRAO_SIMULTANEOS, PADRAO_ONDAS, False
     s = _inteiro(autorizacao.get("max_simultaneos"), PADRAO_SIMULTANEOS)
     o = _inteiro(autorizacao.get("ondas"), PADRAO_ONDAS)
-    return s * o, s, o, True
+    return s * o + soma_acrescimos(autorizacao), s, o, True
 
 
 _MARCA_SOLTA = re.compile(r"AGENTE DEDICADO do Cap[ií]tulo", re.I)
@@ -239,23 +259,39 @@ def _decidir_teto(evento, ledger_path=None, autorizacao_path=None):
     if ja < limite:
         return None
 
+    sid = session_id or "<id da sessão>"
+
+
+    conta = (f"A contagem é cumulativa na sessão: entram os agentes de ciclos anteriores (do "
+             f"Conselho inclusive), e regravar o aval não a zera. Para ESTE disparo o teto "
+             f"precisa ser {ja + 1}; para um novo ciclo de K agentes, {ja} + K (Conselho "
+             f"light: 1; Conselho completo: 5, ou 7 com o art. 942). O ciclo completo dispara "
+             f"5 a 7 agentes de alto custo e pode esgotar o limite de uso de um plano "
+             f"individual: ofereça ao advogado o Conselho light antes do completo.")
     if tem_aval:
+        extra = soma_acrescimos(autorizacao)
+        composicao = f"{simult} simultâneos × {ondas} onda(s)"
+        if extra:
+            composicao += f" + {extra} de acréscimo(s)"
         return _deny(
             f"DISPARO DE SUBAGENTE BLOQUEADO (governança §13): a sessão já disparou {ja} "
-            f"agente(s) e a autorização vigente cobre {limite} "
-            f"({simult} simultâneos × {ondas} onda(s), escopo: "
-            f"{autorizacao.get('escopo') or 'não declarado'}). Peça ao advogado aval EXPRESSO "
-            f"para a onda adicional e atualize {AUTORIZACAO_NAME} ANTES de disparar.")
+            f"agente(s) e a autorização vigente cobre {limite} ({composicao}, escopo: "
+            f"{autorizacao.get('escopo') or 'não declarado'}). {conta} Só com aval EXPRESSO do "
+            f"advogado para o novo ciclo — pergunte a ele; este bloqueio não autoriza nada —, "
+            f"registre o acréscimo ANTES de disparar: "
+            f"`python scripts/autorizar_subagentes.py --session-id {sid} --somar K "
+            f"--escopo \"<palavras do advogado>\"` (K = agentes do ciclo; o aval original fica "
+            f"preservado em {AUTORIZACAO_NAME} e o acréscimo vale só para esta sessão).")
     return _deny(
         f"DISPARO DE SUBAGENTE BLOQUEADO (governança §13): sem aval expresso o teto é "
         f"{PADRAO_SIMULTANEOS} agentes em 1 onda, e a sessão já disparou {ja}. "
-        f"{_onde_procurou(autz, session_id)} "
-        f"Aprovação vale ANTES do efeito: peça o aval ao advogado e registre "
+        f"{_onde_procurou(autz, session_id)} {conta} "
+        f"Aprovação vale ANTES do efeito: peça o aval EXPRESSO ao advogado e registre "
         f"{AUTORIZACAO_NAME} na RAIZ DO CASO rodando "
-        f"`python scripts/autorizar_subagentes.py --session-id {session_id or '<id da sessão>'} "
-        f"--max-simultaneos N --ondas N --escopo \"...\"` (ele resolve a raiz e preenche "
-        f"'concedido_em'). A turma do Conselho (5 +2 do art. 942) é o caso previsto — "
-        f"mas também exige o aval registrado.")
+        f"`python scripts/autorizar_subagentes.py --session-id {sid} "
+        f"--max-simultaneos N --ondas N --escopo \"...\"`, com N × N de pelo menos {ja + 1} "
+        f"(ele resolve a raiz e preenche 'concedido_em'). A turma do Conselho (5 +2 do art. "
+        f"942) é o caso previsto — mas também exige o aval registrado.")
 
 
 def _onde_procurou(autz, session_id):

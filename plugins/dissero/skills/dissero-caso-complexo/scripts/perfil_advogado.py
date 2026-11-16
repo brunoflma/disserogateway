@@ -3308,7 +3308,13 @@ def achar_marcas(texto, termos):
 
 
 
-CONECTORES_DO_INVENTARIO = ("eluxi", "zetema", "cnpja")
+
+
+CONECTORES_DA_CASA = ("eluxi", "zetema", "cnpja")
+CONECTORES_DA_CASA_INTEGRADOS = ("jurisprudenciaia",)
+CONECTORES_DO_INVENTARIO = CONECTORES_DA_CASA + CONECTORES_DA_CASA_INTEGRADOS + (
+    "jusratio", "iajus", "juspilot", "jusia", "minutaia", "fundamentaia", "fidelia",
+    "jurisprudencias_ai", "exordial", "jurisconsulto", "wikijuridica", "mcp_ai")
 _RX_FONTE_RUN = re.compile(r'<w:rFonts\b[^>]*\bw:ascii="([^"]+)"')
 
 
@@ -3344,12 +3350,15 @@ def pontos_a_conferir(perfil, dir_pacote=None):
     if isinstance(conectores, dict):
         ids = [c for c in conectores if not str(c).startswith("_")]
         fora = [c for c in ids if c not in CONECTORES_DO_INVENTARIO]
-        faltam = [c for c in CONECTORES_DO_INVENTARIO if c not in conectores]
+        faltam = [c for c in CONECTORES_DA_CASA if c not in conectores]
         if fora:
             pontos.append("conectores fora do inventário, ignorados: " + ", ".join(fora))
         if faltam:
             pontos.append("conectores da casa sem preferência no perfil (valem como auto): "
                           + ", ".join(faltam))
+        if str(conectores.get("zetema") or "").strip().lower() == "nao_usar":
+            pontos.append("zetema = nao_usar não vale para a pesquisa jurídica: o Zetema é a pesquisa da casa "
+                          "e é usado sempre que conectado (a preferência só vale fora da pesquisa)")
     corpo = str(_get(perfil, "identidade_visual.fonte_corpo") or "").strip()
     if corpo and _get(perfil, "identidade_visual.timbrado") == "proprio":
         diretorio = dir_pacote or dir_identidade_propria()
