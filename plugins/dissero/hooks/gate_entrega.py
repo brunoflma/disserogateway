@@ -3649,6 +3649,10 @@ def _repo_verificado(d, raiz):
 
 
 
+
+
+
+
     if not _repo_de_manutencao(d):
         return False
     chave = (_chave_caminho(d), _chave_caminho(raiz or ""))
@@ -3656,7 +3660,9 @@ def _repo_verificado(d, raiz):
         return _REPO_MEMO[chave]
     ok = False
     try:
-        for p in sorted(glob.glob(os.path.join(raiz, "skills", "*", "SKILL.md")))[:60]:
+        candidatos = (sorted(glob.glob(os.path.join(raiz, "skills", "*", "SKILL.md")))[:60]
+                      + sorted(glob.glob(os.path.join(raiz, "hooks", "*.py")))[:60])
+        for p in candidatos:
             q = os.path.join(d, os.path.relpath(p, raiz))
             if not os.path.isfile(q):
                 continue

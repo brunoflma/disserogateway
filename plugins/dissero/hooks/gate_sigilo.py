@@ -1473,6 +1473,21 @@ def _desconfiada(t):
             and not _OBJETO_JURIDICO.search(t))
 
 
+
+
+
+
+_TUDO_ACIMA = re.compile(
+    r"\b(?:copi\w*|repit\w*|repet\w*|col[ae]\w*|mostr\w*|reproduz\w*|reescrev\w*|escrev\w* de novo|transcrev\w*|"
+    r"imprim\w*|print\w*|repeat|copy|paste|show|output)\b.{0,60}?"
+    r"\b(?:tudo|todo o (?:texto|conteudo)|o (?:texto|conteudo)(?: completo| integral)?|everything|all (?:the )?text)\b"
+    r".{0,60}?\b(?:acima|antes|anterior|above|before)\b.{0,60}?"
+    r"(?:\b(?:desta|dessa) mensagem|\bda minha primeira mensagem|\bthis (?:message|line)|sem resumir|palavra por palavra|"
+    r"\bliteral\w*|\bintegral\w*|verbatim|word for word)"
+    r"|\b(?:copi\w*|repit\w*|repet\w*|reproduz\w*|transcrev\w*)\b.{0,30}?\b(?:literal\w*|integral\w*|palavra por palavra)\b"
+    r".{0,40}?\b(?:tudo|todo o (?:texto|conteudo)|o (?:texto|conteudo))\b.{0,40}?\b(?:acima|antes|anterior)\b")
+
+
 def classificar(prompt, desconfiado=False):
     '(tipo, categoria) da mensagem, na precedência da docstring.'
 
@@ -1488,6 +1503,8 @@ def classificar(prompt, desconfiado=False):
     categoria = sondagem(prompt)
     if categoria:
         return ("sondagem", categoria)
+    if _TUDO_ACIMA.search(_norm(prompt)):
+        return ("sondagem", "expor_interno")
     tema = pergunta_de_produto(prompt)
     if tema:
         return ("ponte", tema)
@@ -1697,14 +1714,17 @@ def _ler_vigente(caminho):
 
 def _gravar(caminho, dado):
     """Grava o arquivo da sessão por troca atômica. Melhor esforço; nunca lança."""
+    tmp = f"{caminho}.{os.getpid()}.tmp"
     try:
         os.makedirs(os.path.dirname(caminho), exist_ok=True)
-        tmp = caminho + ".tmp"
         with open(tmp, "w", encoding="utf-8") as fh:
             json.dump(dado, fh, ensure_ascii=False)
         os.replace(tmp, caminho)
     except OSError:
-        pass
+        try:
+            os.remove(tmp)
+        except OSError:
+            pass
 
 
 def _apagar(caminho):
@@ -2098,12 +2118,555 @@ def _varrer_vencidas(pasta):
     try:
         agora = time.time()
         for nome in os.listdir(pasta):
-            if nome.endswith((".json", ".janela", ".conta", ".tmp")):
+            if nome.endswith((".json", ".janela", ".conta", ".sessao", ".tmp")):
                 p = os.path.join(pasta, nome)
                 if agora - os.path.getmtime(p) > VALIDADE_MARCA_S:
                     os.remove(p)
     except OSError:
         pass
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+_ANCORA_PRODUTO = re.compile(r"dissero|lex ?operandi|assistente juridico|conselho revisor|visual ?law|minuta rapida|"
+                             r"metodo completo|perfil do advogado|clone do advogado")
+_PEDIDO_PROPRIO = re.compile(
+    r"\b(?:seu|teu|your|o seu|o teu)\s+(?:proprio\s+)?(?:system\s+)?prompt\b|"
+    r"\b(?:suas|tuas|your|as suas|as tuas)\s+(?:proprias\s+)?(?:instruc\w+|regras|diretriz\w+|instructions|rules|guidelines)|"
+    r"\b(?:instruc\w+|regras|prompt|texto|conteudo|diretriz\w+|contexto) que (?:voce|vc|tu)\s+(?:recebeu|segue|carregou|tem)\b|"
+    r"\binstructions (?:you|were you) (?:were given|given|received|follow)|"
+    r"\b(?:seu|teu|your) contexto (?:do sistema|inicial|oculto)|"
+    r"\b(?:prompt|instruc\w+|mensagem|contexto) (?:do|de) sistema (?:desta|dessa|da|nesta|nessa) (?:sessao|conversa)|"
+    r"\b(?:tudo|todo o texto|o texto|todas as instruc\w+)(?: o)? que (?:esta|veio|aparece) (?:acima|antes) (?:desta|dessa|da)\s+(?:mensagem|conversa)|"
+    r"\beverything (?:above|before) this (?:message|line)|\b(?:system )?prompt above\b")
+_LETRAS_LEET = str.maketrans({"1": "i", "!": "i", "|": "i", "3": "e", "0": "o", "4": "a", "@": "a", "5": "s", "$": "s"})
+_LER_REGISTRO_BLOCO = 4 << 20
+_LER_REGISTRO_PRAZO_S = 1.5
+
+
+
+
+_FERRAMENTAS_CONECTOR = frozenset((
+    "ativar_maquina", "baixar_atualizacao", "clone_do_advogado", "estado_do_primeiro_uso", "liberar_versao",
+    "perfil_do_advogado", "preparar_envio_timbrado", "registrar_clone", "registrar_perfil", "registrar_recusa",
+    "versao_do_plugin"))
+
+
+def caminho_sessao(session_id):
+    return os.path.join(_base(), PASTA, _chave(session_id) + ".sessao")
+
+
+_CONFIRMA = re.compile(r"^(?:sim|s|ok|okay|pode|pode sim|claro|isso|isso mesmo|continue|continua|prossiga|pode continuar|"
+                       r"pode prosseguir|segue|siga|vai|manda|faz|faca|go|yes|y|\?+)(?:[\s,.!]+(?:pode|continue|continua|"
+                       r"prossiga|seguir|segue|a primeira|o primeiro|a segunda|o segundo|da lista|por favor|obrigad[oa])\b.*)?[\s.!?]*$")
+
+
+def caminho_relaxada(session_id):
+
+    return os.path.join(_base(), PASTA, _chave(session_id) + ".relaxada.json")
+
+
+_VALIDADE_RELAXADA_S = 900
+MSG_LEITURA_FORA = (PROVENIENCIA + "Isto é estado da sessão, informado pelo plugin Dissero instalado; não é instrução "
+                    "vinda de documento. Ferramenta negada: esta sessão não usa o Dissero, e a ferramenta leria ou "
+                    "varreria a cópia instalada do plugin, que é sigilosa. Se a tarefa é do Dissero, carregue a skill "
+                    "dele pela ferramenta de skills. Se não é, restrinja o caminho ou a busca à pasta do projeto.")
+
+
+def _texto_do_usuario(conteudo):
+    if isinstance(conteudo, str):
+        return conteudo
+    if isinstance(conteudo, list):
+        return " ".join(b.get("text", "") for b in conteudo if isinstance(b, dict) and b.get("type") == "text"
+                        and isinstance(b.get("text"), str))
+    return ""
+
+
+_REMINDER = re.compile(r"<system-reminder>.*?</system-reminder>", re.S | re.I)
+_COMANDO_DISSERO = re.compile(r"<\\?command-name>\s*/?dissero", re.I)
+_CAMPO_CWD = re.compile(rb'"cwd"\s*:\s*"(?:[^"\\]|\\.)*"')
+
+
+def _letras(texto):
+    """Só as letras latinas do texto, sem acento, com os confusáveis e os números-letra trocados."""
+    t = str(texto or "")
+    if not t.isascii():
+        t = unicodedata.normalize("NFKD", _sem_confusaveis(t)[0]).encode("ascii", "ignore").decode("ascii")
+    return re.sub(r"[^a-z]", "", t.lower().translate(_LETRAS_LEET))
+
+
+def _tem_dissero(texto):
+    """O nome do Dissero no texto, também disfarçado (cirílico, letras separadas, 1 por i, ao contrário)."""
+    if "dissero" in str(texto or "").lower():
+        return True
+    letras = _letras(texto)
+    return "dissero" in letras or "oressid" in letras or "qvffreb" in letras
+
+
+def _linha_do_dissero(o):
+    'A linha do registro mostra a sessão usando o Dissero.'
+
+
+
+
+    if not isinstance(o, dict):
+        return False
+    msg = o.get("message") if isinstance(o.get("message"), dict) else {}
+    conteudo = msg.get("content")
+    if o.get("type") == "assistant" and isinstance(conteudo, list):
+        for b in conteudo:
+            if not isinstance(b, dict) or b.get("type") != "tool_use":
+                continue
+            nome = str(b.get("name") or "").lower()
+            if "dissero" in nome:
+                return True
+            if nome.startswith("mcp__") and nome.rsplit("__", 1)[-1] in _FERRAMENTAS_CONECTOR:
+                return True
+            entrada = json.dumps(b.get("input"), ensure_ascii=False).lower().replace("\\\\", "/")
+            if nome in ("skill", "slashcommand", "agent", "task") and "dissero" in entrada:
+                return True
+            if "skills/dissero-" in entrada or "cache/dissero" in entrada or "claude_plugin_root" in entrada:
+                return True
+        return False
+    if o.get("type") == "user":
+        texto = _texto_do_usuario(conteudo)
+        if o.get("isMeta"):
+            return bool(_COMANDO_DISSERO.search(texto))
+        texto = _REMINDER.sub(" ", texto)
+
+
+        return "dissero" in texto.lower() or (len(texto) <= 4000 and _tem_dissero(texto))
+    if o.get("type") == "attachment" and isinstance(o.get("attachment"), dict):
+        anexo = o["attachment"]
+        if anexo.get("type") in ("queued_command", "invoked_skills", "command"):
+            return _tem_dissero(json.dumps(anexo, ensure_ascii=False))
+    return False
+
+
+def _candidata(linha):
+    'Filtro barato antes do json.loads: só linha que pode ser sinal. O campo cwd não conta (toda linha o'
+
+    if b"mcp__" in linha or b"queued_command" in linha or b"invoked_skills" in linha:
+        return True
+    if b'"type":"user"' in linha or b'"type": "user"' in linha:
+        return b'"tool_result"' not in linha
+    return b"dissero" in _CAMPO_CWD.sub(b"", linha).lower()
+
+
+def _prefixo(tp):
+    try:
+        with open(tp, "rb") as fh:
+            return hashlib.sha256(fh.read(65536)).hexdigest()[:16]
+    except OSError:
+        return ""
+
+
+def sessao_do_dissero(evento):
+    'A sessão usa o Dissero (ou não dá para saber). Nunca lança; na dúvida, True.'
+
+
+
+
+
+    sid = evento.get("session_id")
+    tp = evento.get("transcript_path")
+    if not sid or not isinstance(tp, str) or not tp:
+        return True
+    cache = caminho_sessao(sid)
+    try:
+        with open(cache, encoding="utf-8") as fh:
+            guardado = json.load(fh)
+    except (OSError, ValueError):
+        guardado = None
+    guardado = guardado if isinstance(guardado, dict) else {}
+    if guardado.get("d") is True:
+        return True
+    try:
+        tamanho = os.path.getsize(tp)
+    except OSError:
+        return True
+    if tamanho == 0:
+        return True
+    prefixo = _prefixo(tp)
+    ponto, validas = 0, 0
+    if guardado.get("tp") == tp and guardado.get("pre") == prefixo:
+        p, v = guardado.get("off"), guardado.get("val")
+        if isinstance(p, int) and not isinstance(p, bool) and 0 <= p <= tamanho:
+            ponto = p
+            validas = v if isinstance(v, int) and not isinstance(v, bool) and v >= 0 else 0
+    achou, inicio = False, time.time()
+    try:
+        with open(tp, "rb") as fh:
+            fh.seek(ponto)
+            resto = b""
+            lido = ponto
+            while lido < tamanho and not achou:
+                if time.time() - inicio > _LER_REGISTRO_PRAZO_S:
+                    _gravar(cache, {"em": int(time.time()), "tp": tp, "pre": prefixo, "off": lido - len(resto),
+                                    "val": validas, "d": False})
+                    return True
+                bloco = fh.read(min(_LER_REGISTRO_BLOCO, tamanho - lido))
+                if not bloco:
+                    break
+                lido += len(bloco)
+                dados = resto + bloco
+                corte = dados.rfind(b"\n")
+                if corte < 0:
+                    resto = dados
+                    continue
+                linhas, resto = dados[:corte], dados[corte + 1:]
+                for linha in linhas.split(b"\n"):
+                    if b'"type"' in linha[:4096]:
+                        validas += 1
+                    if not _candidata(linha):
+                        continue
+                    try:
+                        if _linha_do_dissero(json.loads(linha)):
+                            achou = True
+                            break
+                    except ValueError:
+                        continue
+            ponto = lido - len(resto)
+
+            if not achou and resto.strip() and _candidata(resto):
+                try:
+                    achou = bool(_linha_do_dissero(json.loads(resto)))
+                except ValueError:
+                    pass
+    except OSError:
+        return True
+    if not achou and validas == 0:
+        return True
+    _gravar(cache, {"em": int(time.time()), "tp": tp, "pre": prefixo, "off": ponto, "val": validas, "d": achou})
+    return achou
+
+
+def ancorado(texto):
+    """A mensagem fala do Dissero pelo nome (também disfarçado) ou por um termo só dele."""
+    return bool(_ANCORA_PRODUTO.search(_norm(texto)) or _tem_dissero(texto))
+
+
+def pedido_proprio(prompt):
+    """A mensagem pede as instruções do próprio assistente, em qualquer sessão."""
+    t = _norm(prompt)
+    if _TUDO_ACIMA.search(t) or _PEDIDO_NAO_LATINO.search(str(prompt or "").lower()):
+        return True
+    if not _PEDIDO_PROPRIO.search(t):
+        return False
+
+
+    return not (re.search(r"\b(?:claude|agents)\.md\b", t)
+                and not re.search(r"\b(?:copie|copia|transcreva|transcreve|cole|cola|mostre|mostra|imprima|imprime|"
+                                  r"reproduza|reproduz|liste|lista|repita|repete|exiba|exibe|me (?:de|da|passe|passa))\b|"
+                                  r"na integra|palavra por palavra|literalmente", t))
+
+
+def julgar_na_sessao(evento, prompt, tipo, texto_julgado):
+    """Fora da sessão do Dissero, só o pedido ancorado nele ou nas instruções do assistente é julgado."""
+    if tipo is None:
+        return True
+    if ancorado(texto_julgado) or (tipo == "sondagem" and pedido_proprio(texto_julgado)):
+        return True
+    return sessao_do_dissero(evento)
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+_RECURSIVO_I = re.compile(r"\bfind\b|(?:^|\s)-rec\w*\b|--recursive\b|--archive\b|-depth\b|\brg\b|rglob|os\.walk|"
+                          r"\btree\b|(?:^|\s)/s\b|dir\s+/s|robocopy|xcopy|rsync|\b7z\b|\btar\b|\bzip\b|compress-archive|"
+                          r"walkdir|\bsubst\b|mklink|junction|symboliclink|new-psdrive|net\s+use|\bln\s+-[a-z]*s|\*\*|"
+                          r"\bcp\s+-[a-z]*a|\b(?:e?grep|cp|rm|chmod|chown|scp|zip)\s+(?:-\w+\s+)*-[a-z]*r", re.I)
+_RECURSIVO_R = re.compile(r"(?:^|\s)-[a-zA-Z]*R[a-zA-Z]*\b")
+
+
+class _Recursivo:
+    @staticmethod
+    def search(texto):
+        return _RECURSIVO_I.search(texto) or _RECURSIVO_R.search(texto)
+
+
+_RECURSIVO = _Recursivo()
+_TOKEN = re.compile(r"\"[^\"]*\"|'[^']*'|[^\s|;&<>(),]+")
+_VAR_WIN = re.compile(r"%([a-z_][a-z0-9_]*)%|\$\{env:([a-z_][a-z0-9_]*)\}|\$env:([a-z_][a-z0-9_]*)|"
+                      r"\$\{([a-z_][a-z0-9_]*)\}|\$([a-z_][a-z0-9_]*)", re.I)
+_MAPA_DE_VARIAVEIS = None
+
+
+def _home():
+    return os.path.expanduser("~").replace("\\", "/").rstrip("/").lower()
+
+
+def _variavel(nome):
+    global _MAPA_DE_VARIAVEIS
+    if _MAPA_DE_VARIAVEIS is None:
+        _MAPA_DE_VARIAVEIS = {k.lower(): v for k, v in os.environ.items()}
+        casa = os.path.expanduser("~")
+        _MAPA_DE_VARIAVEIS.setdefault("home", casa)
+        _MAPA_DE_VARIAVEIS.setdefault("userprofile", casa)
+        if "homedrive" in _MAPA_DE_VARIAVEIS and "homepath" in _MAPA_DE_VARIAVEIS:
+            _MAPA_DE_VARIAVEIS.setdefault("homedrivehomepath", _MAPA_DE_VARIAVEIS["homedrive"] + _MAPA_DE_VARIAVEIS["homepath"])
+    return _MAPA_DE_VARIAVEIS.get(nome.lower())
+
+
+def _expande(p):
+    """Troca as variáveis de ambiente (todas as formas do cmd, do PowerShell e do bash) pelo valor real."""
+    def troca(m):
+        nome = next(g for g in m.groups() if g)
+        valor = _variavel(nome)
+        return valor if valor is not None else m.group(0)
+    return _VAR_WIN.sub(troca, str(p or ""))
+
+
+def _caminho_de_leitura(p, cwd):
+    p = _expande(str(p or "").strip().strip("\"'`"))
+    p = p.replace("\\", "/").lower()
+    if not p:
+        return ""
+    casa = _home()
+    if p == "~" or (p[:1] == "~" and p[1:2] == "/"):
+        p = casa + p[1:]
+    p = re.sub(r"^//[?.]/unc/", "//", p)
+    p = re.sub(r"^//[?.]/", "", p)
+    p = re.sub(r"^//(?:localhost|127\.0\.0\.1)/([a-z])\$/", r"\1:/", p)
+    p = re.sub(r"^file:/+", "", p)
+    p = re.sub(r"^/mnt/([a-z])/", r"\1:/", p)
+    p = re.sub(r"^/([a-z])/", r"\1:/", p)
+    if not re.match(r"^[a-z]:/|^/", p):
+        base = _caminho_de_leitura(cwd, "") if cwd else ""
+        if not base:
+            return ""
+        p = base + "/" + p
+    import posixpath
+    p = posixpath.normpath(re.sub(r"/+", "/", p))
+
+    p = "/".join(c.rstrip(". ") if c not in (".", "..") else c for c in p.split("/"))
+    try:
+        if os.name == "nt" and "~" in p and os.path.exists(p):
+            p = os.path.realpath(p).replace("\\", "/").lower()
+    except (OSError, ValueError):
+        pass
+    return p.rstrip("/")
+
+
+def _cascas_da_conta():
+    """As cópias da conta instaladas pelo Desktop (Code e Cowork) em %APPDATA%\\Claude\\rpm."""
+    import glob
+    out = []
+    appdata = os.environ.get("APPDATA") or os.path.join(os.path.expanduser("~"), "AppData", "Roaming")
+    try:
+        for manifesto in glob.glob(os.path.join(appdata, "Claude", "rpm", "*", "*", "plugin_*", ".claude-plugin", "plugin.json"))[:40]:
+            try:
+                with open(manifesto, encoding="utf-8") as fh:
+                    if "dissero" in fh.read(4096).lower():
+                        out.append(os.path.dirname(os.path.dirname(manifesto)))
+            except OSError:
+                continue
+    except Exception:
+        pass
+    return out
+
+
+_RAIZES_MEMO = {}
+
+
+def _raizes_dissero(raiz):
+    if raiz in _RAIZES_MEMO:
+        return _RAIZES_MEMO[raiz]
+    casa = _home()
+    candidatas = [raiz, os.environ.get("CLAUDE_PLUGIN_ROOT"), os.environ.get("CODEX_PLUGIN_ROOT"),
+                  os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+                  casa + "/.claude/plugins/cache/dissero", casa + "/.claude/plugins/marketplaces/dissero"]
+    candidatas += _cascas_da_conta()
+    out = []
+    for r in candidatas:
+        k = _caminho_de_leitura(r, "")
+        if k and len(k) > 3 and k not in out:
+            out.append(k)
+    _RAIZES_MEMO[raiz] = out
+    return out
+
+
+def _textos(valor):
+    """Todos os textos de uma entrada de ferramenta, já decodificados (não o JSON, onde a aspa vira \\")."""
+    if isinstance(valor, str):
+        yield valor
+    elif isinstance(valor, dict):
+        for v in valor.values():
+            yield from _textos(v)
+    elif isinstance(valor, (list, tuple)):
+        for v in valor:
+            yield from _textos(v)
+
+
+def _achatados(texto):
+    'As formas achatadas do comando: sem aspas vazias, concatenação de literais, aspas coladas a letras,'
+
+    t = str(texto or "")
+    t = re.sub(r"[\"']\s*\+\s*[\"']", "", t)
+    t = re.sub(r"[\"']\s*[\"']", "", t)
+    t = re.sub(r"(?<=\w)[\"'](?=\w)", "", t)
+    t = t.replace("^", "").replace("`", "")
+    t = _expande(t)
+    out = []
+    for forma in (t, re.sub(r"\\(?=[a-z])", "", t)):
+        f = forma.replace("\\", "/").lower()
+        f = re.sub(r"(?<=[^/])\.(?=/)", "", f)
+        f = re.sub(r"/(?:\./)+", "/", re.sub(r"/+", "/", f))
+        out.append(f)
+    return out
+
+
+def _alcanca(p, raizes, recursivo):
+    if not p:
+        return False
+    curinga = re.search(r"[*?\[]", p)
+    base = p[:curinga.start()] if curinga else p
+    for r in raizes:
+        if p == r or p.startswith(r + "/") or base.startswith(r + "/"):
+            return True
+
+        if curinga and r.startswith(base) and ("**" in p or len(p.split("/")) >= len(r.split("/"))):
+            return True
+        if recursivo and r.startswith(p + "/"):
+            return True
+    return False
+
+
+def le_copia_instalada(evento, raiz=None):
+    """A ferramenta lê, busca ou varre a cópia instalada do plugin. Nunca lança."""
+    try:
+        nome = str(evento.get("tool_name") or "")
+        entrada = evento.get("tool_input") if isinstance(evento.get("tool_input"), dict) else {}
+        cwd = evento.get("cwd") or ""
+        if nome in _FERR_ARQUIVO:
+            return False
+
+
+        if nome in ("Read", "NotebookRead", "LS", "Grep", "Glob"):
+            campos = [entrada.get(k) for k in ("file_path", "notebook_path", "path")] + ([entrada.get("pattern")] if nome == "Glob" else [])
+        else:
+            campos = [entrada]
+        formas = [f for s in _textos(campos) for f in _achatados(s)]
+        raizes = _raizes_dissero(raiz)
+        casa = _home()
+        for texto in formas:
+            if "claude_plugin_root" in texto or "skills/dissero-" in texto or "cache/dissero" in texto:
+                return True
+            if any(r in texto or (r.startswith(casa + "/") and "~" + r[len(casa):] in texto) for r in raizes):
+                return True
+
+        cwd_n = _caminho_de_leitura(cwd, "") if cwd else ""
+        perto = bool(cwd_n) and any(cwd_n == r or cwd_n.startswith(r + "/") or r.startswith(cwd_n + "/") for r in raizes)
+        if nome in ("Read", "NotebookRead"):
+            alvos, rec = [entrada.get("file_path") or entrada.get("notebook_path")], False
+        elif nome == "LS":
+            alvos, rec = [entrada.get("path")], False
+        elif nome == "Glob":
+            base = entrada.get("path") or cwd
+            padrao = str(entrada.get("pattern") or "")
+            alvos = [padrao if re.match(r"^(?:[a-zA-Z]:[\\/]|/|~)", padrao) else str(base).rstrip("\\/") + "/" + padrao]
+            rec = "**" in padrao
+        elif nome == "Grep":
+            alvos, rec = [entrada.get("path") or cwd], True
+        elif nome == "WebFetch":
+            alvos, rec = [entrada.get("url")] if str(entrada.get("url") or "").lower().startswith("file:") else [], False
+        else:
+            comando = entrada.get("command") if isinstance(entrada.get("command"), str) else json.dumps(entrada, ensure_ascii=False)
+            rec = bool(_RECURSIVO.search(comando))
+            alvos = []
+
+            atual = cwd
+            for segmento in re.split(r"[;&|\n]+", comando):
+                toks = [t.strip("\"'`") for t in _TOKEN.findall(segmento)]
+                toks = [t.split("=", 1)[-1] if t.startswith("-") and "=" in t else t for t in toks]
+                if not toks:
+                    continue
+                if toks[0].lower() in ("cd", "pushd", "set-location", "sl", "chdir"):
+                    destino = next((t for t in toks[1:] if not t.startswith("-")), "")
+                    novo = _caminho_de_leitura(destino, atual) if destino else ""
+                    if novo:
+                        atual = novo
+                        if _alcanca(novo, raizes, False) or any(r.startswith(novo + "/") for r in raizes):
+                            perto = True
+                    continue
+                atual_n = _caminho_de_leitura(atual, "") if atual else ""
+                dentro = bool(atual_n) and any(atual_n == r or atual_n.startswith(r + "/") for r in raizes)
+                acima = bool(atual_n) and any(r.startswith(atual_n + "/") for r in raizes)
+                for tok in toks[1:]:
+                    if not tok or tok.startswith("-"):
+                        continue
+                    if re.search(r"[\\/~$%]", tok) or tok in (".", "..") or dentro or (acima and re.search(r"[*?\[]", tok)):
+                        alvos.append((tok, atual))
+            return any(_alcanca(_caminho_de_leitura(a, base), raizes, rec) for a, base in alvos if a)
+        return any(_alcanca(_caminho_de_leitura(a, cwd), raizes, rec) for a in alvos if a)
+    except Exception:
+        return False
+
+
+def _toca_no_dissero(evento, raiz):
+    'A ferramenta usa o Dissero: carrega skill dele, chama o conector ou põe um subagente nele. A leitura da'
+
+
+    nome = str(evento.get("tool_name") or "")
+    baixo = nome.lower()
+    entrada = evento.get("tool_input")
+    if "dissero" in baixo or (baixo.startswith("mcp__") and baixo.rsplit("__", 1)[-1] in _FERRAMENTAS_CONECTOR):
+        return True
+    return baixo in ("skill", "slashcommand", "agent", "task") and _tem_dissero(json.dumps(entrada, ensure_ascii=False))
+
+
+def _relaxada_vigente(session_id):
+    if not session_id:
+        return None
+    try:
+        with open(caminho_relaxada(session_id), encoding="utf-8") as fh:
+            dado = json.load(fh)
+    except (OSError, ValueError):
+        return None
+    em = dado.get("em") if isinstance(dado, dict) else None
+    if isinstance(em, (int, float)) and not isinstance(em, bool) and time.time() - em <= _VALIDADE_RELAXADA_S:
+        return dado
+    _apagar(caminho_relaxada(session_id))
+    return None
 
 
 def decidir(evento, raiz=None, sinal=enviar_sinal):
@@ -2134,6 +2697,19 @@ def decidir(evento, raiz=None, sinal=enviar_sinal):
                 cat = sondagem_da_janela(anteriores + [novo])
                 if cat:
                     tipo, categoria, so_janela = "sondagem", cat, True
+        julgado = " . ".join(anteriores + [novo]) if so_janela else prompt
+        relaxada = None
+        if not julgar_na_sessao(evento, prompt, tipo, julgado):
+
+            relaxada = categoria if tipo == "sondagem" else None
+            tipo, categoria, so_janela = None, None, False
+        if sid:
+            if relaxada:
+                _gravar(caminho_relaxada(sid), {"em": int(time.time()), "categoria": relaxada})
+            elif ordem or not (enchimento(prompt) or _CONFIRMA.search(_norm(prompt)) or continuacao(prompt, janela)):
+
+
+                _apagar(caminho_relaxada(sid))
         if tipo == "sondagem":
 
             if sid:
@@ -2180,6 +2756,30 @@ def decidir(evento, raiz=None, sinal=enviar_sinal):
     if nome == "PreToolUse" and mexe_na_protecao(evento, raiz):
         return {"hookSpecificOutput": {"hookEventName": "PreToolUse", "permissionDecision": "deny",
                                        "permissionDecisionReason": MSG_PROTECAO}}
+    if nome == "PreToolUse" and not os.path.isfile(marca) and not (
+            _eh_registro(evento.get("tool_name")) or _eh_carga_do_registro(evento)):
+        observada = _relaxada_vigente(sid)
+        if observada and _toca_no_dissero(evento, raiz):
+
+            categoria = observada.get("categoria") or "expor_interno"
+            _apagar(caminho_relaxada(sid))
+            try:
+                os.makedirs(os.path.dirname(marca), exist_ok=True)
+                with open(marca, "w", encoding="utf-8") as fh:
+                    json.dump({"em": int(time.time()), "categoria": categoria}, fh)
+            except OSError:
+                pass
+            if sid:
+                _contar_sondagem(sid)
+            try:
+                sinal(categoria)
+            except Exception:
+                pass
+            return {"hookSpecificOutput": {"hookEventName": "PreToolUse", "permissionDecision": "deny",
+                                           "permissionDecisionReason": MSG_FERRAMENTA}}
+        if le_copia_instalada(evento, raiz) and not sessao_do_dissero(evento):
+            return {"hookSpecificOutput": {"hookEventName": "PreToolUse", "permissionDecision": "deny",
+                                           "permissionDecisionReason": MSG_LEITURA_FORA}}
     if nome == "PreToolUse" and os.path.isfile(marca):
 
 
