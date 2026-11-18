@@ -35,13 +35,36 @@ if [ ! -e "$_f" ]; then
     _U="${DSR_CASO_BASE%[/\\]}"; _U="${_U##*[/\\]}"
     [ -n "$_U" ] && case "$_T" in *"$_U"*) _ALVO=1 ;; esac
   fi
+  # Pasta de trabalho na pasta do Claude, na casca da conta ou no cache de plugins: nome relativo conta
+  # (gate por sessão). O campo vem antes de tool_input; a transcrição (~/.claude/projects) não entra.
+  if [ -z "$_ALVO" ]; then
+    case "$_IN" in
+      *'"cwd"'*)
+        _C="${_IN#*\"cwd\"}"; _C="${_C#*\"}"; _C="${_C%%\"*}"
+        case "$_C" in *'.claude'*|*'claude\\rpm'*|*'claude/rpm'*|*'plugins'*) _ALVO=1 ;; esac ;;
+    esac
+  fi
   if [ -z "$_ALVO" ]; then
     case "$_T" in
       *hooks*|*settings*|*.dissero*|*disableallhooks*|*'claude plugin'*|*claude-plugin*|*installed_plugins*|*known_marketplaces*) ;;
       *publicar.py*|*wrangler.jsonc*|*'/python"'*|*'/python3"'*|*'/python.exe"'*|*'\\python"'*|*'\\python3"'*|*'\\python.exe"'*) ;;
       *'plugins/cache/dissero '*|*'plugins/cache/dissero"'*|*'plugins/cache/dissero/ '*|*'.claude/plugins '*|*'.claude/plugins"'*|*'.claude/plugins/ '*|*'.claude '*|*'.claude"'*|*'.claude/ '*) ;;
       *'date -s'*|*'date --set'*|*'date '[0-9]*|*'time '[0-9]*|*set-date*|*timedatectl*|*w32tm*|*hwclock*|*faketime*|*setsystemtime*|*setlocaltime*) ;;
-      *) exit 0 ;;
+      # Leitura da cópia instalada fora da sessão do Dissero (gate por sessão, 18/11/2026): o nome do arquivo de
+      # skill, a raiz do plugin, as pastas de cache de plugin e a varredura recursiva sobem o Python.
+      *skill.md*|*claude_plugin_root*|*'plugins/cache'*|*'plugins\\cache'*|*'claude/rpm'*|*'claude\\rpm'*|*'skills/dissero'*|*'skills\\dissero'*|*'.claude/'*|*'.claude\\'*) ;;
+      *'**'*|*-recurse*|*'find '*|*rglob*|*'os.walk'*|*'dir /s'*|*'tree '*|*' -r'*|*' -R'*|*rsync*|*' 7z '*|*'cp -a'*|*--recursive*|*-depth*|*' /s'*|*subst*|*mklink*|*junction*) ;;
+      *'$env:'*|*'%appdata%'*|*'%localappdata%'*|*'%homedrive%'*|*'%homepath%'*|*'%userprofile%'*|*'$userprofile'*|*'${userprofile'*|*'$home'*|*'\\\\?\\'*|*'\\\\.\\'*|*'//?/'*|*localhost*|*'file:'*|*'.claude.'*|*'plugins.'*|*'cache.'*) ;;
+      *)
+        # Grep e Glob sem caminho (a pasta de trabalho decide) ou com caminho na pasta pessoal.
+        case "$_IN" in
+          *'"tool_name":"Grep"'*|*'"tool_name": "Grep"'*|*'"tool_name":"Glob"'*|*'"tool_name": "Glob"'*)
+            case "$_T" in
+              *'"path"'*) case "$_T" in *users*|*appdata*|*home*|*'~'*) ;; *) exit 0 ;; esac ;;
+              *) ;;
+            esac ;;
+          *) exit 0 ;;
+        esac ;;
     esac
   fi
   shopt -u nocasematch
