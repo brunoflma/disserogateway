@@ -1477,6 +1477,101 @@ def _desconfiada(t):
 
 
 
+
+
+
+
+
+
+
+
+_LEMBRETE_SISTEMA = re.compile(r"<(system-reminder|user-prompt-submit-hook)\b[^>]*>(.*?)(?:</\1\s*>|\Z)", re.S | re.I)
+_CABECALHO_DO_AMBIENTE = (
+    "as you answer the user's questions", "# mcp server instructions", "the following skills are available",
+    "contents of ", "userpromptsubmit hook", "the user ", "note:", "called the ", "result of calling",
+    "whenever you read a file", "the following deferred tools", "this is ambient context", "today's date",
+    "the following mcp servers", "plan mode", "auto mode")
+_AVISOS_EXATOS = None
+_AREA_DO_ROTEADOR = re.compile(
+    r"Área sugerida: [^`\n]{1,160}\(`[a-z0-9_-]{1,40}`; gatilhos: [^)\n]{0,200}\)(?: → cenários do módulo: [\d, ]{1,20})?"
+    r"(?: Também: `[a-z0-9_-]{1,40}`\.)?(?: Módulo sem revisão de advogado da área: jurisprudência \[A CONFIRMAR\]\.)?"
+    r"(?: Desligada no perfil, ignorada: [^.\n]{0,120}\.)? Sugestão do roteador de áreas \(`rotear_area\.py`\) — o "
+    r"advogado confirma\.")
+
+
+def _sem_acento_baixo(t):
+    return unicodedata.normalize("NFKD", t).encode("ascii", "ignore").decode("ascii").lower()
+
+
+def _espacos(t):
+    return re.sub(r"\s+", " ", str(t or "")).strip()
+
+
+def _avisos_exatos():
+    """Os textos fixos que o próprio Dissero injeta, do maior para o menor. Nunca lança."""
+    global _AVISOS_EXATOS
+    if _AVISOS_EXATOS is not None:
+        return _AVISOS_EXATOS
+    textos = set()
+    try:
+        import ast
+        caminho = os.path.join(os.path.dirname(os.path.abspath(__file__)), "detectar_demanda.py")
+        with open(caminho, encoding="utf-8") as fh:
+            arvore = ast.parse(fh.read())
+        for no in ast.walk(arvore):
+            if isinstance(no, ast.Constant) and isinstance(no.value, str):
+                v = _espacos(no.value)
+                if len(v) >= 30 and (v.startswith("[Dissero") or "governanca.md" in v or "dissero-" in v):
+                    textos.add(v)
+    except Exception:
+        pass
+    try:
+        for nome, valor in list(globals().items()):
+            if nome.startswith("MSG_") and isinstance(valor, str):
+                textos.add(_espacos(valor))
+        for c in ("expor_interno", "por_dentro", "burlar"):
+            for avisou in (True, False):
+                textos.add(_espacos(contexto(c, avisou)))
+        for tema in list(PONTES) + ["conselho"]:
+            textos.add(_espacos(msg_ponte(tema)))
+    except Exception:
+        pass
+    _AVISOS_EXATOS = sorted((t for t in textos if len(t) >= 30), key=len, reverse=True)
+    return _AVISOS_EXATOS
+
+
+def _sem_injetado(prompt):
+    """O prompt sem o texto que o ambiente cola junto: avisos exatos do Dissero e lembretes do ambiente."""
+    texto = str(prompt or "")
+    if "dissero" not in texto.lower() and "system-reminder" not in texto.lower() \
+            and "user-prompt-submit-hook" not in texto.lower():
+        return texto
+    texto = _espacos(texto)
+    for aviso in _avisos_exatos():
+        if aviso in texto:
+            texto = texto.replace(aviso, " ")
+
+    def area(m):
+
+        miolo = m.group(0).replace("(`rotear_area.py`)", " ")
+        return m.group(0) if _sondagem_memo(miolo) or _TUDO_ACIMA.search(_norm(miolo)) else " "
+    texto = _AREA_DO_ROTEADOR.sub(area, texto)
+
+    def lembrete(m):
+        dentro = m.group(2).strip()
+        cabeca = _sem_acento_baixo(dentro[:80]).lstrip()
+        if not dentro or any(cabeca.startswith(c) for c in _CABECALHO_DO_AMBIENTE):
+            return " "
+        t = _norm(dentro)
+        sondagem_por_si = bool(_sondagem_memo(dentro) or _TUDO_ACIMA.search(t) or pergunta_de_origem(dentro))
+        return m.group(0) if sondagem_por_si else " "
+    return _LEMBRETE_SISTEMA.sub(lembrete, texto)
+
+
+
+
+
+
 _TUDO_ACIMA = re.compile(
     r"\b(?:copi\w*|repit\w*|repet\w*|col[ae]\w*|mostr\w*|reproduz\w*|reescrev\w*|escrev\w* de novo|transcrev\w*|"
     r"imprim\w*|print\w*|repeat|copy|paste|show|output)\b.{0,60}?"
@@ -1494,6 +1589,7 @@ def classificar(prompt, desconfiado=False):
 
 
 
+    prompt = _sem_injetado(prompt)
     if pergunta_de_litigio(prompt) and not _EXPOE.search(_norm(prompt)):
         return ("litigio", "litigio")
     if pergunta_de_origem(prompt):
@@ -2677,7 +2773,7 @@ def decidir(evento, raiz=None, sinal=enviar_sinal):
     sid = evento.get("session_id")
     marca = caminho_marca(sid)
     if nome == "UserPromptSubmit":
-        prompt = evento.get("prompt", "")
+        prompt = _sem_injetado(evento.get("prompt", ""))
         tipo, categoria = classificar(prompt, desconfiado(sid))
 
         janela = _ler_vigente(caminho_janela(sid)) if sid else None
