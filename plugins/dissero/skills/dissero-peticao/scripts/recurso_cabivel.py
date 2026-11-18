@@ -56,6 +56,9 @@
 
 
 
+
+
+
 from __future__ import annotations
 
 import argparse
@@ -83,6 +86,9 @@ AGRAVO_1042 = {
 MAPA_INCISOS = {
     "I_a": AGRAVO_INTERNO,
     "I_b": AGRAVO_INTERNO,
+
+
+    "I_c": AGRAVO_INTERNO,
     "II": None,
     "III": AGRAVO_INTERNO,
     "IV": None,
@@ -90,7 +96,13 @@ MAPA_INCISOS = {
 }
 
 
-INCISOS_DECIDIDOS_PELA_SUBSTANCIA = {"I_a", "I_b", "V"}
+INCISOS_DECIDIDOS_PELA_SUBSTANCIA = {"I_a", "I_b", "I_c", "V"}
+
+
+REGIMES = {"repercussao_geral", "relevancia", "repetitivo"}
+RESSALVA_1042 = (
+    "regimes de repercussão geral, de relevância da questão de direito federal "
+    "infraconstitucional ou de julgamento de recursos repetitivos")
 RAMOS = {"civel", "penal"}
 
 AVISO_ERRO_GROSSEIRO = (
@@ -135,7 +147,8 @@ def validar_pedido(pedido: Any) -> list[str]:
             continue
         errors.extend(_unknown(
             cap,
-            {"id", "inciso_declarado", "fundado_em_precedente_qualificado", "sintese_do_fundamento"},
+            {"id", "inciso_declarado", "fundado_em_precedente_qualificado", "sintese_do_fundamento",
+             "regime_do_entendimento"},
             prefixo))
         ident = cap.get("id")
         if not isinstance(ident, str) or not ident.strip():
@@ -153,6 +166,15 @@ def validar_pedido(pedido: Any) -> list[str]:
                 f"{prefixo}.fundado_em_precedente_qualificado deve ser declarado (true/false) pelo "
                 "advogado: o art. 1.042, caput, testa a SUBSTÂNCIA do fundamento, e o rótulo do "
                 "inciso não vincula")
+        if "regime_do_entendimento" in cap:
+            regime = cap.get("regime_do_entendimento")
+            if regime not in REGIMES:
+                errors.append(f"{prefixo}.regime_do_entendimento deve ser um de {sorted(REGIMES)}")
+            elif cap.get("fundado_em_precedente_qualificado") is not True:
+                errors.append(
+                    f"{prefixo}.regime_do_entendimento declarado com "
+                    "fundado_em_precedente_qualificado diferente de true: regime só se declara "
+                    "quando a decisão aplicou entendimento firmado nele")
         if not isinstance(cap.get("sintese_do_fundamento"), str) or not cap["sintese_do_fundamento"].strip():
             errors.append(f"{prefixo}.sintese_do_fundamento obrigatória (é o que a Súmula 182 manda impugnar)")
     return errors
@@ -169,16 +191,15 @@ def _via_pela_substancia(inciso: str, precedente_qualificado: bool) -> tuple[dic
     return material, (
         f"o capítulo foi rotulado como art. 1.030, {inciso.replace('_', ', ')}, mas a substância "
         f"declarada aponta para {material['recurso']}: o art. 1.042, caput, testa se a decisão está "
-        "fundada na aplicação de entendimento de repercussão geral ou repetitivo, e o rótulo não "
+        f"fundada na aplicação de entendimento firmado em {RESSALVA_1042}, e o rótulo não "
         "vincula. Divergência entre rótulo e substância também é a base para sustentar dúvida "
         "objetiva em pedido subsidiário de fungibilidade")
 
 
 def classificar(pedido: Any) -> dict[str, Any]:
     errors = validar_pedido(pedido)
-    if errors:
-        raise RecursoCabivelError("pedido_invalido", errors)
-    assert isinstance(pedido, Mapping)
+    if errors or not isinstance(pedido, Mapping):
+        raise RecursoCabivelError("pedido_invalido", errors or ["pedido deve ser objeto"])
 
     por_via: dict[str, dict[str, Any]] = {}
     sem_recurso: list[dict[str, str]] = []
@@ -188,7 +209,10 @@ def classificar(pedido: Any) -> dict[str, Any]:
     for cap in pedido["capitulos"]:
         inciso = cap["inciso_declarado"]
         via, divergencia = _via_pela_substancia(inciso, cap["fundado_em_precedente_qualificado"])
-        a_impugnar.append({"capitulo": cap["id"], "fundamento": cap["sintese_do_fundamento"]})
+        impugnar = {"capitulo": cap["id"], "fundamento": cap["sintese_do_fundamento"]}
+        if "regime_do_entendimento" in cap:
+            impugnar["regime"] = cap["regime_do_entendimento"]
+        a_impugnar.append(impugnar)
         if divergencia:
             divergencias.append({"capitulo": cap["id"], "aviso": divergencia})
         if via is None:

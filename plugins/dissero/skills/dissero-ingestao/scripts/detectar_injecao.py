@@ -31,7 +31,7 @@
 
 
 
-import sys, os, re, json, argparse, unicodedata
+import sys, os, re, json, argparse, unicodedata, bisect
 
 try:
     sys.stdout.reconfigure(encoding="utf-8")
@@ -39,7 +39,29 @@ try:
 except Exception:
     pass
 
-ZERO_WIDTH = "​‌‍⁠﻿­"
+ZERO_WIDTH = ("​‌‍⁠﻿­"
+
+
+              "⁡⁢⁣⁤")
+
+
+
+
+BIDI = "‪‫‬‭‮⁦⁧⁨⁩"
+
+
+
+_TAG_RX = re.compile("[\U000E0000-\U000E007F]")
+
+
+_BANDEIRA_RX = re.compile("\U0001F3F4[\U000E0030-\U000E0039\U000E0061-\U000E007A]{2,6}\U000E007F")
+
+
+def revelar_tags(texto):
+    """O texto escondido em Unicode Tag, decodificado para ASCII ('' se nao houver)."""
+    return "".join(chr(ord(c) - 0xE0000) for c in texto if 0xE0020 <= ord(c) <= 0xE007E)
+
+
 LEET = {"0": "o", "1": "i", "3": "e", "4": "a", "5": "s", "7": "t", "@": "a", "$": "s",
         "9": "g", "6": "g", "8": "b"}
 
@@ -74,7 +96,7 @@ def normalizar(texto):
     t = texto.translate(_CONF_TAB)
     t = unicodedata.normalize("NFKD", t)
     t = "".join(c for c in t if not unicodedata.combining(c))
-    t = t.translate({ord(c): None for c in ZERO_WIDTH}).lower()
+    t = t.translate({ord(c): None for c in ZERO_WIDTH + BIDI}).lower()
     t = re.sub(r"[^a-z0-9\n]+", " ", t)
     return re.sub(r"[ \t]+", " ", t)
 
@@ -100,6 +122,61 @@ def variantes(norm):
     for b in (flat, joined):
         extra += [_deobf(b), _deleet(b), _deleet(_deobf(b))]
     return list(dict.fromkeys(bases + extra))
+
+
+
+
+
+_DIRIGIDO_VOCATIVO = (
+
+
+
+    r"\b(prezad\w*|car[oa]\w*|dear|atencao|hey|ola|oi)\b[\s,:;!.-]{1,3}"
+    r"(?:(?:senhor\w*|sr\w?|querid\w*|nobre|minha|meu)\s+)?"
+
+
+    r"\b(ia|ai|assistente|assistant|modelo|model|gpt|claude|chatbot|llm|copilot|bot|"
+    r"inteligencia artificial|sistema de (?:ia|inteligencia artificial)|modelo de linguagem|"
+    r"language model)\b")
+
+
+
+
+
+
+_DIRIGIDO_GENERICO = (
+    r"\b(voce|tu)\b[^\n]{0,18}"
+    r"\b(deve|deveria|precisa|tem que|ignore|atue|aja|responda|nao deve)\b|"
+    r"(?<!\bo )(?<!\ba )(?<!\bum )(?<!\buma )(?<!\bao )(?<!\bdo )(?<!\bda )(?<!\bno )(?<!\bna )"
+    r"\b(assistente|modelo|chatbot|ia) "
+    r"(deve|deveria|precisa|tem que|ignore|atue|aja|responda|nao deve)\b")
+_DIRIGIDO_RECADO = (
+
+
+    r"\b(nota|recado|aviso|mensagem|instrucao|instrucoes|orientacao)\s+(ao|a|para o|para a|para)\s+"
+    r"(assistente(?! tecnico)|ia|inteligencia artificial|modelo|chatbot|sistema de ia|llm|"
+    r"ferramenta de apoio|sistema automatizado)\b|"
+    r"\bnote to (the |any |an? )?(ai|assistant|model|language model|llm)\b")
+_CONDICIONAL_IA = (
+
+
+    r"\b(se|caso) (voce|tu) (for|fores|e|es|seja|sejas|fosse) (um |uma |o |a )?(ia|inteligencia artificial|"
+    r"modelo de (linguagem|ia)|llm|chatbot|assistente virtual|assistente de (ia|inteligencia artificial)|"
+    r"sistema de (ia|inteligencia artificial))\b|"
+    r"\bif you are (an? |the )?(ai|artificial intelligence|ai assistant|ai model|(large )?language model|"
+    r"llm|chatbot)\b|\bsi (eres|usted es) (una? )?(ia|inteligencia artificial|modelo de lenguaje)\b")
+_OCULTACAO = (
+    r"\b(nao|nunca|jamais) (a |o |lhe |os |as )?(mencione|conte|revele|informe|diga|relate|avise|"
+    r"comunique|mostre)\b[^\n]{0,40}\b(usuari[oa]s?|advogad[oa]s?|operador|leitor|humano|cliente|user|"
+    r"human|operator|reader|lawyer|attorney)\b|"
+    r"\b(do not|dont|don t|never) (mention|tell|reveal|disclose|show)\b[^\n]{0,40}\b(user|human|"
+    r"operator|reader|lawyer|attorney)\b")
+_SIGILO_NOTA = (
+    r"\b(mantenha|guarde|preserve|conserve)\b[^\n]{0,15}\b(sigilo|segredo|confidencial\w*)\b[^\n]{0,30}"
+    r"\b(nota|instrucao|orientacao|recado|aviso|mensagem)\b|"
+    r"\b(mantenha|guarde|conserve)\b[^\n]{0,10}\b(esta|essa) (nota|instrucao|orientacao|recado|aviso|"
+    r"mensagem)\b[^\n]{0,20}\b(sigilo|segredo|oculta|escondida|confidencial\w*)\b|"
+    r"\bkeep (this|these|the) (note|instruction|message)s? (secret|confidential|hidden|private)\b")
 
 
 
@@ -132,14 +209,7 @@ _PADROES = [
      r"actua como|a partir de ahora eres|haz de cuenta|finge ser)\b",
      "redefinicao IMPERATIVA de persona/papel do assistente", "alta", False),
     ("dirigido_a_ia",
-
-
-
-     r"\b(prezad\w*|car[oa]\w*|dear|atencao|hey|ola|oi)\b[\s,:;!.-]{1,3}"
-     r"(?:(?:senhor\w*|sr\w?|querid\w*|nobre|minha|meu)\s+)?"
-     r"\b(ia|ai|assistente|assistant|modelo|model|gpt|claude|chatbot|llm|copilot|bot)\b|"
-     r"\b(voce|tu|assistente|modelo|chatbot|ia)\b[^\n]{0,18}"
-     r"\b(deve|deveria|precisa|tem que|ignore|atue|aja|responda|nao deve|nunca|sempre)\b",
+     _DIRIGIDO_VOCATIVO + "|" + _DIRIGIDO_GENERICO + "|" + _DIRIGIDO_RECADO,
      "texto dirigido/comandando uma IA (peca juridica nao fala com IA)", "media", False),
     ("anular_override",
      r"independente(mente)?\s+(de|do|da)\s+[^\n]{0,25}(comando|instru\w*|prompt|orienta\w*)|"
@@ -151,8 +221,18 @@ _PADROES = [
      r"produza|escreva|argumente)\b[^\n]{0,55}"
      r"\b(superficial\w*|fraca|fraco|incompleta|generic\w*|sem impugnar|sem analisar|sem verificar|"
      r"sem aprofundar|de forma ruim|mal feita|com erros?)\b|"
-     r"\bnao\s+(impugne|impugnar|conteste|contestar|analise|verifique|cite|mencione|aprofunde|defenda)\b",
+
+
+     r"\bnao\s+(impugne|conteste|analise|verifique|cite|mencione|aprofunde|defenda)\b",
      "instrucao para degradar/sabotar a analise ou a defesa", "alta", False),
+    ("sabotagem",
+
+
+
+
+     r"(?:^[ \t>*•\-]*|[:—–][ \t]*|[ \t]-[ \t]+)[\"'“‘(]?n[ãa]o\s+"
+     r"(impugnar|contestar|analisar|verificar|citar|mencionar|aprofundar|defender)\b",
+     "instrucao para degradar/sabotar a analise ou a defesa (infinitivo de ordem)", "alta", True),
     ("system_prompt",
      r"\b(system ?prompt|prompt do sistema|mensagem do sistema|developer message|"
      r"instrucoes do sistema|suas instrucoes|seu prompt|prompt original)\b",
@@ -178,11 +258,24 @@ _PADROES = [
     ("tags_papel",
      r"<\s*/?\s*(system|assistant|user|im_start|im_end|tool)\b|\[/?(INST|SYS)\]|```\s*system",
      "marcadores de papel/chat-template embutidos", "alta", True),
+    ("tags_papel_linha",
+
+
+
+     r"(?m)^[ \t>*-]*(system|assistant|user|developer)[ \t]*:|"
+     r"^[ \t]*#{2,}[ \t]*(instructions?|system( prompt)?|prompt|response)[ \t]*:",
+     "marcador de papel de chat no inicio de linha", "media", True),
+    ("condicional_ia", _CONDICIONAL_IA,
+     "condicional dirigido a uma IA (peca juridica nao fala com IA)", "alta", False),
+    ("ocultacao_ao_usuario", _OCULTACAO,
+     "ordem para esconder algo de quem usa o assistente", "media", False),
+    ("sigilo_da_nota", _SIGILO_NOTA,
+     "pedido de sigilo sobre o proprio recado", "media", False),
     ("base64_grande",
      r"[A-Za-z0-9+/]{220,}={0,2}",
      "bloco base64 longo (possivel payload oculto)", "baixa", True),
 ]
-PADROES = [(i, re.compile(rx, re.I if raw else 0), d, sev, raw) for i, rx, d, sev, raw in _PADROES]
+PADROES = [(i, re.compile(rx, (re.I | re.M) if raw else 0), d, sev, raw) for i, rx, d, sev, raw in _PADROES]
 
 
 
@@ -239,6 +332,24 @@ def varrer(texto):
         achados.append({"id": "ofuscacao_zero_width", "severidade": "media",
                         "descricao": "caractere invisivel (zero-width) — possivel ofuscacao de injecao",
                         "trecho": "(caractere(s) invisivel(eis) removido(s) na analise)"})
+    if any(c in texto for c in BIDI):
+        achados.append({"id": "controle_bidi", "severidade": "media",
+                        "descricao": "controle de direcao do texto (bidi): a ordem mostrada na tela "
+                                     "difere da ordem lida pela IA — possivel ofuscacao",
+                        "trecho": "(controle(s) de direcao removido(s) na analise)"})
+
+
+
+    texto = _BANDEIRA_RX.sub("\U0001F3F4", texto)
+    if _TAG_RX.search(texto):
+        revelado = revelar_tags(texto)
+        achados.append({"id": "unicode_tag", "severidade": "alta",
+                        "descricao": "texto escondido em Unicode Tag (invisivel na tela, lido pela IA); "
+                                     "o trecho mostra o texto decodificado",
+                        "trecho": ("texto escondido: " + revelado)[:160] if revelado
+                                  else "(caracteres Tag sem texto decodificavel)"})
+
+        texto = _TAG_RX.sub("", texto) + ("\n" + revelado if revelado else "")
     _sm = _script_misto(texto)
     if _sm:
         achados.append({"id": "ofuscacao_script_misto", "severidade": "alta",
@@ -247,6 +358,8 @@ def varrer(texto):
     norm = normalizar(texto)
     vars_norm = variantes(norm)
     for pid, rx, desc, sev, raw in PADROES:
+        if any(x["id"] == pid for x in achados):
+            continue
         alvos = [texto] if raw else vars_norm
         n = 0; achou = False
         for alvo in alvos:
@@ -294,6 +407,251 @@ def varrer(texto):
                 pos = m.start() + 1
             if achou:
                 break
+    achados = _leitura_por_maquina(texto, norm, vars_norm, achados)
+    return _combinacao_estrutural(achados, vars_norm)
+
+
+
+
+
+
+
+
+
+
+
+
+
+JANELA_COMBINACAO = 300
+_RX_ENDERECO = re.compile(_DIRIGIDO_VOCATIVO + "|" + _DIRIGIDO_RECADO + "|" + _CONDICIONAL_IA)
+_RX_OCULTA = re.compile(_OCULTACAO)
+_RX_SIGILO = re.compile(_SIGILO_NOTA)
+
+
+def _perto(spans_a, spans_b):
+    for a0, a1 in spans_a:
+        for b0, b1 in spans_b:
+            if (a0, a1) != (b0, b1) and max(a0, b0) - min(a1, b1) <= JANELA_COMBINACAO:
+                return True
+    return False
+
+
+def _combinacao_estrutural(achados, vars_norm=()):
+    ids = {a["id"] for a in achados}
+    if not ids & {"ocultacao_ao_usuario", "sigilo_da_nota"}:
+        return achados
+    combina = False
+    for alvo in vars_norm:
+        plano = alvo.replace("\n", " ")
+        end = [m.span() for m in _RX_ENDERECO.finditer(plano)]
+        ocu = [m.span() for m in _RX_OCULTA.finditer(plano)]
+        sig = [m.span() for m in _RX_SIGILO.finditer(plano)]
+        if _perto(end, ocu + sig) or _perto(ocu, sig):
+            combina = True
+            break
+    if combina:
+        base = next(a for a in achados if a["id"] in ("ocultacao_ao_usuario", "sigilo_da_nota"))
+        achados.append({"id": "nota_oculta_a_ia", "severidade": "alta",
+                        "descricao": "recado dirigido ao assistente que pede para esconder algo do "
+                                     "usuario ou guardar sigilo sobre o proprio recado",
+                        "trecho": base["trecho"]})
+    return achados
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+JANELA_ORDEM = 300
+_ALVO_MAQ = (r"(um |uma |o |a |algum |alguma |qualquer )?(ia|inteligencia artificial|"
+             r"(ferramenta|sistema|modelo|programa)s? de (ia|inteligencia artificial|linguagem)|"
+             r"modelos? de linguagem|llms?|chatbots?|maquinas?|robos?|assistentes? (virtua\w+|de ia))\b")
+_DOC_PROPRIO = (r"(esta|este|essa|esse|a presente|o presente)\s+(peticao|peca|documento|texto|recurso|"
+                r"arquivo|manifestacao|minuta|memorial|contestacao|razoes|pagina)")
+_PARTICIPIO = r"(lid|processad|analisad|examinad|avaliad|resumid|interpretad|revisad)(o|a|os|as)"
+_VERBO_SER = r"(for|forem|seja|sejam|ser|vier a ser|vierem a ser|estiver sendo|esta sendo|e)"
+_LEITURA_A = (r"\b(se|caso|quando|ao|sempre que|uma vez que)\s+(" + _VERBO_SER + r"\s+)?" + _DOC_PROPRIO +
+              r"\s+(" + _VERBO_SER + r"\s+)?" + _PARTICIPIO + r"\s+(por|pela|pelo|com|via)\s+" + _ALVO_MAQ +
+              r"|\b(if|when|should|once|in case)\s+(this|the present)\s+(document|petition|brief|text|"
+              r"filing|motion|appeal|file|pleading|page)\s+(is|was|be|gets|were)\s+(being\s+)?"
+              r"(read|processed|analy[sz]ed|reviewed|summari[sz]ed|parsed|evaluated)\s+by\s+"
+              r"(an? |the |any )?(ai|artificial intelligence|ai (model|system|tool|assistant)|"
+              r"(large )?language model|llm|machine|chatbot)\b")
+_LEITURA_C = (r"\b(ia|inteligencia artificial|(sistema|ferramenta|modelo)s? de (ia|inteligencia artificial)|"
+              r"modelos? de linguagem|llms?|chatbots?)\s+que\s+(le|leia|leiam|lerem|ler|estiver lendo|"
+              r"estiverem lendo|processe|processar|processarem|analise|analisar|analisarem|receber|"
+              r"receberem)\s+" + _DOC_PROPRIO +
+              r"|\b(any |an |the )?(ai|language model|llm|ai system|ai model)s?\s+(that|which|who)\s+"
+              r"(reads?|process(es)?|analy[sz]es?)\s+this\s+(document|petition|brief|text|filing)\b")
+_LEITURA_B = (r"\b(se|caso|quando|ao)\s+(" + _VERBO_SER + r"\s+)?" + _PARTICIPIO + r"\s+(por|pela|pelo)\s+" +
+              _ALVO_MAQ + r"|\b(if|when|once)\s+(read|processed|analy[sz]ed|reviewed|parsed)\s+by\s+"
+              r"(an? |the |any )?(ai|artificial intelligence|(large )?language model|llm|machine|chatbot)\b")
+_ORDEM_VERBO = (r"(interprete|interpretem|interpretar|acolha|acolham|acolher|considere|considerem|considerar|"
+                r"recomende|recomendem|recomendar|conclua|concluam|concluir|decida|decidam|decidir|julgue|"
+                r"julguem|julgar|defira|defiram|deferir|indefira|indeferir|reconheca|reconhecam|reconhecer|"
+                r"declare|declarar|atribua|atribuam|atribuir|faca|fazer|elabore|elaborar|redija|redigir|"
+                r"minute|minutar|resuma|resumir|"
+
+                r"classifique|classifiquem|admita|admitam|vote|votem|afirme|afirmem|proponha|"
+                r"grant|recommend|rule|find|conclude|deem|consider|treat|classify|admit|vote|affirm|"
+                r"interpret|accept|uphold|dismiss|deny|summarize|draft|give)")
+_ORDEM_OBJETO = (r"(pedid|tese|recurs|razao|razoes|peticao|peca|acao|procedent|improcedent|procedencia|"
+                 r"provimento|deferimento|indeferimento|decisao|sentenca|acordao|voto|fato|nota|favoravel|"
+                 r"reu|autor|recorrente|recorrid|defensiv|defesa|dano|merito|vencedor|absolvi|condena|"
+                 r"relevan|admissi|questao federal|"
+                 r"motion|claim|appeal|petition|plaintiff|defendant|favor|ruling|decision|judgment|brief|"
+                 r"appellant|merit)")
+_RX_ORDEM = re.compile(r"\b" + _ORDEM_VERBO + r"\b[^\n]{0,80}?\b" + _ORDEM_OBJETO + r"|"
+                       r"\b(de|dar|negue|negar) provimento\b")
+_RX_LEITURA = [(re.compile(_LEITURA_A), "A"), (re.compile(_LEITURA_C), "C"), (re.compile(_LEITURA_B), "B")]
+
+
+_RX_ENDERECO_ORDEM = re.compile(_DIRIGIDO_VOCATIVO + "|" + _DIRIGIDO_RECADO)
+
+
+
+
+
+
+_DEST_COM_PREP = (r"(ia|inteligencia artificial|modelo de linguagem|sistema de ia|ferramenta de ia|"
+                  r"assistente virtual|llm|chatgpt|copilot|robo|sistema automatizado(?: de [a-z]+)?|"
+                  r"ferramenta de apoio(?: a decisao)?)")
+_DEST_NU = r"(llm|chatgpt|copilot|robo)"
+_DEST_ITEM = r"(?:" + _DEST_COM_PREP + r"|gemini|claude|gpt)"
+_INICIO_FRASE = r"(?:^|[\n.!?;:])[ \t\"'(]*"
+_RX_PARA_A_IA = re.compile(
+    _INICIO_FRASE + r"(?:(?:para|ao|a)\s+(?:a\s+|o\s+)?" + _DEST_COM_PREP + r"|" + _DEST_NU + r"|"
+    + _DEST_ITEM + r"(?:(?:\s*,\s*|\s+(?:e|ou)\s+)" + _DEST_ITEM + r")+)\s*:"
+    r"|" + _INICIO_FRASE + r"(?:robo|llm|chatgpt)\s*,",
+    re.I | re.M)
+
+
+_ALVO_COLADO = r"(uma|um|a|o)?(inteligenciaartificial|modelodelinguagem|sistemadeia|ia|maquina|llm)"
+_LOOSE_LEITURA = re.compile(r"(se|caso|quando)(esta|este|essa|esse|apresente|opresente)(peticao|peca|documento|"
+                            r"texto|recurso|arquivo|manifestacao|minuta)[a-z]{0,14}?(lid|processad|analisad|"
+                            r"examinad|avaliad)(o|a|os|as)(por|pela|pelo)" + _ALVO_COLADO)
+_LOOSE_RECADO = re.compile(r"(recado|nota|mensagem|instrucao|instrucoes|aviso)(para|ao)(a|o)?"
+                           r"(inteligenciaartificial|modelodelinguagem|sistemadeia|ia)")
+_LOOSE_ORDEM = re.compile(r"(interprete|acolha|acolher|considere|recomende|conclua|concluir|decida|julgue|"
+                          r"defira|atribua|reconheca|facaadecisao)[a-z]{0,80}?(pedid|tese|razo|peticao|recurs|"
+                          r"provimento|deferimento|procedenc|favoravel|nota|fato|decisao|defens)")
+
+
+def _sem_acento(texto):
+    t = unicodedata.normalize("NFKD", texto.translate(_CONF_TAB))
+    t = "".join(c for c in t if not unicodedata.combining(c))
+    return t.translate({ord(c): None for c in ZERO_WIDTH + BIDI}).lower()
+
+
+def _ordens(alvo):
+    """Spans das ordens de julgamento, em ordem de inicio (calculado uma vez por texto)."""
+    return [m.span() for m in _RX_ORDEM.finditer(alvo)]
+
+
+def _ordem_perto(spans, ini, fim, so_depois=False):
+
+
+    i = bisect.bisect_left(spans, (ini - JANELA_ORDEM - 200, 0))
+    while i < len(spans) and spans[i][0] <= fim + JANELA_ORDEM:
+        s0, s1 = spans[i]
+        i += 1
+        if so_depois and s0 < ini:
+            continue
+        if max(ini, s0) - min(fim, s1) <= JANELA_ORDEM:
+            return True
+    return False
+
+
+def _fim_ok(casado, espacado):
+    """O trecho colado tem de terminar em fronteira de palavra no texto espacado de origem."""
+    rx = r"(?<![a-z0-9])" + r"[^a-z0-9]{0,3}".join(re.escape(c) for c in casado) + r"(?![a-z0-9])"
+    return re.search(rx, espacado) is not None
+
+
+def _trecho(alvo, ini, fim):
+    return alvo[max(0, ini - 30):fim + 30].replace("\n", " ").strip()[:160]
+
+
+def _leitura_por_maquina(texto, norm, vars_norm, achados):
+    ids = {a["id"] for a in achados}
+    leitura = None
+    ordem = None
+    dirigido = None
+    for alvo in vars_norm:
+        plano = alvo.replace("\n", " ")
+        spans = _ordens(plano)
+        for rx, forma in _RX_LEITURA:
+            if leitura and leitura[0] == "alta":
+                break
+            for m in rx.finditer(plano):
+                com_ordem = _ordem_perto(spans, m.start(), m.end())
+                if forma == "B" and not com_ordem:
+                    continue
+                sev = "alta" if com_ordem else "media"
+                if leitura is None or ORDEM_SEV[sev] > ORDEM_SEV[leitura[0]]:
+                    leitura = (sev, _trecho(plano, m.start(), m.end()))
+                if sev == "alta":
+                    break
+        if ordem is None and spans:
+            for m in _RX_ENDERECO_ORDEM.finditer(plano):
+                if plano[m.end():m.end() + 8].startswith(" tecnic"):
+                    continue
+                if _ordem_perto(spans, m.start(), m.end(), so_depois=True):
+                    ordem = _trecho(plano, m.start(), m.end())
+                    break
+    cru = _sem_acento(texto)
+    spans_cru = None
+    for m in _RX_PARA_A_IA.finditer(cru):
+        if "dirigido_a_ia" not in ids and dirigido is None:
+            dirigido = _trecho(cru, m.start(), m.end())
+        if spans_cru is None:
+            spans_cru = _ordens(cru)
+        if ordem is None and _ordem_perto(spans_cru, m.start(), m.end(), so_depois=True):
+            ordem = _trecho(cru, m.start(), m.end())
+    if leitura is None or ordem is None:
+        plano = re.sub(r"\n", " ", norm)
+        for fonte in dict.fromkeys([plano, _deobf(plano)]):
+            d = _despaced(fonte)
+            for rx, tipo in ((_LOOSE_LEITURA, "leitura"), (_LOOSE_RECADO, "recado")):
+                for m in rx.finditer(d):
+                    if not (_fronteira_ok(m.group(1), fonte) and _fim_ok(m.group(0), fonte)):
+                        continue
+                    com_ordem = bool(_LOOSE_ORDEM.search(d, m.end(), m.end() + JANELA_ORDEM))
+                    trecho = d[max(0, m.start() - 10):m.end() + 40][:120]
+                    if tipo == "leitura" and (leitura is None or (com_ordem and leitura[0] != "alta")):
+                        leitura = ("alta" if com_ordem else "media", trecho)
+                    elif tipo == "recado":
+                        if "dirigido_a_ia" not in ids and dirigido is None:
+                            dirigido = trecho
+                        if com_ordem and ordem is None:
+                            ordem = trecho
+                    break
+    if leitura:
+        achados.append({"id": "condicional_leitura_maquina", "severidade": leitura[0],
+                        "descricao": "condicional de leitura por maquina (\"se este documento for lido por IA\")"
+                                     + (" com ordem de julgamento" if leitura[0] == "alta" else ""),
+                        "trecho": leitura[1]})
+    if dirigido:
+        achados.append({"id": "dirigido_a_ia", "severidade": "media",
+                        "descricao": "texto dirigido/comandando uma IA (peca juridica nao fala com IA)",
+                        "trecho": dirigido})
+    if ordem:
+        achados.append({"id": "ordem_de_julgamento_a_ia", "severidade": "alta",
+                        "descricao": "recado ou vocativo a IA com ordem de julgamento (acolher, "
+                                     "considerar provado, recomendar o deferimento)",
+                        "trecho": ordem})
     return achados
 
 

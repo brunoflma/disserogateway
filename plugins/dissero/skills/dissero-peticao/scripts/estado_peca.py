@@ -75,7 +75,9 @@
 
 
 
-import sys, os, re, json, argparse, subprocess, hashlib, math, shutil, tempfile, zipfile
+
+
+import sys, os, re, json, argparse, subprocess, hashlib, html, math, shutil, tempfile, zipfile
 import datetime
 import xml.etree.ElementTree as ET
 
@@ -1120,31 +1122,650 @@ def _mesmo_arquivo(a, b):
     return os.path.normcase(os.path.abspath(a)) == os.path.normcase(os.path.abspath(b))
 
 
-def _anexo_e_peca(gate, caminho, canon, state_path):
-    'O arquivo traz o texto de uma peça, pelos mesmos critérios do gate de entrega? Sem os'
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+_CAMPOS_DA_CITACAO = ("court", "case_number", "rapporteur", "judgment_date", "identifier")
+_TETO_CAMPO_CITACAO = 200
+_TETO_REFERENCIA = 400
+
+_COBERTURA_BLOCO = 0.8
+_TETO_DESCONTO_PECA = 0.85
+_TETO_PALAVRAS_EMENTA = 3000
+_TETO_PALAVRAS_TEOR = 60000
+_TETO_PALAVRAS_BLOCO = 3000
+_TETO_XML_ANEXO = 50_000_000
+_RX_TBL = re.compile(r"<(/?)w:tbl\b[^>]*>")
+_RX_PALAVRA = re.compile(r"\w+")
+
+
+_EXT_ANEXO_DOCX = (".docx",)
+_EXT_ANEXO_PDF = (".pdf",)
+_EXT_ANEXO_TEXTO = (".txt", ".md", ".csv", ".json")
+_TETO_PDF_SEGUNDOS = 120
+
+
+_PALAVRAS_DE_OUTRA_ESCRITA = 5
+_CONFUSAVEIS = str.maketrans({
+
+    "\u0430": "a", "\u0435": "e", "\u043e": "o", "\u0440": "p", "\u0441": "c", "\u0443": "y",
+    "\u0445": "x", "\u0456": "i", "\u0458": "j", "\u0455": "s", "\u0501": "d", "\u04bb": "h",
+    "\u051b": "q", "\u051d": "w", "\u04cf": "l", "\u0432": "b", "\u043a": "k", "\u043c": "m",
+    "\u043d": "h", "\u0442": "t", "\u0457": "i", "\u0491": "r",
+
+    "\u03bf": "o", "\u03b1": "a", "\u03bd": "v", "\u03c1": "p", "\u03b9": "i", "\u03ba": "k",
+    "\u03c4": "t", "\u03c5": "u", "\u03c7": "x", "\u03b5": "e", "\u03b7": "n", "\u03bc": "u",
+    "\u03b2": "b", "\u03b6": "z",
+})
+
+
+_RX_DOCX_INVISIVEL = re.compile(
+    r"<w:(instrText|delText|delInstrText)\b[^>]*?(?<!/)>.*?</w:\1>"
+    r"|<w:(del|moveFrom)\b[^>]*?(?<!/)>.*?</w:\2>", re.S)
+_RX_DOCX_NAO_CONFERIVEL = re.compile(r"<w:altChunk\b|<w:object\b|<o:OLEObject\b|<w:embed\w*Font\b")
+_RX_PARTE_EMBUTIDA = re.compile(r"(?i)(?:^|/)(?:embeddings|activeX)/|\.(?:htm|html|mht|mhtml|rtf|txt"
+                                r"|odttf|ttf|otf)$")
+
+
+def _contrato_do_achado():
+    """O módulo do contrato do achado (o mesmo que o build_precedentes.py usa), ou None."""
+    try:
+        import importlib.util
+        pasta = os.path.join(AQUI, "..", "..", "dissero-visual-law", "scripts")
+        spec = importlib.util.spec_from_file_location(
+            "_dsr_achado_contract_vl", os.path.join(pasta, "achado_contract.py"))
+        mod = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(mod)
+        return mod
+    except Exception:
+        return None
+
+
+def _achado_legado(a):
+    'Achado de pasta antiga (verification com status e data, sem result nem method): o'
+
+    v = a.get("verification")
+    if not isinstance(v, dict) or "result" in v or "method" in v:
+        return False
+    return all(isinstance(v.get(k), str) and v.get(k).strip() for k in ("status", "data"))
+
+
+def _normalizar(texto):
+    'O texto como a comparação o lê, igual nos dois lados: NFKD sem marca combinante (acento) nem'
+
+
+    import unicodedata
+    t = unicodedata.normalize("NFKD", texto or "")
+    t = "".join(c for c in t if unicodedata.category(c) not in ("Mn", "Me", "Cf"))
+    return t.casefold().translate(_CONFUSAVEIS)
+
+
+def _palavras_shingle(texto):
+    return _RX_PALAVRA.findall(_normalizar(texto))
+
+
+def _shingles_de(gate, palavras):
+    n = gate._SHINGLE
+    return {" ".join(palavras[i:i + n]) for i in range(max(0, len(palavras) - n + 1))}
+
+
+def _sh(gate, texto):
+    """Os shingles de `gate._SHINGLE` palavras do texto normalizado."""
+    return _shingles_de(gate, _palavras_shingle(texto))
+
+
+def _palavras_de_outra_escrita(palavras):
+    """Quantas palavras (já normalizadas) têm letra que não é latina."""
+    import unicodedata
+    n = 0
+    for p in palavras:
+        if any(c.isalpha() and not unicodedata.name(c, "").startswith("LATIN") for c in p):
+            n += 1
+    return n
+
+
+def _precedentes_do_registro(caminho):
+    'Os textos dos precedentes que a Relação traz (selecionados, liberados ou a conferir) no'
+
+
 
     try:
-        ext = os.path.splitext(caminho.lower())[1]
-        texto = (gate._texto_do_docx(caminho) if ext == ".docx"
-                 else gate._ler_texto_enviado(caminho, ext))
-        if not texto or not texto.strip():
+        with open(caminho, encoding="utf-8") as f:
+            dados = json.load(f)
+    except Exception:
+        return None
+    if (not isinstance(dados, dict) or not isinstance(dados.get("achados"), list)
+            or dados.get("schema_version") not in ("dsr.achados.v2", "dsr.achados.v3")):
+        return None
+    usados = [(i, a) for i, a in enumerate(dados["achados"])
+              if isinstance(a, dict) and a.get("selected_for_use") is True
+              and a.get("use_status") in ("allowed", "pending")]
+    if not usados:
+        return None
+    conferir = [i for i, a in usados if not _achado_legado(a)]
+    if conferir:
+        contrato = _contrato_do_achado()
+        if contrato is None:
+            return None
+        try:
+            r = contrato.violacoes_por_achado(dados, conferir)
+        except Exception:
+            return None
+        if r.get("documento") or r.get("achados"):
+            return None
+    textos, referencias, acima = [], [], []
+    for _i, a in usados:
+        ref = a.get("reference")
+        if isinstance(ref, str) and ref.strip():
+            if len(ref) <= _TETO_REFERENCIA:
+                textos.append(ref)
+                referencias.append(" ".join(_palavras_shingle(ref)))
+            else:
+                acima.append("referência com mais de %d caracteres" % _TETO_REFERENCIA)
+
+        campos = (("syllabus_literal", "full_text") if a.get("use_status") == "allowed"
+                  else ("syllabus_literal",))
+        for k in campos:
+            t = a.get(k)
+            if not isinstance(t, str):
+                continue
+            teto = _TETO_PALAVRAS_TEOR if k == "full_text" else _TETO_PALAVRAS_EMENTA
+            if len(_palavras_shingle(t)) > teto:
+                acima.append("%s com mais de %d palavras" % (
+                    "inteiro teor" if k == "full_text" else "ementa", teto))
+                continue
+            textos.append(t)
+        cit = a.get("citation")
+        if isinstance(cit, dict):
+            textos += [cit[k] for k in _CAMPOS_DA_CITACAO
+                       if isinstance(cit.get(k), str) and len(cit[k]) <= _TETO_CAMPO_CITACAO]
+
+
+    parecer = []
+
+    def _textos_de(v):
+        if isinstance(v, str):
+            parecer.append(v)
+        elif isinstance(v, dict):
+            for x in v.values():
+                _textos_de(x)
+        elif isinstance(v, list):
+            for x in v:
+                _textos_de(x)
+    _textos_de(dados.get("estrategia"))
+    for _i, a in usados:
+        _textos_de(a.get("estrategia_uso"))
+    return {"textos": textos, "referencias": [r for r in referencias if r], "acima_do_teto": acima,
+            "parecer": parecer}
+
+
+def _registro_dos_precedentes(state_path, st):
+    'O `achados.json` de onde a Relação sai: o da pasta do PECA_STATE; sem ele, o da raiz do'
+
+    proprio = os.path.join(os.path.dirname(os.path.abspath(state_path)), "achados.json")
+    if os.path.isfile(proprio) or caso_raiz is None:
+        return proprio
+    try:
+        raiz, _ = caso_raiz.resolver(session_id=st.get("session_id"))
+    except Exception:
+        raiz = None
+    return os.path.join(os.path.abspath(raiz), "achados.json") if raiz else proprio
+
+
+def _xml_para_texto(xml):
+    xml = re.sub(r"</w:p>", "\n", xml)
+    return html.unescape(re.sub(r"<[^>]+>", "", xml))
+
+
+def _regioes_da_peca(caminho):
+    'A peça em ordem, como [(tipo, texto)]: «texto» (fora de tabela), «tabela» (tabela de'
+
+
+    try:
+        if os.path.getsize(caminho) > _TETO_XML_ANEXO:
+            return None
+        with zipfile.ZipFile(caminho) as z:
+            xml = z.read("word/document.xml").decode("utf-8", "replace")
+    except Exception:
+        return None
+    regioes, pos, nivel, inicio, aninhada = [], 0, 0, 0, False
+    for m in _RX_TBL.finditer(xml):
+        if not m.group(1):
+            if nivel == 0:
+                regioes.append(("texto", _xml_para_texto(xml[pos:m.start()])))
+                inicio, aninhada = m.start(), False
+            else:
+                aninhada = True
+            nivel += 1
+        elif nivel:
+            nivel -= 1
+            if nivel == 0:
+                pos = m.end()
+                regioes.append(("aninhada" if aninhada else "tabela",
+                                _xml_para_texto(xml[inicio:pos])))
+    regioes.append(("texto", _xml_para_texto(xml[inicio:] if nivel else xml[pos:])))
+    return regioes
+
+
+def _desconto_dos_precedentes(gate, registro, regioes, s_canon):
+    'O que sai da medida de repetição, pelas travas do comentário que abre esta seção:'
+
+
+
+
+    s_reg, s_parecer = set(), set()
+    for t in (registro or {}).get("textos") or []:
+        s_reg |= _sh(gate, t)
+    for t in (registro or {}).get("parecer") or []:
+        s_parecer |= _sh(gate, t)
+    referencias = (registro or {}).get("referencias") or []
+    fora = list((registro or {}).get("acima_do_teto") or [])
+    n = gate._SHINGLE
+    blocos, corpo = set(), []
+    for tipo, texto in regioes:
+        if tipo != "tabela" or not s_reg:
+            corpo.append(texto)
+            continue
+        palavras = _palavras_shingle(texto)
+        junto = " ".join(palavras)
+        citados = sum(1 for r in referencias if r in junto)
+        if len(palavras) > _TETO_PALAVRAS_BLOCO * max(1, citados):
+            fora.append("bloco de transcrição com mais de %d palavras por precedente"
+                        % _TETO_PALAVRAS_BLOCO)
+            corpo.append(texto)
+            continue
+        coberta = [False] * len(palavras)
+        for i in range(max(0, len(palavras) - n + 1)):
+            if " ".join(palavras[i:i + n]) in s_reg:
+                for j in range(i, i + n):
+                    coberta[j] = True
+        if palavras and sum(coberta) / len(palavras) >= _COBERTURA_BLOCO:
+            blocos |= _shingles_de(gate, palavras)
+        else:
+            corpo.append(texto)
+    s_corpo = _sh(gate, "\n".join(corpo))
+
+
+    desconto_peca = blocos - s_corpo
+    desconto = desconto_peca | (s_corpo & s_reg)
+    teto_peca = len(desconto) > _TETO_DESCONTO_PECA * max(1, len(s_canon))
+    if teto_peca:
+        desconto, desconto_peca, s_corpo = set(), set(), set(s_canon)
+    return {"desconto": desconto, "desconto_peca": desconto_peca, "s_corpo": s_corpo,
+            "s_reg": s_reg, "s_parecer": s_parecer, "teto_peca": teto_peca,
+            "fora_do_teto": sorted(set(fora))}
+
+
+def _ler_bytes(caminho, teto=_TETO_XML_ANEXO):
+    with open(caminho, "rb") as fh:
+        return fh.read(teto + 1)
+
+
+def _texto_de_bytes(dados):
+    'Os bytes de um arquivo de texto como texto (UTF-8, ou UTF-16 pelo BOM ou pelos bytes nulos'
+
+
+    inicio = dados[:4096]
+    pares, impares = inicio[0::2], inicio[1::2]
+    if inicio[:2] in (b"\xff\xfe", b"\xfe\xff"):
+        texto = dados.decode("utf-16", "replace")
+    elif len(inicio) >= 16 and (pares.count(0) > len(pares) * 0.3
+                                or impares.count(0) > len(impares) * 0.3):
+        texto = dados.decode("utf-16-le" if impares.count(0) >= pares.count(0) else "utf-16-be",
+                             "replace")
+    else:
+        if b"\x00" in dados:
+            return None
+        texto = dados.decode("utf-8-sig", "replace")
+    if texto.count("�") > max(2, len(texto) // 100):
+        return None
+    return texto
+
+
+def _texto_do_pdf(caminho):
+    '(texto, None) da camada de texto do PDF, ou (None, razão): sem leitor de PDF, PDF que não'
+
+    paginas = None
+    try:
+
+
+        leitor = None
+        for nome in ("pymupdf", "fitz"):
+            try:
+                leitor = __import__(nome)
+                break
+            except ImportError:
+                continue
+        if leitor is None:
+            raise ImportError("PyMuPDF ausente")
+        with leitor.open(caminho, filetype="pdf") as pdf:
+            paginas = [pg.get_text() for pg in pdf]
+    except ImportError:
+        binario = shutil.which("pdftotext") or shutil.which("pdftotext.exe")
+        if not binario:
+            return None, "não há leitor de PDF nesta máquina (pdftotext ou PyMuPDF)"
+        try:
+            r = subprocess.run([binario, "-q", "-enc", "UTF-8", caminho, "-"], capture_output=True,
+                               timeout=_TETO_PDF_SEGUNDOS)
+        except Exception:
+            return None, "o PDF não se lê"
+        if r.returncode != 0:
+            return None, "o PDF não se lê"
+        paginas = r.stdout.decode("utf-8", "replace").split("\f")
+        if paginas and not paginas[-1].strip():
+            paginas = paginas[:-1]
+    except Exception:
+        return None, "o PDF não se lê"
+    if not paginas:
+        return None, "o PDF não tem texto"
+    if any(not _RX_PALAVRA.search(p or "") for p in paginas):
+        return None, "o PDF tem página sem texto (imagem), que não se confere"
+    return "\n".join(paginas), None
+
+
+def _texto_do_docx_anexo(caminho):
+    '(texto, None) de todas as partes XML do .docx (corpo, cabeçalhos, rodapés, notas,'
+
+
+    try:
+        if os.path.getsize(caminho) > _TETO_XML_ANEXO:
+            return None, "o arquivo passa do tamanho que se confere"
+        partes = []
+        with zipfile.ZipFile(caminho) as z:
+            nomes = z.namelist()
+            if "word/document.xml" not in nomes:
+                return None, "o conteúdo não é de um .docx"
+            for nome in nomes:
+                if _RX_PARTE_EMBUTIDA.search(nome):
+                    return None, "o .docx traz parte importada, objeto ou fonte embutida"
+                if nome.endswith(".xml"):
+                    partes.append(z.read(nome).decode("utf-8", "replace"))
+    except Exception:
+        return None, "o conteúdo não é de um .docx"
+    xml = "\n".join(partes)
+    if _RX_DOCX_NAO_CONFERIVEL.search(xml):
+        return None, "o .docx traz parte importada, objeto ou fonte embutida"
+    return _xml_para_texto(_RX_DOCX_INVISIVEL.sub(" ", xml)), None
+
+
+def _textos_do_anexo(gate, caminho):
+    '([leituras do texto do anexo], None), ou (None, razão) quando o anexo não se confere'
+
+
+    ext = os.path.splitext(caminho.lower())[1]
+    try:
+        with open(caminho, "rb") as fh:
+            inicio = fh.read(1024)
+    except Exception:
+        return None, "o arquivo não se lê"
+    eh_pdf = inicio.lstrip()[:5] == b"%PDF-"
+    eh_zip = inicio[:4] == b"PK\x03\x04"
+    if ext in _EXT_ANEXO_DOCX:
+        if not eh_zip:
+            return None, "o conteúdo não é de um .docx"
+        texto, razao = _texto_do_docx_anexo(caminho)
+        return (None, razao) if razao else ([texto], None)
+    if ext in _EXT_ANEXO_PDF:
+        if not eh_pdf:
+            return None, "o conteúdo não é de um PDF"
+        texto, razao = _texto_do_pdf(caminho)
+        return (None, razao) if razao else ([texto], None)
+    if ext in _EXT_ANEXO_TEXTO:
+        if eh_pdf or eh_zip:
+            return None, "o conteúdo não é texto (é PDF ou pacote com outra extensão)"
+        try:
+            dados = _ler_bytes(caminho)
+        except Exception:
+            return None, "o arquivo não se lê"
+        if len(dados) > _TETO_XML_ANEXO:
+            return None, "o arquivo passa do tamanho que se confere"
+        texto = _texto_de_bytes(dados)
+        if texto is None:
+            return None, "o conteúdo não é texto"
+        sem_marcacao = re.sub(r"<[^>]*>", " ", re.sub(r"<!--.*?(?:-->|$)", " ", texto, flags=re.S))
+        return [texto, sem_marcacao], None
+    return None, "formato sem leitor (%s)" % (ext or "sem extensão")
+
+
+def _medida_da_peca(gate, canon, state_path, st=None):
+    'O que a comparação dos anexos com a peça canônica usa, medido uma vez: {"s_canon",'
+
+
+    if not _full_str(canon):
+        return None
+    c = canon.strip()
+    if not os.path.isabs(c):
+        c = os.path.join(os.path.dirname(os.path.abspath(state_path)), c)
+    if not os.path.isfile(c):
+        return None
+    try:
+        texto = gate._texto_do_docx(c)
+        palavras = _palavras_shingle(texto)
+        s_canon = _shingles_de(gate, palavras)
+        regioes = _regioes_da_peca(c) or [("texto", texto)]
+        registro = _precedentes_do_registro(_registro_dos_precedentes(state_path, st or {}))
+        medida = _desconto_dos_precedentes(gate, registro, regioes, s_canon)
+    except Exception:
+
+        return None
+    medida.update(s_canon=s_canon, vocabulario=set(palavras), registro=registro is not None)
+    return medida
+
+
+def _comum_com_a_peca(gate, medida, caminho):
+    'O que o anexo tem em comum com a peça: {"textos", "s_anexo", "comum_anexo" (fora do'
+
+
+    textos, razao = _textos_do_anexo(gate, caminho)
+    if razao:
+        return {"nao_conferivel": razao}
+    palavras = [_palavras_shingle(t) for t in textos]
+    if _palavras_de_outra_escrita({p for ps in palavras for p in ps}) >= _PALAVRAS_DE_OUTRA_ESCRITA:
+        return {"nao_conferivel": "o texto tem palavras com letras de outra escrita (cirílico, "
+                                  "grego), que imitam as latinas"}
+    s_anexo = set()
+    for ps in palavras:
+        s_anexo |= _shingles_de(gate, ps)
+    r = {"textos": textos, "s_anexo": s_anexo, "comum_anexo": set(), "comum_peca": set()}
+    if medida is None:
+        return r
+    filtrado = set()
+    for ps in palavras:
+        filtrado |= _shingles_de(gate, [p for p in ps if p in medida["vocabulario"]])
+    r["comum_anexo"] = (s_anexo & medida["s_canon"]) - medida["desconto"]
+    r["comum_peca"] = ((s_anexo | filtrado) & medida["s_canon"]) - medida["desconto_peca"]
+    return r
+
+
+def _anexo_e_peca(gate, caminho, canon, state_path, st=None, medida=None):
+    'O arquivo traz o texto de uma peça, pelos mesmos critérios do gate de entrega? Devolve'
+
+
+
+
+
+
+
+
+    try:
+        if medida is None:
+            medida = _medida_da_peca(gate, canon, state_path, st)
+        c = _comum_com_a_peca(gate, medida, caminho)
+        if c.get("nao_conferivel"):
+            return "nao_conferivel|" + c["nao_conferivel"]
+        if not any(t and t.strip() for t in c["textos"]):
             return False
-        if gate._abre_com(gate._VOCATIVO_PECA, texto) and gate._FECHO_PECA.search(texto):
-            return True
-        if _full_str(canon):
-            c = canon.strip()
-            if not os.path.isabs(c):
-                c = os.path.join(os.path.dirname(os.path.abspath(state_path)), c)
-            if os.path.isfile(c):
-                enviado = gate._shingles(texto)
-                comum = enviado & gate._shingles(gate._texto_do_docx(c))
-                return (len(comum) >= gate._SHINGLES_MINIMOS
-                        and len(comum) / max(1, len(enviado)) >= gate._SOBREPOSICAO_PECA)
+        if any(gate._abre_com(gate._VOCATIVO_PECA, t) and gate._FECHO_PECA.search(t)
+               for t in c["textos"]):
+            return "abertura"
+        if medida is None:
+            return False
+        minimo, limite = gate._SHINGLES_MINIMOS, gate._SOBREPOSICAO_PECA
+        ca, cp = c["comum_anexo"], c["comum_peca"]
+        pelo_anexo = (len(ca) >= minimo
+                      and len(ca) / max(1, len(c["s_anexo"] - medida["desconto"])) >= limite)
+        pela_peca = len(cp) >= minimo and len(cp) / max(1, len(medida["s_corpo"])) >= limite
+        if not (pelo_anexo or pela_peca):
+            return False
+        if not medida["registro"]:
+            return "repete_sem_registro"
+        if medida["teto_peca"]:
+            return "repete_transcricao"
+        comum = ca | cp
+        if medida["s_parecer"] and len(comum & medida["s_parecer"]) * 2 >= len(comum):
+            return "repete_parecer"
+        return "repete"
     except AttributeError:
         return False
     except Exception:
-        return False
-    return False
+        return "nao_conferivel|erro na leitura do anexo"
+
+
+def _soma_dos_anexos(gate, medida, caminhos):
+    'Os anexos (nomes, do que mais repete ao que menos) que, SOMADOS, repetem a peça: a união do'
+
+
+
+
+    if medida is None:
+        return []
+    try:
+        uniao, partes = set(), []
+        for c in caminhos:
+            if not os.path.isfile(c):
+                continue
+            comum = _comum_com_a_peca(gate, medida, c).get("comum_peca")
+            if comum:
+                uniao |= comum
+                partes.append((len(comum), os.path.basename(c)))
+        if (len(uniao) >= gate._SHINGLES_MINIMOS
+                and len(uniao) / max(1, len(medida["s_corpo"])) >= gate._SOBREPOSICAO_PECA):
+            return [nome for _n, nome in sorted(partes, key=lambda p: (-p[0], p[1]))]
+    except AttributeError:
+        return []
+    return []
+
+
+def _codigo_anexo(motivo):
+    return "anexo_nao_conferivel" if str(motivo).startswith("nao_conferivel") else "anexo_e_peca"
+
+
+def _msg_anexo_e_peca(nome, motivo, medida=None):
+    remedio = (" A peça sai como .docx pelo rito; anexo é só o que a acompanha (guia, memória de "
+               "cálculo, Relação de Precedentes).")
+    fora = (medida or {}).get("fora_do_teto") or []
+    nota_teto = ""
+    if fora:
+        nota_teto = (f" Ficaram fora do desconto, por passarem do tamanho plausível de uma "
+                     f"transcrição (até {_TETO_PALAVRAS_EMENTA} palavras por ementa e por bloco, "
+                     f"por precedente): {'; '.join(fora)}. Transcreva na peça só o trecho que "
+                     f"sustenta o argumento; a Relação leva o texto inteiro.")
+    if str(motivo).startswith("nao_conferivel"):
+        razao = str(motivo).partition("|")[2] or "formato sem leitor"
+        return (f"anexo: {nome} não se confere contra a peça ({razao}), e anexo que não se "
+                f"confere não sai com ela. Salve-o como .docx, .pdf com texto em todas as páginas, "
+                f".md, .txt, .csv ou .json, só com o texto que se vê (sem código de campo, parte "
+                f"importada, objeto ou fonte embutida, nem letras de outra escrita), e registre-o "
+                f"de novo.{remedio}")
+    if motivo == "abertura":
+        return (f"anexo: {nome} traz o texto de uma peça (abre com o vocativo ao juízo e termina "
+                f"com o fecho).{remedio}")
+    if motivo == "repete_sem_registro":
+        return (f"anexo: {nome} repete boa parte do texto da peça, e não foi possível descontar as "
+                f"ementas e os trechos de julgado que a peça e a Relação de Precedentes transcrevem "
+                f"em comum: o registro dos precedentes da pesquisa (achados.json) não está na pasta "
+                f"da peça nem na raiz do caso, não se lê, não passa na conferência do contrato ou "
+                f"não tem precedente selecionado para uso. Se este arquivo é a Relação de "
+                f"Precedentes, deixe o achados.json da pesquisa na pasta da peça, gere a Relação a "
+                f"partir dele com o build_precedentes.py (skill dissero-visual-law) e registre-a "
+                f"de novo.{remedio}")
+    if motivo == "repete_transcricao":
+        return (f"anexo: {nome} repete o texto da peça, e as transcrições não foram descontadas: "
+                f"as caixas de jurisprudência e os blocos de citação somam mais de "
+                f"{round(_TETO_DESCONTO_PECA * 100)}% do texto da peça, mais transcrição que o "
+                f"plausível numa peça. Se este arquivo é a Relação de Precedentes, transcreva na "
+                f"peça só o trecho de cada ementa que sustenta o argumento (a Relação leva a ementa "
+                f"inteira), gere a peça de novo pelo rito e registre a Relação depois.{remedio}")
+    if motivo == "repete_parecer":
+        return (f"anexo: {nome} repete o texto da peça, e o que repete vem do parecer de estratégia "
+                f"do registro (tese central, distinguishing, contrários, como usar cada julgado), que "
+                f"a Relação imprime e que é texto da pesquisa, não do julgado: não se desconta. "
+                f"Reescreva no achados.json o parecer (campos `estrategia` e `estrategia_uso`) como "
+                f"orientação, sem copiar os parágrafos da peça, ou tire o `estrategia` do registro; "
+                f"gere a Relação de novo pelo build_precedentes.py e registre-a.{remedio}")
+    return (f"anexo: {nome} repete o texto da peça mesmo descontadas as ementas e os trechos de "
+            f"julgado que a peça transcreve dos precedentes registrados na pesquisa. Se este arquivo "
+            f"é a Relação de Precedentes, gere-a pelo build_precedentes.py, sem acréscimos, a partir "
+            f"do achados.json da pasta da peça, e registre-a de novo; se ela já saiu assim, a peça "
+            f"cita no texto corrido ementas demais (30% do corpo ou mais): leve as citações longas "
+            f"para um bloco `::: citacao` ou para a caixa de jurisprudência.{nota_teto}{remedio}")
+
+
+def _msg_soma_dos_anexos(nomes, limite):
+    return (f"anexo: os anexos {', '.join(nomes)} repetem, somados, ao menos "
+            f"{round(limite * 100)}% do texto da peça, embora cada um fique "
+            f"abaixo do limite: a peça não sai em pedaços. Retire do anexo o texto que repete a "
+            f"peça (o argumento vai na peça, que sai como .docx pelo rito), ou retire o registro "
+            f"do anexo que não acompanha a peça.")
 
 
 def cmd_anexo(args):
@@ -1190,11 +1811,16 @@ def cmd_anexo(args):
 
 
 
-    if _anexo_e_peca(gate, caminho, canon, args.state):
-        return _saida("anexo_e_peca", st,
-                      [f"anexo: {_nome_arq(caminho)} traz o texto de uma peça (o vocativo ao juízo e o "
-                       f"fecho, ou a repetição da peça canônica). A peça sai como .docx pelo rito; "
-                       f"anexo é só o que a acompanha (guia, memória de cálculo, Relação)."], 1)
+
+
+    medida = _medida_da_peca(gate, canon, args.state, st)
+    motivo = _anexo_e_peca(gate, caminho, canon, args.state, st, medida=medida)
+    if motivo:
+        return _saida(_codigo_anexo(motivo), st, [_msg_anexo_e_peca(_nome_arq(caminho), motivo, medida)], 1)
+
+    somam = _soma_dos_anexos(gate, medida, [a["arquivo"] for a in outros] + [caminho])
+    if somam:
+        return _saida("anexo_e_peca", st, [_msg_soma_dos_anexos(somam, gate._SOBREPOSICAO_PECA)], 1)
 
 
     nome = os.path.basename(caminho)
@@ -2260,6 +2886,10 @@ def _reverificar_lint(st, args, docx_path, ev, motivos, avisos_entrega):
     for numero in (st.get("processos") or []):
         if isinstance(numero, str) and numero.strip():
             cmd += ["--processo", numero.strip()]
+
+
+    if isinstance(st.get("session_id"), str) and st["session_id"].strip():
+        cmd += ["--session-id", st["session_id"].strip()]
     teto = args.lint_timeout if args.lint_timeout is not None else LINT_TIMEOUT_S
     try:
         r = subprocess.run(cmd, capture_output=True, text=True, encoding="utf-8",
@@ -2274,6 +2904,11 @@ def _reverificar_lint(st, args, docx_path, ev, motivos, avisos_entrega):
         motivos.append(f"LINT FAIL-CLOSED: o linter não pôde ser executado sobre {docx_path} "
                        f"({e}), e a entrega não é liberada sem a reexecução.")
         return
+
+
+    for linha in (r.stdout or "").splitlines():
+        if linha.startswith("AVISO: L42"):
+            avisos_entrega.append(linha[len("AVISO: "):].strip())
     if r.returncode != 0:
         cruz = " ".join(f"{f} {v}" for f, v in cruzamento if v) or "sem cruzamento"
         apontado = _apontado_pelo_linter(r.stdout)
@@ -2388,6 +3023,74 @@ def _validar_lint_timeout(args):
     if args.lint_timeout is not None and not (math.isfinite(args.lint_timeout)
                                               and args.lint_timeout > 0):
         raise Contrato(["--lint-timeout: segundos, número finito maior que zero"])
+
+
+_RESUMO_343A_CARREGADO = []
+
+_RX_PECA_RESP = re.compile(r"\b(?:recurso\s+especial|agravo\s+em\s+recurso\s+especial|a?resp)\b",
+                           re.I)
+_RX_CONTRARRAZOES = re.compile(r"contra[\s-]?r?raz", re.I)
+
+
+_RX_PECA_NAO_RESP = re.compile(
+    r"^\s*(?:agravo\s+interno|embargos|contraminuta|resposta|pedido|tutela|medida)\b", re.I)
+_AVISO_343A_GENERICO = (
+    "RESUMO DO ART. 343-A DO RISTJ: o recurso dirigido ao STJ não tem o resumo estruturado entre "
+    "os anexos da entrega. A exigência depende de portaria da Presidência do STJ (IN STJ/GP "
+    "42/2026, art. 12). Isto não impede a entrega.")
+
+
+def _resumo_343a():
+    """O resumo_343a.py ao lado deste script, como módulo, ou None se não carrega."""
+    if _RESUMO_343A_CARREGADO:
+        return _RESUMO_343A_CARREGADO[0]
+    try:
+        import importlib.util
+        spec = importlib.util.spec_from_file_location(
+            "_dsr_resumo_343a", os.path.join(AQUI, "resumo_343a.py"))
+        modulo = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(modulo)
+        if not callable(getattr(modulo, "estado_da_exigencia", None)):
+            modulo = None
+    except Exception:
+        modulo = None
+    _RESUMO_343A_CARREGADO.append(modulo)
+    return modulo
+
+
+def aviso_resumo_343a(st):
+    'O aviso do resumo do art. 343-A, ou None. Vale para o recurso especial e o agravo em'
+
+
+
+
+
+
+
+
+
+
+    peca = re.sub(r"[_\-]+", " ", str(st.get("peca") or ""))
+    if (not _RX_PECA_RESP.search(peca) or _RX_CONTRARRAZOES.search(peca)
+            or _RX_PECA_NAO_RESP.search(peca)):
+        return None
+    for anexo in _anexos(st):
+        nome = _nome_arq(anexo.get("arquivo", "") if isinstance(anexo, dict) else "").lower()
+        if "resumo" in nome and "343" in nome:
+            return None
+    modulo = _resumo_343a()
+    if modulo is None:
+        return _AVISO_343A_GENERICO
+    try:
+        estado = modulo.estado_da_exigencia(destino="origem")
+    except Exception:
+        return _AVISO_343A_GENERICO
+
+    return ("RESUMO DO ART. 343-A DO RISTJ: o recurso dirigido ao STJ não tem o resumo "
+            "estruturado entre os anexos da entrega. " + estado["mensagem"] + " Processo da "
+            "Terceira Seção fica fora da exigência até ato próprio da Presidência (IN STJ/GP "
+            "42/2026, art. 2º, parágrafo único). O resumo vai num anexo à parte, para o campo "
+            "próprio do sistema, e é responsabilidade do advogado. Isto não impede a entrega.")
 
 
 def _conferir_entrega(st, args):
@@ -2560,6 +3263,12 @@ def _conferir_entrega(st, args):
         session_id=st.get("session_id"))
     motivos += conselho_motivos
     motivos += _versao_julgada(st, cs_path, (_dados or {}).get("arquivo_canonico"))
+
+
+
+    aviso_343a = aviso_resumo_343a(st)
+    if aviso_343a:
+        avisos_entrega.append(aviso_343a)
 
     return motivos, avisos_entrega, conselho_acordao
 
@@ -3273,6 +3982,7 @@ def cmd_entregar(args):
 
 
     anexos = []
+    medida = _medida_da_peca(gate, st.get("arquivo_canonico"), args.state, st) if _anexos(st) else None
     for a in _anexos(st):
         origem_a = a["arquivo"]
         if not os.path.isfile(origem_a):
@@ -3292,7 +4002,23 @@ def cmd_entregar(args):
                                    f"({origem_a}). Pergunte ao advogado se a versão nova vale. Se "
                                    f"vale, registre-a de novo com `estado_peca.py anexo --arquivo "
                                    f"<arquivo>` e rode a entrega de novo.")
+
+
+        motivo = _anexo_e_peca(gate, origem_a, st.get("arquivo_canonico"), args.state, st,
+                               medida=medida)
+        if motivo:
+            return _recusa_entrega(st, _codigo_anexo(motivo),
+                                   _msg_anexo_e_peca(os.path.basename(origem_a), motivo, medida)
+                                   + f" Retire o registro com `estado_peca.py anexo --arquivo "
+                                   f"\"{origem_a}\" --remover` e rode a entrega de novo.")
         anexos.append((origem_a, a["sha256"]))
+
+    somam = _soma_dos_anexos(gate, medida, [o for o, _h in anexos])
+    if somam:
+        return _recusa_entrega(st, "anexo_e_peca",
+                               _msg_soma_dos_anexos(somam, gate._SOBREPOSICAO_PECA)
+                               + " Retire o registro do anexo com `estado_peca.py anexo --arquivo "
+                               "<arquivo> --remover` e rode a entrega de novo.")
     copias = [(canonico, hash_canonico)] + anexos
     nomes = [os.path.basename(o).lower() for o, _h in copias]
     if len(set(nomes)) != len(nomes):

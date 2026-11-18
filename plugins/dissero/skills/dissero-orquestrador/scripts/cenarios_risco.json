@@ -1,6 +1,6 @@
 {
   "versao": "1.0",
-  "descricao": "Lista única das tarefas de RISCO do orquestrador e dos dados mínimos de cada uma; o catálogo (catalogo-cenarios.md) marca com [RISCO] os mesmos cenários e remete a este arquivo. Consumido por medir_completude.py para calcular FORTE/MÉDIO/FRACO em CÓDIGO. 'estrela' = campos obrigatórios (qualquer ausente rebaixa a FRACO, trava qualitativa). Presença de um cenário aqui = tarefa de risco [RISCO]. Cenários sem risco não entram (intake mínimo de 2-4 perguntas, sem gate).",
+  "descricao": "Lista única das tarefas de RISCO do orquestrador e dos dados mínimos de cada uma; o catálogo (catalogo-cenarios.md) marca com [RISCO] os mesmos cenários e remete a este arquivo. Consumido por medir_completude.py para calcular FORTE/MÉDIO/FRACO em CÓDIGO. 'estrela' = campos obrigatórios (qualquer ausente rebaixa a FRACO, trava qualitativa). 'contexto' = campos complementares sem peso: nomeados quando faltam, fora do percentual, do nível e do gate. Presença de um cenário aqui = tarefa de risco [RISCO]. Cenários sem risco não entram (intake mínimo de 2-4 perguntas, sem gate).",
   "prosseguimento_parcial": {
     "subtarefas": [
       "calculo_de_prazo",
@@ -359,6 +359,10 @@
         "juizo_tribunal",
         "tese_preferida",
         "valor_causa"
+      ],
+      "contexto": [
+        "objetivo_cliente",
+        "providencias_anteriores"
       ]
     },
     "2": {
@@ -468,6 +472,19 @@
         "prazo_mencionado_no_corpo",
         "parte_contraria",
         "urgencia_declarada"
+      ]
+    },
+    "32": {
+      "nome": "Conferir as citações da peça adversária",
+      "risco": "alto",
+      "estrela": [
+        "peca_adversaria_integral",
+        "lado_representado",
+        "finalidade_resposta"
+      ],
+      "complementares": [
+        "citacoes_suspeitas",
+        "prazo_resposta"
       ]
     }
   }

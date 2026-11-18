@@ -82,6 +82,26 @@ import procedencia_literal as pl
 from achado_contract import FONTES_PADRAO, carregar_json, texto, validar_documento
 from verificar_citacao import _norm, confere_numero, confere_relator
 
+try:
+    import anatomia_acordao as anat
+except ImportError:
+    anat = None
+ANATOMIA_INDISPONIVEL = "ANATOMIA_DO_ACORDAO_INDISPONIVEL"
+ANATOMIA_FALHOU = "ANATOMIA_DO_ACORDAO_FALHOU"
+
+
+def _aviso_anatomia(achado, texto_doc):
+    'Aviso da anatomia para um achado; a falha do módulo vira aviso nomeado, nunca derruba a'
+
+    if anat is None:
+        return None
+    try:
+        return anat.aviso_do_achado(achado, texto_doc)
+    except Exception as e:
+        return {"codigo": ANATOMIA_FALHOU, "nivel": "aviso", "id": achado.get("id"),
+                "mensagem": f"a anatomia do acórdão não pôde ser lida ({e}); confira o "
+                            f"dispositivo à mão"}
+
 AQUI = os.path.dirname(os.path.abspath(__file__))
 
 
@@ -506,7 +526,7 @@ def main():
         mapa = {a.id: a.documento}
 
     atestados, divergentes, sem_documento, confirmados = [], [], [], []
-    pendentes_endereco, usadas = [], set()
+    pendentes_endereco, usadas, avisos_anatomia = [], set(), []
     for achado in achados:
         ident = texto(achado.get("id"))
         doc = mapa.get(ident)
@@ -528,6 +548,9 @@ def main():
                 if isinstance(r, dict) and r.get("campo") != "syllabus_literal"]
         achado["procedencia_literal"] = regs + [reg]
         atestados.append(ident)
+        aviso_anat = _aviso_anatomia(achado, textos[doc])
+        if aviso_anat:
+            avisos_anatomia.append(aviso_anat)
         if a.atestar and achado.get("use_status") == "pending":
             faltas = faltas_de_identidade(achado, textos[doc])
             if faltas:
@@ -616,6 +639,14 @@ def main():
                    f"{p['o_que_fazer']}" for p in pend_estr]
     for u in out.get("urls_oficiais_sem_achado") or []:
         extras.append(f"AVISO {u['codigo']} ({u['id']}): {u['motivo']}")
+    if avisos_anatomia:
+        out["avisos_anatomia"] = avisos_anatomia
+    elif anat is None and atestados:
+        out["avisos_anatomia"] = [{"codigo": ANATOMIA_INDISPONIVEL, "nivel": "aviso"}]
+    for v in out.get("avisos_anatomia") or []:
+        extras.append(f"AVISO {v['codigo']} ({v.get('id', '-')}): "
+                      f"{v.get('mensagem', 'anatomia do acórdão não conferida nesta cópia')}"
+                      + (f" — {v['o_que_fazer']}" if v.get("o_que_fazer") else ""))
     for p in pendentes_endereco:
         extras.append(f"PENDENTE {p['codigo']} ({p['id']}): {p['motivo']} — {p['o_que_fazer']}")
     aviso = aviso_pesquisa_tentada(a.saida)

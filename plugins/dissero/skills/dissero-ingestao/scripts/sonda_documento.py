@@ -370,6 +370,10 @@ def _aplicar_injecao(out, inj):
     return out
 
 
+
+TIMEOUT_PROFUNDA = 30
+
+
 def decidir(args):
     out = _decidir(args)
     if out.get("injecao_texto") or out.get("recomendacao") == "escalar":
@@ -533,7 +537,15 @@ def _decidir(args):
 
     try:
         import varredura_documento as _vd
-        _v = _vd.varrer_pdf(dados)
+
+
+
+
+
+        _v = _vd.varrer_pdf(dados, profunda=True, caminho=p, timeout_profunda=TIMEOUT_PROFUNDA)
+        out["camada_profunda"] = bool(_v.get("camada_profunda"))
+        if _v.get("camada_profunda_motivo"):
+            out["camada_profunda_motivo"] = _v.get("camada_profunda_motivo")
         if _v.get("suspeito"):
             out["elementos_ocultos"] = {
                 "severidade_max": _v.get("severidade_max"),

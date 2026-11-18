@@ -8,6 +8,33 @@
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 from __future__ import annotations
 
 import argparse
@@ -28,11 +55,11 @@ if AQUI not in sys.path:
 from ficha_capacidade import FichaRecusada, exigir as exigir_ficha
 
 CAPACIDADE = "salario_liquido_inss"
-ENGINE_VERSION = "dsr.salario_liquido_inss.engine.v1"
+ENGINE_VERSION = "dsr.salario_liquido_inss.engine.v3"
 TABLE_VERSION = "dsr.tabela_inss.v1"
 REQUEST_VERSION = "dsr.salario_liquido_inss.pedido.v1"
 AUTH_VERSION = "dsr.salario_liquido_inss.autorizacao.v1"
-MEMORY_VERSION = "dsr.memoria_salario_liquido_inss.v1"
+MEMORY_VERSION = "dsr.memoria_salario_liquido_inss.v3"
 SHA256 = re.compile(r"^[0-9a-fA-F]{64}$")
 ID = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$")
 DATE = re.compile(r"^[0-9]{4}-[0-9]{2}-[0-9]{2}$")
@@ -44,7 +71,17 @@ HORA_FUSO = re.compile(r"(?P<hora>[0-9]{2}:[0-9]{2}(?P<seg>:[0-9]{2})?)"
                        r"(?(seg)(?:[.,](?P<fracao>[0-9]{1,6})[0-9]*)?)"
                        r"(?P<fuso>[+-][0-9]{2})(?::?(?P<min>[0-9]{2}))?\Z")
 OFFICIAL_SUFFIXES = (".gov.br", ".jus.br", ".leg.br", ".mp.br", ".def.br")
+CENTAVO = Decimal("0.01")
 ROUNDING = {"ROUND_HALF_UP": ROUND_HALF_UP, "ROUND_HALF_EVEN": ROUND_HALF_EVEN, "ROUND_DOWN": ROUND_DOWN}
+
+FONTE_ARREDONDAMENTO_URL = "https://www.gov.br/esocial/pt-br/documentacao-tecnica/manuais/mos-s-1-3-consolidada-ate-a-no-s-1-3-12-2026.pdf"
+ARREDONDAMENTO_DA_FONTE = {"scale": 2, "mode": "ROUND_DOWN"}
+AVISO_ARREDONDAMENTO = ("A contribuição de cada faixa é truncada na segunda casa decimal, sem arredondar, e o desconto é a "
+                        "soma das faixas truncadas, cada faixa até o limite inclusivo da portaria (até 1.621,00 na 1ª "
+                        "faixa de 2026), como manda o Manual de Orientação do eSocial (MOS S-1.3, consolidado até "
+                        "a NO S-1.3 12.2026, item 2.13 do S-5001 e item 5.2 do S-1200: \"o truncamento é realizado [...] "
+                        "inclusive em cada uma das faixas de alíquota da tabela progressiva\"), consultado em 16/11/2026 em "
+                        + FONTE_ARREDONDAMENTO_URL + ". A regra vem do manual de cálculo do eSocial, não de lei.")
 
 class SalarioLiquidoError(RuntimeError):
     def __init__(self, code: str, errors: list[str] | str):
@@ -167,6 +204,7 @@ def validar_tabela(table: Any, *, hoje: dt.date | None = None) -> list[str]:
         try: lower = _decimal(bracket.get("limite_inferior"), f"{prefix}.limite_inferior", nonnegative=True); upper = _decimal(bracket.get("limite_superior_exclusivo"), f"{prefix}.limite_superior_exclusivo", positive=True); rate = _decimal(bracket.get("aliquota"), f"{prefix}.aliquota", nonnegative=True)
         except SalarioLiquidoError as exc: errors.extend(exc.errors); continue
         if lower != previous or upper <= lower or rate > 1: errors.append(f"{prefix}: faixas devem ser contíguas e ordenadas")
+        if lower != lower.quantize(CENTAVO) or upper != upper.quantize(CENTAVO): errors.append(f"{prefix}: limites devem estar ao centavo")
         previous = upper
     if ceiling is not None and previous != ceiling + Decimal("0.01"): errors.append("última faixa deve cobrir até o teto + 1 centavo")
     return errors
@@ -216,20 +254,41 @@ def _authorize(path: Any, table_hash: str, now: dt.datetime) -> None:
     if errors: raise SalarioLiquidoError("autorizacao_invalida", errors)
 
 def _progressive(base: Decimal, table: Mapping[str, Any]) -> tuple[Decimal, list[dict[str, str]]]:
+    'Contribuição faixa a faixa: cada faixa TRUNCADA no centavo (MOS do eSocial, itens 2.13 do'
+
+
+
+
+
     ceiling = _decimal(table["teto_salario_contribuicao"], "teto_salario_contribuicao", positive=True)
     applied = min(base, ceiling)
     total = Decimal(0)
     breakdown = []
+    floor = Decimal(0)
     for bracket in table["faixas"]:
-        lower = _decimal(bracket["limite_inferior"], "limite_inferior")
-        upper = _decimal(bracket["limite_superior_exclusivo"], "limite_superior_exclusivo")
+        top = _decimal(bracket["limite_superior_exclusivo"], "limite_superior_exclusivo") - CENTAVO
         rate = _decimal(bracket["aliquota"], "aliquota")
-        portion = max(Decimal(0), min(applied, upper) - lower)
-        contribution = portion * rate
+        portion = max(Decimal(0), min(applied, top) - floor)
+        floor = top
+        contribution = (portion * rate).quantize(CENTAVO, rounding=ROUND_DOWN)
         if portion:
             breakdown.append({"faixa_index": str(bracket["faixa_index"]), "base_na_faixa": _fmt(portion), "aliquota": _fmt(rate), "contribuicao_faixa": _fmt(contribution)})
         total += contribution
     return total, breakdown
+
+def _fora_do_centavo(request: Mapping[str, Any]) -> list[str]:
+    'Valor monetário do pedido com fração de centavo. É recusado, e não arredondado em'
+
+    errors = []
+    for month in request["months"]:
+        competence = month["competencia"]
+        for field in ("verbas_remuneratorias", "verbas_indenizatorias", "outros_salarios_contribuicao_mes", "outros_descontos_inss_mes"):
+            values = month[field] if isinstance(month[field], list) else [month[field]]
+            for value in values:
+                number = Decimal(value)
+                if number != number.quantize(CENTAVO):
+                    errors.append(f"{competence}.{field} ({value}) tem fração de centavo; informe o valor ao centavo, como consta da conta de origem")
+    return errors
 
 def calcular(request: Any, *, hoje: dt.date | None = None, agora: dt.datetime | None = None, experimental_authorized: bool = False, registro_capacidades: Any = None) -> dict[str, Any]:
     'Memória condicional. `registro_capacidades` (dict ou caminho) substitui o registro'
@@ -244,12 +303,20 @@ def calcular(request: Any, *, hoje: dt.date | None = None, agora: dt.datetime | 
         raise SalarioLiquidoError(exc.codigo, exc.mensagem) from None
     errors = validar_pedido(request, hoje=today)
     if errors: raise SalarioLiquidoError("pedido_invalido", errors)
+    errors = _fora_do_centavo(request)
+    if errors: raise SalarioLiquidoError("valor_fora_do_centavo", errors)
     table, table_hash = _load_json(request["table_path"])
     if table_hash.casefold() != request["table_sha256"].casefold(): raise SalarioLiquidoError("hash_divergente", "table_sha256 diverge do arquivo")
     _authorize(request["authorization_path"], table_hash, now)
     table_errors = validar_tabela(table, hoje=today)
     if table_errors: raise SalarioLiquidoError("tabela_invalida", table_errors)
-    rounding = table["rounding"]; quantum = Decimal(1).scaleb(-rounding["scale"]); memories = []
+    memories = []
+    warnings = ["MINUTA_PARA_REVISAO: cálculo condicional para conferência do advogado.", "O motor calcula somente INSS/RGPS sobre as rubricas classificadas no pedido; não calcula IRRF nem interpreta natureza jurídica.", "Múltiplos vínculos exigem base e desconto já recolhido informados para a mesma competência.", "13º, rescisão, RRA e outras modalidades não são suportados nesta versão.", AVISO_ARREDONDAMENTO]
+    rounding = table["rounding"]
+    if dict(rounding) != ARREDONDAMENTO_DA_FONTE:
+
+
+        warnings.append(f"A tabela revisada declara arredondamento na escala {rounding['scale']}, modo {rounding['mode']}; esse arredondamento não é aplicado, porque a fonte manda truncar cada faixa no centavo (escala 2, ROUND_DOWN). Corrija o campo rounding da tabela na próxima revisão.")
     totals = {"remuneratorio": Decimal(0), "indenizatorio": Decimal(0), "base_inss": Decimal(0), "desconto_inss": Decimal(0)}
     with localcontext() as context:
         context.prec = 60
@@ -261,14 +328,14 @@ def calcular(request: Any, *, hoje: dt.date | None = None, agora: dt.datetime | 
             other_base = _decimal(month["outros_salarios_contribuicao_mes"], f"{competence}.outros_salarios_contribuicao_mes", nonnegative=True)
             other_paid = _decimal(month["outros_descontos_inss_mes"], f"{competence}.outros_descontos_inss_mes", nonnegative=True)
             aggregate = remun + other_base
+
             aggregate_contribution, breakdown = _progressive(aggregate, table)
             own_contribution = max(Decimal(0), aggregate_contribution - other_paid)
-            own_contribution = own_contribution.quantize(quantum, rounding=ROUNDING[rounding["mode"]])
             base = min(aggregate, _decimal(table["teto_salario_contribuicao"], "teto_salario_contribuicao"))
             net = remun + inden - own_contribution
             for key, value in (("remuneratorio", remun), ("indenizatorio", inden), ("base_inss", base), ("desconto_inss", own_contribution)): totals[key] += value
-            memories.append({"competencia": competence, "salario_remuneratorio": _fmt(remun), "verbas_indenizatorias": _fmt(inden), "outros_salarios_contribuicao_mes": _fmt(other_base), "outros_descontos_inss_mes": _fmt(other_paid), "base_calculo_inss_agregada": _fmt(base), "decomposicao_faixas_agregada": breakdown, "desconto_inss_deste_vinculo": _fmt(own_contribution), "salario_liquido_apos_inss": _fmt(net)})
-    return {"schema_version": MEMORY_VERSION, "status": "MINUTA_PARA_REVISAO", "engine_version": ENGINE_VERSION, "resumo": {"total_remuneratorio": _fmt(totals["remuneratorio"]), "total_indenizatorio": _fmt(totals["indenizatorio"]), "total_base_inss": _fmt(totals["base_inss"]), "total_desconto_inss": _fmt(totals["desconto_inss"]), "total_liquido_apos_inss": _fmt(totals["remuneratorio"] + totals["indenizatorio"] - totals["desconto_inss"])}, "tabela": {"table_id": table["table_id"], "name": table["name"], "table_sha256": table_hash, "legal_source_url": table["legal_source_url"], "legal_source_sha256": table["legal_source_sha256"], "valid_from": table["valid_from"], "valid_to": table["valid_to"], "reviewed_by": table["reviewed_by"]}, "months": memories, "warnings": ["MINUTA_PARA_REVISAO: cálculo condicional para conferência do advogado.", "O motor calcula somente INSS/RGPS sobre as rubricas classificadas no pedido; não calcula IRRF nem interpreta natureza jurídica.", "Múltiplos vínculos exigem base e desconto já recolhido informados para a mesma competência.", "13º, rescisão, RRA e outras modalidades não são suportados nesta versão."]}
+            memories.append({"competencia": competence, "salario_remuneratorio": _fmt(remun), "verbas_indenizatorias": _fmt(inden), "outros_salarios_contribuicao_mes": _fmt(other_base), "outros_descontos_inss_mes": _fmt(other_paid), "base_calculo_inss_agregada": _fmt(base), "decomposicao_faixas_agregada": breakdown, "contribuicao_agregada": _fmt(aggregate_contribution), "desconto_inss_deste_vinculo": _fmt(own_contribution), "salario_liquido_apos_inss": _fmt(net)})
+    return {"schema_version": MEMORY_VERSION, "status": "MINUTA_PARA_REVISAO", "engine_version": ENGINE_VERSION, "resumo": {"total_remuneratorio": _fmt(totals["remuneratorio"]), "total_indenizatorio": _fmt(totals["indenizatorio"]), "total_base_inss": _fmt(totals["base_inss"]), "total_desconto_inss": _fmt(totals["desconto_inss"]), "total_liquido_apos_inss": _fmt(totals["remuneratorio"] + totals["indenizatorio"] - totals["desconto_inss"])}, "tabela": {"table_id": table["table_id"], "name": table["name"], "table_sha256": table_hash, "legal_source_url": table["legal_source_url"], "legal_source_sha256": table["legal_source_sha256"], "valid_from": table["valid_from"], "valid_to": table["valid_to"], "reviewed_by": table["reviewed_by"]}, "months": memories, "warnings": warnings}
 
 class _Parser(argparse.ArgumentParser):
     def error(self, message: str) -> None: raise SalarioLiquidoError("argumentos_invalidos", message)

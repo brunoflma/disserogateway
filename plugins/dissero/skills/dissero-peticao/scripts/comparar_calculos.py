@@ -156,6 +156,26 @@ CONTRATOS_SEM_PROJECAO = {
 }
 
 
+
+
+_VERSAO_RX = re.compile(r"(.+)\.v(0|[1-9][0-9]{0,8})")
+
+
+def _versao_atual_da_familia(contrato):
+    'O contrato projetavel da mesma familia e de versao MAIOR que `contrato`, ou None. Memoria'
+
+
+
+    m = _VERSAO_RX.fullmatch(contrato) if isinstance(contrato, str) else None
+    if not m or contrato in PROJECOES:
+        return None
+    for suportado in CONTRATOS_SUPORTADOS:
+        s = _VERSAO_RX.fullmatch(suportado)
+        if s and s.group(1) == m.group(1) and int(s.group(2)) > int(m.group(2)):
+            return suportado
+    return None
+
+
 class ComparacaoError(RuntimeError):
     def __init__(self, code, errors):
         self.code = code
@@ -308,6 +328,10 @@ SL_MES_NAO_PROJETADOS = {
     "decomposicao_faixas_agregada": ("e a decomposicao por faixa da tabela externa, e comparar "
                                      "faixa a faixa exigiria casar faixas de tabelas que podem "
                                      "ser de vigencias diferentes"),
+    "contribuicao_agregada": ("e a contribuicao sobre a base agregada de todos os vinculos, "
+                              "soma das faixas truncadas; o que e deste vinculo ja entra pela "
+                              "rubrica desconto_inss_deste_vinculo, e o agregado inclui o que "
+                              "outro vinculo recolheu"),
 }
 SL_RESUMO_RUBRICAS = ("total_remuneratorio", "total_indenizatorio", "total_base_inss",
                       "total_desconto_inss", "total_liquido_apos_inss")
@@ -450,7 +474,7 @@ def _projetar_atualizacao(memoria):
 
 PROJECOES = {
     "dsr.memoria_horas_extras.v1": ("memoria_horas_extras.schema.json", _projetar_horas_extras),
-    "dsr.memoria_salario_liquido_inss.v1": ("memoria_salario_liquido_inss.schema.json",
+    "dsr.memoria_salario_liquido_inss.v3": ("memoria_salario_liquido_inss.schema.json",
                                             _projetar_salario_liquido),
     "dsr.memoria_atualizacao.v1": ("memoria_atualizacao.schema.json", _projetar_atualizacao),
 }
@@ -463,7 +487,7 @@ CAMPOS_NAO_PROJETADOS = {
                                     + _declarar("months[].components.",
                                                 HE_COMPONENTES_NAO_PROJETADOS)
                                     + [{"onde": "decision", "motivo": MOTIVO_PROCEDENCIA}]),
-    "dsr.memoria_salario_liquido_inss.v1": (_declarar("months[].", SL_MES_NAO_PROJETADOS)
+    "dsr.memoria_salario_liquido_inss.v3": (_declarar("months[].", SL_MES_NAO_PROJETADOS)
                                             + _declarar("resumo.", SL_RESUMO_NAO_PROJETADOS)
                                             + [{"onde": "tabela",
                                                 "motivo": MOTIVO_PROCEDENCIA}]),
@@ -641,6 +665,36 @@ def validar_pedido(pedido):
 
 
 
+def _familia(contrato):
+    m = _VERSAO_RX.fullmatch(contrato) if isinstance(contrato, str) else None
+    return m.group(1) if m else contrato
+
+
+def _conferir_contratos(declarados):
+    'Os contratos de TODAS as memorias, antes de status e schema de qualquer uma: a recusa'
+
+
+
+
+    for contrato in declarados:
+        if isinstance(contrato, str) and contrato in CONTRATOS_SEM_PROJECAO:
+            raise ComparacaoError("contrato_sem_projecao_declarada",
+                                  "%s: %s" % (contrato, CONTRATOS_SEM_PROJECAO[contrato]))
+    familias = {_familia(c) if isinstance(c, str) else repr(c) for c in declarados}
+    if len(familias) > 1:
+        raise ComparacaoError("contrato_divergente",
+                              "as memorias sao de contratos diferentes (%s); rubrica de "
+                              "contratos diferentes nao casa por identificador"
+                              % sorted(str(c) for c in set(map(str, declarados))))
+    for contrato in declarados:
+        atual = _versao_atual_da_familia(contrato)
+        if atual:
+            raise ComparacaoError("memoria_versao_anterior",
+                                  "%s foi emitida por uma versao anterior do motor, que ja nao e a "
+                                  "regra vigente; refaca o calculo com o motor atual (%s) e compare "
+                                  "as memorias novas" % (contrato, atual))
+
+
 def comparar(pedido, *, experimental_authorized=False, escopo="tudo",
              escala_percentual=ESCALA_PERCENTUAL_PADRAO,
              limiar_materialidade_pct=LIMIAR_MATERIALIDADE_PCT_PADRAO,
@@ -668,6 +722,8 @@ def comparar(pedido, *, experimental_authorized=False, escopo="tudo",
     if erros:
         raise ComparacaoError("pedido_invalido", erros)
 
+    _conferir_contratos([item["memoria"].get("schema_version") for item in pedido["memorias"]])
+
     contratos = set()
     origens = []
     projetadas = []
@@ -675,9 +731,6 @@ def comparar(pedido, *, experimental_authorized=False, escopo="tudo",
     for item in pedido["memorias"]:
         memoria = item["memoria"]
         contrato = memoria.get("schema_version")
-        if contrato in CONTRATOS_SEM_PROJECAO:
-            raise ComparacaoError("contrato_sem_projecao_declarada",
-                                  "%s: %s" % (contrato, CONTRATOS_SEM_PROJECAO[contrato]))
         if contrato not in PROJECOES:
             raise ComparacaoError("contrato_nao_suportado",
                                   "%r nao esta entre os contratos projetaveis %s"

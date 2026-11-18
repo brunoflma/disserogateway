@@ -136,6 +136,51 @@
       "source_sha256": null,
       "reviewed_by": null,
       "nota_da_fonte": "O motor compara a taxa contratada (ao mês, ao ano ou as duas, com a equivalência composta conferida entre elas) com a taxa média da modalidade no mês da contratação, lida de um snapshot dsr.serie_oficial.v1 da série escolhida pelo advogado, e devolve razão e desvio em pontos percentuais, com memória. Não afirma abusividade, não embute limiar e não projeta indébito, que fica com o assistente técnico e a perícia. A série é dado do Banco Central capturado por caso, com hash, pelo bcb_sgs_adapter.py; o que falta coletar para ligar a ficha é a fonte do critério de comparação que a casa adota (o precedente conferido pela pesquisa, com hash e vigência) e a assinatura do advogado responsável. Roda com DSR_REVISIONAL_EXPERIMENTAL=1."
+    },
+    {
+      "ordem": 10,
+      "id": "tributo_federal_lei_9430",
+      "nome": "Acréscimos moratórios de tributo federal (Lei 9.430/1996, art. 61)",
+      "enabled": false,
+      "estado": "experimental_desabilitada",
+      "entrypoint": "skills/dissero-orquestrador/scripts/atualizacao_monetaria.py",
+      "fonte_oficial": "https://www.planalto.gov.br/ccivil_03/leis/l9430.htm",
+      "valid_from": "2026-11-16",
+      "valid_to": "2026-12-31",
+      "extracted_at": null,
+      "source_sha256": null,
+      "reviewed_by": null,
+      "nota_da_fonte": "Rota própria do motor de atualização: multa de mora e juros pela Selic do art. 61 da Lei 9.430/1996, para débito federal administrado pela Receita. Roda com DSR_ATUALIZACAO_MONETARIA_EXPERIMENTAL=1, pelo comando `calculate-lei-9430`, com a captura da fonte jurídica que contém o texto do art. 61 e do art. 5º e com a autorização do advogado no escopo `calculo_lei_9430`, presa ao hash dessa captura. A Selic sai da série 4390 do Banco Central, capturada por caso; o mês em curso ou ainda não publicado é recusado (`mes_nao_fechado`). Não cobre multa de ofício, encargo legal da dívida ativa, juros sobre multa nem regime especial (parcelamento, denúncia espontânea, transação). Regra reconferida em 16/11/2026 em https://www.planalto.gov.br/ccivil_03/leis/l9430.htm (captura de 565.058 bytes, sha256 3196b769bc152bb88560d6f3f572440cb502c2200501ab496cb3951929a014d6, que não se reproduz porque a página muda a cada entrega): art. 61, caput (0,33% ao dia, fato gerador desde 01/01/1997), §§ 1º a 3º (do primeiro dia subsequente ao vencimento; limite de 20%; Selic do mês seguinte ao vencimento ao anterior ao pagamento e 1% no mês do pagamento) e art. 5º, § 3º (Selic acumulada mensalmente), sem divergência com o motor. Para ligar falta a fonte pinada com hash, a vigência e a assinatura do advogado (`reviewed_by`); até lá a rota recusa com `ficha_desligada`."
+    },
+    {
+      "ordem": 11,
+      "id": "relevancia_presuncao_valor",
+      "nome": "Presunção de relevância pelo valor da causa (CF, art. 105, § 3º, III: acima de 500 salários mínimos)",
+      "enabled": false,
+      "estado": "experimental_desabilitada",
+      "entrypoint": "skills/dissero-peticao/scripts/relevancia_presuncao_valor.py",
+      "fonte_oficial": "https://www.planalto.gov.br/ccivil_03/constituicao/emendas/emc/emc125.htm",
+      "valid_from": "2026-11-17",
+      "valid_to": "2026-12-31",
+      "extracted_at": null,
+      "source_sha256": null,
+      "reviewed_by": null,
+      "nota_da_fonte": "Diz, com memória, se o valor da causa (ou o valor atualizado na interposição, EC 125/2022, art. 2º, com a origem da atualização declarada) ULTRAPASSA 500 salários mínimos: exatos 500 não presumem. O salário mínimo vem da tabela datada da competencia.py (Decreto 12.797/2025, R$ 1.621,00 em 2026); fora da tabela, recusa com `tabela_sm_fora_vigencia`. A data de referência do salário mínimo é a da interposição, e isso é INTERPRETAÇÃO, marcada na memória como `interpretacao_a_confirmar`: a Constituição não fixa a data, e a ER 55/2026 do STJ também não (o RISTJ, art. 255-K, § 2º, conferido em 17/11/2026, remete às regras processuais de fixação do valor da causa e deixa o STJ corrigi-lo de ofício). Texto do art. 105, § 3º, III, e do art. 2º da EC 125 conferido no Planalto em 17/11/2026, sem captura pinada com hash. Alimenta `presuncao.inciso = III` do checklist de admissibilidade; não dispensa o tópico de relevância (notícia oficial do STJ de 30/08/2026). Roda com DSR_RELEVANCIA_VALOR_EXPERIMENTAL=1 e esta ficha ligada; para ligar faltam a fonte pinada com hash e a assinatura do advogado (`reviewed_by`). Até lá, recusa com `ficha_desligada`."
+    },
+    {
+      "ordem": 12,
+      "id": "resumo_343a",
+      "nome": "Resumo estruturado do art. 343-A do RISTJ, como anexo à parte da peça",
+      "enabled": false,
+      "estado": "experimental_desabilitada",
+      "entrypoint": "skills/dissero-peticao/scripts/resumo_343a.py",
+      "fonte_oficial": "https://bdjur.stj.jus.br/server/api/core/bitstreams/2a2d9b64-cb89-4c5e-9f19-2902f8b60cf9/content",
+      "valid_from": "2026-11-17",
+      "valid_to": "2026-12-31",
+      "extracted_at": null,
+      "source_sha256": null,
+      "reviewed_by": null,
+      "nota_da_fonte": "Monta o texto do resumo do art. 343-A (ER 53/2026) em cinco campos, na ordem da IN STJ/GP 42/2026, art. 3º, § 1º, para o advogado colar no campo próprio do sistema, e aponta o que corrigir (campo ausente, remissão genérica, dispositivo não individualizado, precedente sem número, órgão ou data, divergência entre peça e resumo). Nunca bloqueia a peça: a falta do resumo é aviso (decisão do titular, 17/11/2026). Estado da exigência datado (IN 42, art. 12): sem portaria da Presidência, não localizada até 17/11/2026 (Clipping de Legislação do STJ, edições 6114 a 6176; notícia oficial do STJ de 02/09/2026), o estado é `nao_exigivel`; com portaria, `exigivel_janela_educativa` nos noventa dias corridos (art. 12, parágrafo único) e `exigivel` depois; na origem, `depende_do_tribunal` enquanto o tribunal não for informado (art. 12, II, só TJs e TRFs); na Terceira Seção, `fora_do_regime` (art. 2º, parágrafo único). O articulado da IN 42 foi conferido em 17/11/2026 no PDF de 5 folhas trazido pelo titular, que se declara de acordo com a publicação no DJe do STJ de 20/08/2026 (sha256 ec3b9ae9b101a47e1f4efd4ac6473e460402abfa23880755f0eacc6efd8a0452); `source_sha256` segue vazio porque não se confirmou que esse arquivo é o mesmo servido em fonte_oficial, que responde com desafio anti-robô. Cada achado cita o dispositivo e a página desse PDF. Roda com DSR_RESUMO_343A_EXPERIMENTAL=1 e esta ficha ligada; para ligar faltam a fonte pinada com hash conferido contra a fonte_oficial e a assinatura do advogado (`reviewed_by`). Até lá, recusa com `ficha_desligada`; o subcomando `estado` só informa e roda sem as duas."
     }
   ]
 }

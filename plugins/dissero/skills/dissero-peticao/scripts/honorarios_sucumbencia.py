@@ -62,6 +62,17 @@
 
 
 
+
+
+
+
+
+
+
+
+
+
+
 from __future__ import annotations
 
 import argparse
@@ -74,11 +85,12 @@ from typing import Any, Mapping
 from urllib.parse import urlparse
 
 
-ENGINE_VERSION = "dsr.honorarios_sucumbencia.engine.v1"
+ENGINE_VERSION = "dsr.honorarios_sucumbencia.engine.v2"
 REQUEST_VERSION = "dsr.honorarios_sucumbencia.pedido.v1"
 MEMORY_VERSION = "dsr.memoria_honorarios_sucumbencia.v1"
 DATE = re.compile(r"^[0-9]{4}-[0-9]{2}-[0-9]{2}$")
 OFFICIAL_SUFFIXES = (".gov.br", ".jus.br", ".leg.br", ".mp.br", ".def.br")
+CENTAVO = Decimal("0.01")
 ROUNDING = {"ROUND_HALF_UP": ROUND_HALF_UP, "ROUND_HALF_EVEN": ROUND_HALF_EVEN, "ROUND_DOWN": ROUND_DOWN}
 
 
@@ -279,9 +291,22 @@ def calcular(pedido: Any, *, hoje: dt.date | None = None, experimental_authorize
 
     base_valor = _decimal(pedido["base"]["valor"], "base.valor", positive=True)
     sm_valor = _decimal(pedido["salario_minimo"]["valor"], "salario_minimo.valor", positive=True)
+    fora = [f"{campo} ({texto}) tem fração de centavo; informe o valor ao centavo"
+            for campo, texto, valor in (("base.valor", pedido["base"]["valor"], base_valor),
+                                        ("salario_minimo.valor", pedido["salario_minimo"]["valor"], sm_valor))
+            if valor != valor.quantize(CENTAVO)]
+    if fora:
+        raise HonorariosError("valor_fora_do_centavo", fora)
     scale = pedido["arredondamento"]["scale"]
     mode = ROUNDING[pedido["arredondamento"]["mode"]]
     quantum = Decimal(1).scaleb(-scale)
+
+    def linha(valor: Decimal) -> Decimal:
+        return valor.quantize(quantum, rounding=mode)
+
+
+
+
 
     with localcontext() as ctx:
         ctx.prec = 40
@@ -292,38 +317,37 @@ def calcular(pedido: Any, *, hoje: dt.date | None = None, experimental_authorize
 
         if regime == "art_85_p2_geral":
 
-            total_min = base_valor * FAIXA_ART85_P2["pct_min"]
-            total_max = base_valor * FAIXA_ART85_P2["pct_max"]
+            total_min = linha(base_valor * FAIXA_ART85_P2["pct_min"])
+            total_max = linha(base_valor * FAIXA_ART85_P2["pct_max"])
             decomposicao.append({
                 "fundamento": "art. 85, § 2º, do CPC",
-                "base_na_faixa": _fmt(base_valor.quantize(quantum, rounding=mode)),
+                "base_na_faixa": _fmt(base_valor),
                 "percentual_minimo": _fmt(FAIXA_ART85_P2["pct_min"]),
                 "percentual_maximo": _fmt(FAIXA_ART85_P2["pct_max"]),
-                "minimo": _fmt(total_min.quantize(quantum, rounding=mode)),
-                "maximo": _fmt(total_max.quantize(quantum, rounding=mode)),
+                "minimo": _fmt(total_min),
+                "maximo": _fmt(total_max),
             })
         else:
             for faixa in FAIXAS_ART85_P3:
                 porcao_sm = _porcao_da_faixa(base_sm, faixa)
                 if porcao_sm <= 0:
                     continue
-                porcao_valor = porcao_sm * sm_valor
-                minimo = porcao_valor * faixa["pct_min"]
-                maximo = porcao_valor * faixa["pct_max"]
+                teto = faixa["teto_sm"]
+                topo = base_valor if teto is None else min(base_valor, teto * sm_valor)
+                porcao_valor = max(Decimal(0), topo - faixa["piso_sm"] * sm_valor)
+                minimo = linha(porcao_valor * faixa["pct_min"])
+                maximo = linha(porcao_valor * faixa["pct_max"])
                 total_min += minimo
                 total_max += maximo
                 decomposicao.append({
                     "fundamento": f"art. 85, § 3º, {faixa['inciso']}, do CPC",
                     "base_na_faixa_sm": _fmt(porcao_sm.quantize(Decimal("0.0001"), rounding=mode)),
-                    "base_na_faixa": _fmt(porcao_valor.quantize(quantum, rounding=mode)),
+                    "base_na_faixa": _fmt(porcao_valor),
                     "percentual_minimo": _fmt(faixa["pct_min"]),
                     "percentual_maximo": _fmt(faixa["pct_max"]),
-                    "minimo": _fmt(minimo.quantize(quantum, rounding=mode)),
-                    "maximo": _fmt(maximo.quantize(quantum, rounding=mode)),
+                    "minimo": _fmt(minimo),
+                    "maximo": _fmt(maximo),
                 })
-
-        total_min = total_min.quantize(quantum, rounding=mode)
-        total_max = total_max.quantize(quantum, rounding=mode)
 
     return {
         "schema_version": MEMORY_VERSION,

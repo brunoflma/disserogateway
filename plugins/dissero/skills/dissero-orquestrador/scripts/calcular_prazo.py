@@ -48,6 +48,18 @@
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
 import argparse, calendar, json, os, sys
 from datetime import date, timedelta
 
@@ -333,6 +345,68 @@ def calcular_vencimento(disponibilizacao, dias, contagem, cal, suspender_recesso
             "dias": dias, "contagem": contagem}
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+DIAS_DE_CONSULTA_DOMICILIO = 10
+UTEIS_APOS_CONFIRMACAO_CITACAO = 5
+
+
+def termo_eletronico(cal, envio=None, consulta=None, confirmacao=None):
+    'Termo inicial pelo Domicílio Judicial Eletrônico (`envio` e/ou `consulta`) ou pela citação'
+
+
+
+    um = timedelta(1)
+    if confirmacao is not None:
+        d = confirmacao
+        for _ in range(UTEIS_APOS_CONFIRMACAO_CITACAO):
+            d = cal.prox_util(d + um)
+        return {"curta": {"intimacao": None, "dia_do_comeco": d, "termo_inicial": d},
+                "longa": {"intimacao": None, "dia_do_comeco": d, "termo_inicial": cal.prox_util(d + um)},
+                "consulta_fora_do_prazo": False, "fora_por_leitura": {"curta": False, "longa": False},
+                "sem_envio": False}
+    if envio is None and consulta is None:
+        raise ValueError("termo eletrônico sem data")
+    if envio is not None and consulta is not None and consulta < envio:
+        raise ValueError(f"a consulta ({consulta:%d/%m/%Y}) é anterior ao envio ({envio:%d/%m/%Y})")
+    leituras, fora = {}, {}
+
+
+    for nome, extra in (("curta", DIAS_DE_CONSULTA_DOMICILIO - 1), ("longa", DIAS_DE_CONSULTA_DOMICILIO)):
+        fim = envio + timedelta(extra) if envio is not None else None
+        if consulta is not None and (fim is None or consulta <= fim):
+            intim, fora[nome] = cal.prox_util(consulta), False
+        else:
+            intim, fora[nome] = fim, consulta is not None
+        comeco = cal.prox_util(intim + um)
+        ini = comeco if nome == "curta" else cal.prox_util(comeco + um)
+        leituras[nome] = {"intimacao": intim, "dia_do_comeco": comeco, "termo_inicial": ini,
+                          "fim_da_consulta": fim}
+    leituras.update(consulta_fora_do_prazo=any(fora.values()), fora_por_leitura=fora,
+                    sem_envio=envio is None)
+    return leituras
+
+
+def _vencer_em_dias(ini, dias, contagem, cal, susp_uteis, susp_corr, decadencial):
+    """Vencimento em dias pela mesma regra do `main()`; serve à leitura longa do termo eletrônico."""
+    if contagem == "uteis":
+        return contar_uteis(ini, dias, cal, susp_uteis)[0]
+    venc = contar_corridos_com_suspensao(ini, dias) if susp_corr else ini + timedelta(dias - 1)
+    return venc if decadencial or cal.util(venc) else cal.prox_util(venc)
+
+
 def dias_uteis_entre(hoje, alvo, cal):
     """Dias úteis estritamente DEPOIS de `hoje` até `alvo` inclusive (negativo se já passou)."""
     if alvo >= hoje:
@@ -438,8 +512,20 @@ def conferir_base(caminho, escopo, ini, venc, cal):
 
 def main():
     ap=argparse.ArgumentParser(add_help=True)
-    g=ap.add_mutually_exclusive_group(required=True)
-    for k in ("disponibilizacao","publicacao","intimacao","inicio"): g.add_argument(f"--{k}")
+
+
+    TERMOS=("disponibilizacao","publicacao","intimacao","inicio","confirmacao_citacao",
+            "envio_domicilio","consulta_domicilio")
+    AJUDA_TERMOS={
+        "envio_domicilio":"envio ao Domicílio Judicial Eletrônico (AAAA-MM-DD). Vale para intimação; "
+                          "para citação pelo Domicílio não há intimação automática (sem confirmação em "
+                          "3 dias úteis, a citação se faz por outro meio: CPC, art. 246, § 1º-A): use "
+                          "--confirmacao-citacao",
+        "consulta_domicilio":"consulta ao teor no Domicílio Judicial Eletrônico (intimação; AAAA-MM-DD)",
+        "confirmacao_citacao":"confirmação do recebimento da citação eletrônica (CPC, art. 231, IX); é o "
+                              "único termo da citação pelo Domicílio",
+    }
+    for k in TERMOS: ap.add_argument("--"+k.replace("_","-"),help=AJUDA_TERMOS.get(k))
     u=ap.add_mutually_exclusive_group(required=True)
     u.add_argument("--dias",type=int,help="prazo em dias, contado pela --contagem")
     u.add_argument("--meses",type=int,
@@ -479,6 +565,18 @@ def main():
                          "informado a mao, que sempre vence. Nao altera a contagem.")
     a=ap.parse_args()
     if a.uf is not None: sys.exit(f"ERRO: {MSG_SEM_UF}")
+    dados=[k for k in TERMOS if getattr(a,k)]
+    grupos={("envio_domicilio" if k=="consulta_domicilio" else k) for k in dados}
+    if not grupos:
+        sys.exit("ERRO: informe o termo inicial: --disponibilizacao, --publicacao, --intimacao, --inicio, "
+                 "--confirmacao-citacao ou --envio-domicilio/--consulta-domicilio.")
+    if len(grupos)>1:
+        sys.exit("ERRO: informe um termo inicial só (o envio e a consulta do Domicílio contam como um); "
+                 f"recebidos: {', '.join('--'+k.replace('_','-') for k in dados)}.")
+    eletronico=bool(grupos & {"confirmacao_citacao","envio_domicilio"})
+    if eletronico and a.dias is None:
+        sys.exit("ERRO: o termo do Domicílio Judicial Eletrônico e o da citação eletrônica valem com "
+                 "--dias; prazo em meses ou anos conta de data a data.")
     if a.prescricional and a.decadencial:
         sys.exit("ERRO: --prescricional e --decadencial são regimes diferentes; use um só.")
     if a.prescricional and a.dias is not None:
@@ -517,7 +615,7 @@ def main():
     except ValueError as erro:
         sys.exit(f"ERRO: {erro}")
     dias=(a.dias*2 if a.dobro else a.dias) if em_meses is None else None
-    cadeia=[]
+    cadeia=[]; termo=None; venc_longo=None
 
 
     if a.disponibilizacao:
@@ -537,8 +635,32 @@ def main():
         else:
             ini=cal.prox_util(itm+timedelta(1)); cadeia.append(f"Termo inicial: {ini:%d/%m/%Y} (CPC 224 §1º / Súmula 310-STF)")
         comeco=itm
-    else:
+    elif a.inicio:
         ini=_data(a.inicio,"--inicio"); cadeia.append(f"Termo inicial informado: {ini:%d/%m/%Y}")
+        comeco=ini-timedelta(1)
+    else:
+        env=_data(a.envio_domicilio,"--envio-domicilio") if a.envio_domicilio else None
+        con=_data(a.consulta_domicilio,"--consulta-domicilio") if a.consulta_domicilio else None
+        conf=_data(a.confirmacao_citacao,"--confirmacao-citacao") if a.confirmacao_citacao else None
+        try:
+            termo=termo_eletronico(cal,envio=env,consulta=con,confirmacao=conf)
+        except ValueError as erro:
+            sys.exit(f"ERRO: {erro}.")
+        curta,longa=termo["curta"],termo["longa"]
+        if conf:
+            cadeia.append(f"Confirmação do recebimento da citação eletrônica: {conf:%d/%m/%Y}")
+            cadeia.append(f"Dia do começo (5º dia útil seguinte à confirmação): {curta['dia_do_comeco']:%d/%m/%Y} (CPC art. 231, IX)")
+        else:
+            if env: cadeia.append(f"Envio ao Domicílio Judicial Eletrônico: {env:%d/%m/%Y}")
+            if con: cadeia.append(f"Consulta ao teor no Domicílio: {con:%d/%m/%Y}")
+            origem=("consulta" if con and not termo["fora_por_leitura"]["curta"] else
+                    "fim dos 10 dias corridos, intimação automática; a consulta veio depois" if con else
+                    "fim dos 10 dias corridos sem consulta, intimação automática")
+            cadeia.append(f"Intimação ({origem}): {curta['intimacao']:%d/%m/%Y} (Lei 11.419, art. 5º, §§ 1º a 3º; "
+                          f"Res. CNJ 455/2022, art. 20, §§ 1º e 4º)")
+            cadeia.append(f"Dia do começo (dia útil seguinte à intimação): {curta['dia_do_comeco']:%d/%m/%Y} (CPC art. 231, V)")
+        ini=curta["termo_inicial"]
+        cadeia.append(f"Termo inicial, leitura mais curta (o dia do começo já é o 1º dia contado): {ini:%d/%m/%Y}")
         comeco=ini-timedelta(1)
     if a.dobro: cadeia.append(f"Prazo em DOBRO: {a.dias} → {dias} dias")
 
@@ -599,6 +721,48 @@ def main():
         elif not cal.util(venc):
             v2=cal.prox_util(venc); cadeia.append(f"Vencimento em dia sem expediente ({venc:%d/%m/%Y}) → prorrogado: {v2:%d/%m/%Y} (CPP 798 §3º / CPC 224 §1º)"); venc=v2
     cadeia.append(f"VENCIMENTO LEGAL: {venc:%d/%m/%Y} ({['seg','ter','qua','qui','sex','sáb','dom'][venc.weekday()]})")
+    if termo is not None:
+        longa=termo["longa"]
+        venc_longo=_vencer_em_dias(longa["termo_inicial"],dias,a.contagem,cal,susp_uteis,susp_corr,a.decadencial)
+        fora=termo["fora_por_leitura"]
+        fim_dos_dez=lambda: (f"o fim dos 10 dias corridos sai {curta['intimacao']:%d/%m/%Y} contando o dia do "
+                             f"envio e {longa['intimacao']:%d/%m/%Y} sem contá-lo; a leitura longa usa o segundo.")
+        if termo["sem_envio"] or a.confirmacao_citacao or (fora["curta"] != fora["longa"]):
+            envio_lido=""
+        elif not a.consulta_domicilio:
+            envio_lido=" Sem consulta, "+fim_dos_dez()
+        elif fora["curta"]:
+            envio_lido=" Como a consulta passou desse prazo, "+fim_dos_dez()
+        else:
+            envio_lido=""
+        avisos.append("há duas leituras do termo inicial. Na leitura mais longa, o dia do começo do CPC, "
+                      "art. 231, fica fora da contagem (art. 224), e o prazo começa em "
+                      f"{longa['termo_inicial']:%d/%m/%Y}, com vencimento em {venc_longo:%d/%m/%Y}.{envio_lido} "
+                      "O vencimento acima é o da leitura mais curta, que protege o prazo nas duas; a longa "
+                      "só vale por decisão do advogado.")
+        if fora["curta"] and fora["longa"]:
+            avisos.append("a consulta informada é posterior aos 10 dias corridos do envio nas duas leituras: a "
+                          "intimação foi automática no fim desse prazo, e é dela que o prazo conta (Lei 11.419, "
+                          "art. 5º, § 3º).")
+        elif fora["curta"]:
+            avisos.append(f"a consulta informada ({con:%d/%m/%Y}) "
+                          f"está fora dos 10 dias na leitura curta, que conta o dia do envio (fim em "
+                          f"{curta['fim_da_consulta']:%d/%m/%Y}), e dentro deles na leitura longa, que não o conta (fim em "
+                          f"{longa['fim_da_consulta']:%d/%m/%Y}). Na curta, a intimação foi automática em "
+                          f"{curta['intimacao']:%d/%m/%Y} (Lei 11.419, art. 5º, § 3º); na longa, foi na consulta, em "
+                          f"{longa['intimacao']:%d/%m/%Y} (art. 5º, § 1º). O vencimento acima é o da curta.")
+        if not a.confirmacao_citacao:
+            avisos.append("o termo do Domicílio Judicial Eletrônico calculado aqui vale para intimação. Na "
+                          "citação pelo Domicílio não há intimação automática: sem confirmação do recebimento "
+                          "em 3 dias úteis, a citação se faz por outro meio (CPC, art. 246, § 1º-A; Res. CNJ "
+                          "455/2022, art. 20, § 3º); a pessoa jurídica de direito público que não consulta em 10 dias "
+                          "corridos do envio se considera citada no término deles (art. 20, § 3º-A). Citação "
+                          "confirmada se calcula com --confirmacao-citacao.")
+        if termo["sem_envio"]:
+            avisos.append("sem a data do envio ao Domicílio, a janela de 10 dias corridos não foi conferida. "
+                          "Se a consulta passou dela, a intimação foi automática antes e o vencimento real é "
+                          "anterior ao calculado: confira a data do envio no Domicílio e recalcule com "
+                          "--envio-domicilio.")
     alvo_reg=None
     if a.prescricional:
         avisos.append("prazo PRESCRICIONAL (material): sem margem de protocolo D-2. Vence no dia "
@@ -642,7 +806,8 @@ def main():
 
 
         reg={"gerado_por":"calcular_prazo.py","formato":1,"termo_inicial":ini.isoformat(),
-             "vencimento_legal":venc.isoformat(),"data_alvo_D2":alvo_reg.isoformat() if alvo_reg else None,
+             "vencimento_legal":venc.isoformat(),
+             "vencimento_leitura_longa":venc_longo.isoformat() if venc_longo else None,"data_alvo_D2":alvo_reg.isoformat() if alvo_reg else None,
              "margem_uteis":0 if a.prescricional else a.margem,"decadencial":bool(a.decadencial),
              "prescricional":bool(a.prescricional),
              "natureza":"prescricional" if a.prescricional else ("decadencial" if a.decadencial else "processual"),

@@ -223,6 +223,11 @@
       "cenario": "Primeiro uso",
       "perfil": "P-S",
       "modelo": "Sonnet (Haiku p/ mensagens curtas)"
+    },
+    "32": {
+      "cenario": "Citações da peça adversária",
+      "perfil": "P-O",
+      "modelo": "Opus (confronto de teor) / Sonnet (compilação do quadro)"
     }
   },
   "assentos_conselho": {

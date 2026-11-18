@@ -38,7 +38,27 @@
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 import base64
+import bisect
 import hashlib
 import html
 import io
@@ -71,15 +91,38 @@ except Exception:
 
 
 
+
 TEM_CAMADA_PROFUNDA = False
 
 AVISO_SEM_CAMADA_PROFUNDA = (
     "camada profunda AUSENTE (a página não é renderizada): não foram verificados a COR "
-    "efetiva de cada trecho após máscaras, o TAMANHO efetivo de fonte após a matriz de texto, "
-    "nem o conteúdo de anotações. A varredura estrutural rodou e vale; a cobertura é PARCIAL.")
+    "efetiva de cada trecho após máscaras, o TAMANHO efetivo de fonte após a matriz de texto "
+    "nem o texto posto fora da página ou coberto por imagem ou desenho. A varredura estrutural "
+    "rodou e vale; a cobertura é PARCIAL.")
 
-ZERO_WIDTH = "​‌‍⁠﻿­"
+
+AVISO_COM_CAMADA_PROFUNDA = (
+    "camada profunda pelo poppler: posição e tamanho efetivo das palavras conferidos; a COR "
+    "efetiva após máscaras e o texto coberto por imagem ou desenho continuam não verificados. A "
+    "cobertura é PARCIAL nesses pontos.")
+AVISO_SEM_DETECTOR = (
+    " O texto de anotações, campos, camadas, metadados e arquivos embutidos foi lido, mas o "
+    "detector de instrução dirigida à IA não está nesta cópia: o texto sai em `textos_nao_exibidos` para conferência.")
+
+ZERO_WIDTH = ("​‌‍⁠﻿­"
+
+              "⁡⁢⁣⁤")
+
+
+
+BIDI = "‪‫‬‭‮⁦⁧⁨⁩"
 _TAG_CHARS = re.compile(r"[\U000E0000-\U000E007F]")
+_BANDEIRA_TAG = re.compile(r"\U0001F3F4[\U000E0030-\U000E0039\U000E0061-\U000E007A]{2,6}\U000E007F")
+
+
+def revelar_tags(texto):
+    """O texto escondido em Unicode Tag (U+E0020–E007E espelham o ASCII visível)."""
+    return "".join(chr(ord(c) - 0xE0000) for c in texto if 0xE0020 <= ord(c) <= 0xE007E)
 ORDEM_SEV = {"alta": 3, "media": 2, "baixa": 1}
 _MAX_STREAM = 8_000_000
 
@@ -91,7 +134,8 @@ _MAX_STREAM = 8_000_000
 
 
 
-_INVISIVEIS_PDF = frozenset((0x200B, 0x200C, 0x200D, 0x2060, 0xFEFF))
+_INVISIVEIS_PDF = frozenset((0x200B, 0x200C, 0x200D, 0x2060, 0xFEFF, 0x2061, 0x2062, 0x2063, 0x2064,
+                             0x202A, 0x202B, 0x202C, 0x202D, 0x202E, 0x2066, 0x2067, 0x2068, 0x2069))
 _RE_BFCHAR = re.compile(rb"beginbfchar(.*?)endbfchar", re.S)
 _RE_BFRANGE = re.compile(rb"beginbfrange(.*?)endbfrange", re.S)
 _RE_HEX = re.compile(rb"<([0-9A-Fa-f\s]*)>")
@@ -150,13 +194,95 @@ def _invisiveis(texto, achados, onde, parte=""):
             "caractere_invisivel", "media",
             f"caractere de largura zero em {onde} — some na tela, entra no texto extraído",
             "(caractere invisível removido da amostra)", parte))
+    if any(c in texto for c in BIDI):
+        achados.append(_achado(
+            "controle_bidi", "media",
+            f"controle de direção do texto em {onde} — a ordem mostrada na tela difere da "
+            "ordem lida pela IA", "(controle de direção removido da amostra)", parte))
+
+
+    texto = _BANDEIRA_TAG.sub("\U0001F3F4", texto)
     m = _TAG_CHARS.search(texto)
     if m:
+        revelado = revelar_tags(texto)
         achados.append(_achado(
             "unicode_tag", "alta",
             f"Unicode Tag char (U+E0000–U+E007F) em {onde} — canal clássico de instrução "
-            "oculta, sem nenhum uso legítimo em peça",
-            repr(m.group(0)), parte))
+            "oculta, sem nenhum uso legítimo em peça; o trecho mostra o texto escondido",
+            ("texto escondido: " + revelado) if revelado else repr(m.group(0)), parte))
+
+
+
+
+
+
+
+
+
+
+
+
+def _carregar_detector():
+    """O módulo `detectar_injecao`, ou None. Nunca levanta."""
+    aqui = os.path.dirname(os.path.abspath(__file__))
+    for pasta in (aqui,
+                  os.path.join(aqui, os.pardir, "skills", "dissero-ingestao", "scripts"),
+                  os.path.join(aqui, os.pardir, os.pardir, "dissero-ingestao", "scripts")):
+        alvo = os.path.join(pasta, "detectar_injecao.py")
+        if not os.path.isfile(alvo):
+            continue
+        try:
+            import importlib.util as _ilu2
+            spec = _ilu2.spec_from_file_location("_dsr_detectar_injecao", alvo)
+            mod = _ilu2.module_from_spec(spec)
+            spec.loader.exec_module(mod)
+            if hasattr(mod, "varrer"):
+                return mod
+        except Exception:
+            continue
+    return None
+
+
+_DETECTOR = []
+
+
+def _detector_padrao():
+    if not _DETECTOR:
+        _DETECTOR.append(_carregar_detector())
+    return _DETECTOR[0]
+
+
+_FONTE_ID = {"anotação": "injecao_em_anotacao", "campo de formulário": "injecao_em_campo",
+             "metadados": "injecao_em_metadados", "comentário": "injecao_em_comentario",
+             "camada desligada": "injecao_em_camada", "texto fora da página": "injecao_fora_da_pagina",
+             "texto alternativo": "injecao_em_texto_alternativo",
+             "texto excluído": "injecao_em_texto_excluido",
+             "arquivo embutido": "injecao_em_arquivo_embutido"}
+
+
+def _julgar_textos(textos, achados, detector):
+    'Passa cada texto não exibido pelo detector. `textos`: [(fonte, onde, texto)].'
+
+    if not textos:
+        return True
+    if detector is None:
+        return False
+    for fonte, onde, texto in textos:
+        try:
+            ach = detector.varrer(texto)
+        except Exception:
+            return False
+        if not ach:
+            continue
+        ordem = {"alta": 3, "media": 2, "baixa": 1}
+        pior = max(ach, key=lambda a: ordem.get(a.get("severidade"), 0))
+        local = f" ({onde})" if onde and onde != fonte else ""
+        achados.append(_achado(
+            _FONTE_ID.get(fonte, "injecao_em_texto_nao_exibido"), pior["severidade"],
+            f"texto de {fonte}{local}, que não aparece na página, com sinal de instrução "
+            f"dirigida à IA: {pior.get('descricao', '')}",
+            " ".join(texto.split()), onde))
+    return True
 
 
 
@@ -278,8 +404,8 @@ def _props_proprias(conteudo, nome_prop):
     return (m.group(1) or "") if m else ""
 
 
-def _escopos_de_fundo(doc):
-    '[(ini, fim, fill)] de cada elemento que DECLARA sombreamento, por posição no XML.'
+def _elementos(doc):
+    '[(nome, ini, fim)] de cada tabela, linha, célula e parágrafo, por posição no XML.'
 
 
 
@@ -298,9 +424,21 @@ def _escopos_de_fundo(doc):
         if attrs.rstrip().endswith("/"):
             continue
         pilha.append((nome, m.end()))
+    return escopos
+
+
+def _escopos_de_fundo(doc, estilos=None, elementos=None):
+    '[(ini, fim, fill)] de cada elemento que DECLARA sombreamento, por posição no XML.'
+
+
+
+
     com_fundo = []
-    for nome, ini, fim in escopos:
-        fill = _fill_declarado(_props_proprias(doc[ini:fim], _PROPS_DE[nome]))
+    for nome, ini, fim in (_elementos(doc) if elementos is None else elementos):
+        props = _props_proprias(doc[ini:fim], _PROPS_DE[nome])
+        fill = _fill_declarado(props)
+        if fill is None and nome == "p" and estilos is not None:
+            fill = estilos.fundo_do_paragrafo(_estilo_de(props, _RE_PSTYLE))
         if fill is not None:
             com_fundo.append((ini, fim, fill))
     return com_fundo
@@ -326,6 +464,14 @@ def _fundo_sustenta(run_xml, pos, escopos, cor_texto):
     rgb_texto = _rgb(cor_texto)
     if rgb_texto is None:
         return False
+    rgb_fundo = _rgb(_fundo_declarado(run_xml, pos, escopos))
+    if rgb_fundo is None:
+        return False
+    return _cw.contraste(rgb_texto, rgb_fundo) >= CONTRASTE_MINIMO_FUNDO
+
+
+def _fundo_declarado(run_xml, pos, escopos):
+    """O valor cru do fundo atrás do run (run → realce → escopo mais interno), ou None."""
     fundo = _fill_declarado(run_xml, tirar_marca=False)
     if fundo is None:
         realce = _RE_HIGHLIGHT.search(run_xml)
@@ -336,10 +482,27 @@ def _fundo_sustenta(run_xml, pos, escopos, cor_texto):
                 fundo = "auto"
     if fundo is None:
         fundo = _fundo_em(pos, escopos)
-    rgb_fundo = _rgb(fundo)
-    if rgb_fundo is None:
-        return False
-    return _cw.contraste(rgb_texto, rgb_fundo) >= CONTRASTE_MINIMO_FUNDO
+    return fundo
+
+
+
+
+
+
+
+
+
+
+
+CONTRASTE_INVISIVEL, CONTRASTE_APAGADO = 1.1, 1.5
+
+
+def _contraste_com_fundo(run_xml, pos, escopos, cor_texto):
+    rgb_texto = _rgb(cor_texto)
+    if rgb_texto is None:
+        return None
+    rgb_fundo = _rgb(_fundo_declarado(run_xml, pos, escopos)) or (255, 255, 255)
+    return _cw.contraste(rgb_texto, rgb_fundo)
 
 
 
@@ -614,9 +777,293 @@ def conferir_timbrado(z, nomes, dir_pacote=None):
 
 
 
-_PARTES_EXTRA = re.compile(r"^word/(header\d+|footer\d+|footnotes|endnotes)\.xml$")
+
+
+
+
+
+
+
+
+
+
+_RE_ESTILO = re.compile(r"<w:style\b([^>]*)>(.*?)</w:style>", re.S)
+_RE_ATTR_TIPO = re.compile(r'w:type="([^"]*)"')
+_RE_ATTR_ID = re.compile(r'w:styleId="([^"]*)"')
+_RE_ATTR_PADRAO = re.compile(r'w:default="(?:1|true|on)"')
+_RE_BASEDON = re.compile(r'<w:basedOn\b[^>]*w:val="([^"]*)"')
+_RE_PSTYLE = re.compile(r'<w:pStyle\b[^>]*w:val="([^"]*)"')
+_RE_RSTYLE = re.compile(r'<w:rStyle\b[^>]*w:val="([^"]*)"')
+_RE_ALTERACAO = re.compile(r"<w:(rPrChange|pPrChange)\b.*?</w:\1>|<w:(?:rPrChange|pPrChange)\b[^>]*/>", re.S)
+_RE_BLOCO_RPR = re.compile(r"<w:rPr\b[^>]*>(.*?)</w:rPr>", re.S)
+_RE_BLOCO_PPR = re.compile(r"<w:pPr\b[^>]*>(.*?)</w:pPr>", re.S)
+_RE_COND_TABELA = re.compile(r"<w:tblStylePr\b.*?</w:tblStylePr>", re.S)
+_RE_RPR_DEFAULT = re.compile(r"<w:rPrDefault\b[^>]*>(.*?)</w:rPrDefault>", re.S)
+_RE_PPR_DEFAULT = re.compile(r"<w:pPrDefault\b[^>]*>(.*?)</w:pPrDefault>", re.S)
+_RX_PROP = {}
+_DESLIGADO = {"0", "false", "off", "none"}
+
+
+def _rx_prop(nome):
+    """`<w:nome .../>` exato: `w` não casa com `webHidden`, nem `sz` com `szCs`."""
+    rx = _RX_PROP.get(nome)
+    if rx is None:
+        rx = _RX_PROP[nome] = re.compile(r"<w:%s(?=[\s/>])[^>]*>" % nome)
+    return rx
+
+
+def _attr(tag, nome):
+    m = re.search(r'\bw:%s="([^"]*)"' % nome, tag or "")
+    return m.group(1).strip() if m else None
+
+
+def _ligado(tag):
+    """Propriedade liga/desliga: presente e sem `w:val` falso."""
+    return bool(tag) and (_attr(tag, "val") or "1").lower() not in _DESLIGADO
+
+
+def _inteiro(tag, nome="val"):
+    v = _attr(tag, nome)
+    try:
+        return int(float(v)) if v not in (None, "") else None
+    except ValueError:
+        return None
+
+
+def _estilo_de(props_xml, rx):
+    m = rx.search(props_xml or "")
+    return m.group(1) if m else None
+
+
+def _prop_efetiva(nome, run_limpo, cadeia):
+    """A declaração vencedora de `nome`: a do run, senão a última da cadeia de estilos."""
+    m = _rx_prop(nome).search(run_limpo)
+    if m:
+        return m.group(0)
+    for rpr in reversed(cadeia):
+        achadas = _rx_prop(nome).findall(rpr)
+        if achadas:
+            return achadas[-1]
+    return None
+
+
+
+
+_SLOTS_TEMA = {"dark1": "dk1", "light1": "lt1", "dark2": "dk2", "light2": "lt2",
+               "accent1": "accent1", "accent2": "accent2", "accent3": "accent3",
+               "accent4": "accent4", "accent5": "accent5", "accent6": "accent6",
+               "hyperlink": "hlink", "followedHyperlink": "folHlink"}
+_MAPA_TEMA_PADRAO = {"background1": "light1", "text1": "dark1", "background2": "light2", "text2": "dark2"}
+_ATTR_MAPA = {"background1": "bg1", "text1": "t1", "background2": "bg2", "text2": "t2"}
+_TEMA_SEM_PARTE = {"dk1": "000000", "lt1": "FFFFFF"}
+_RE_SLOT_TEMA = re.compile(r"<a:(dk1|lt1|dk2|lt2|accent[1-6]|hlink|folHlink)\b[^>]*>(.*?)</a:\1>", re.S)
+_RE_SRGB = re.compile(r'<a:srgbClr\b[^>]*\bval="([0-9A-Fa-f]{6})"')
+_RE_SYSCLR = re.compile(r'<a:sysClr\b[^>]*\blastClr="([0-9A-Fa-f]{6})"')
+_RE_MAPA_CORES = re.compile(r"<w:clrSchemeMapping\b[^>]*>")
+
+
+def _matiz(hexa, tint=None, shade=None):
+    '`w:themeTint`/`w:themeShade` (00–FF) aplicados em RGB. O Word faz a conta em HSL; em'
+
+    rgb = [int(hexa[i:i + 2], 16) for i in (0, 2, 4)]
+    try:
+        if shade:
+            f = int(shade, 16) / 255
+            rgb = [round(c * f) for c in rgb]
+        if tint:
+            f = int(tint, 16) / 255
+            rgb = [round(c * f + 255 * (1 - f)) for c in rgb]
+    except ValueError:
+        pass
+    return "".join(f"{max(0, min(255, c)):02X}" for c in rgb)
+
+
+class _Estilos:
+    'Estilos, `docDefaults`, tema e mapa de cores de um .docx. Nunca levanta: parte ausente'
+
+
+    def __init__(self, styles_xml="", tema_xml="", settings_xml=""):
+        self._por_id, self._padrao_p, self._cadeias, self._ppr = {}, None, {}, {}
+        sem_tabela = _RE_COND_TABELA.sub("", styles_xml or "")
+        m = _RE_RPR_DEFAULT.search(sem_tabela)
+        self.defaults_rpr = "".join(_RE_BLOCO_RPR.findall(m.group(1))) if m else ""
+        m = _RE_PPR_DEFAULT.search(sem_tabela)
+        self.defaults_ppr = "".join(_RE_BLOCO_PPR.findall(m.group(1))) if m else ""
+        for m in _RE_ESTILO.finditer(sem_tabela):
+            attrs, corpo = m.group(1), _RE_ALTERACAO.sub("", m.group(2))
+            ident = _RE_ATTR_ID.search(attrs)
+            if not ident:
+                continue
+            tipo = (_RE_ATTR_TIPO.search(attrs) or [None, ""])[1]
+            ppr = "".join(_RE_BLOCO_PPR.findall(corpo))
+            rpr = "".join(_RE_BLOCO_RPR.findall(_RE_BLOCO_PPR.sub("", corpo)))
+            base = _RE_BASEDON.search(corpo)
+            self._por_id[ident.group(1)] = (tipo, base.group(1) if base else None, rpr, ppr)
+            if tipo == "paragraph" and _RE_ATTR_PADRAO.search(attrs) and self._padrao_p is None:
+                self._padrao_p = ident.group(1)
+        self._tema = {}
+        for m in _RE_SLOT_TEMA.finditer(tema_xml or ""):
+            c = _RE_SRGB.search(m.group(2)) or _RE_SYSCLR.search(m.group(2))
+            if c:
+                self._tema[m.group(1)] = c.group(1).upper()
+        if not self._tema:
+            self._tema = dict(_TEMA_SEM_PARTE)
+        self._mapa = dict(_MAPA_TEMA_PADRAO)
+        m = _RE_MAPA_CORES.search(settings_xml or "")
+        if m:
+            for nome, attr in _ATTR_MAPA.items():
+                v = _attr(m.group(0), attr)
+                if v:
+                    self._mapa[nome] = v
+
+    def _cadeia(self, ident, tipo):
+        """[estilo base, ..., estilo] de um id, com guarda de ciclo."""
+        saida, vistos = [], set()
+        while ident and ident not in vistos and len(vistos) < 32:
+            vistos.add(ident)
+            dados = self._por_id.get(ident)
+            if dados is None or (tipo and dados[0] and dados[0] != tipo):
+                break
+            saida.append(dados)
+            ident = dados[1]
+        return list(reversed(saida))
+
+    def cadeia_rpr(self, pstyle, rstyle):
+        chave = (pstyle, rstyle)
+        if chave not in self._cadeias:
+            cad = [self.defaults_rpr] if self.defaults_rpr else []
+            cad += [d[2] for d in self._cadeia(pstyle or self._padrao_p, "paragraph") if d[2]]
+            cad += [d[2] for d in self._cadeia(rstyle, "character") if d[2]]
+            self._cadeias[chave] = cad
+        return self._cadeias[chave]
+
+    def cadeia_ppr(self, pstyle):
+        chave = pstyle or self._padrao_p
+        if chave not in self._ppr:
+            cad = [self.defaults_ppr] if self.defaults_ppr else []
+            self._ppr[chave] = cad + [d[3] for d in self._cadeia(chave, "paragraph") if d[3]]
+        return self._ppr[chave]
+
+    def fundo_do_paragrafo(self, pstyle):
+        for ppr in reversed(self.cadeia_ppr(pstyle)):
+            fill = _fill_declarado(ppr)
+            if fill is not None:
+                return fill
+        return None
+
+    def cor(self, tag):
+        'O valor de cor que a tela mostra: a do tema, quando há `w:themeColor` que se resolva;'
+
+        if not tag:
+            return None
+        tema = _attr(tag, "themeColor")
+        if tema:
+            slot = _SLOTS_TEMA.get(self._mapa.get(tema, tema))
+            hexa = self._tema.get(slot) if slot else None
+            if hexa:
+                return _matiz(hexa, _attr(tag, "themeTint"), _attr(tag, "themeShade"))
+        return _attr(tag, "val")
+
+
+_SEM_ESTILOS = _Estilos()
+
+
+
+
+SZ_MINUSCULA = 7
+
+
+ESCALA_MINIMA = 20
+
+
+_RE_SO_NUMERO = re.compile(r"[\s\d.\-–—ivxlcdmIVXLCDM]*")
+_RE_PGSZ = re.compile(r"<w:pgSz\b[^>]*>")
+PAGINA_PADRAO = (11906, 16838)
+
+
+def _pagina(doc):
+    """(largura, altura) em twips: a maior seção declarada, ou A4."""
+    w = h = 0
+    for tag in _RE_PGSZ.findall(doc or ""):
+        w, h = max(w, _inteiro(tag, "w") or 0), max(h, _inteiro(tag, "h") or 0)
+    return (w or PAGINA_PADRAO[0], h or PAGINA_PADRAO[1])
+
+
+def _moldura_fora(tag, pagina):
+    'True quando a moldura (`w:framePr`) fica INTEIRA fora do papel.'
+
+
+
+
+
+    if not tag:
+        return False
+    larg, alt = pagina
+    def eixo(pos, tam, ancora, alinhado, limite):
+        if alinhado or pos is None:
+            return False
+        folga = 0 if ancora == "page" else limite
+        return pos + (tam if tam else limite) <= -folga or pos >= limite
+    return (eixo(_inteiro(tag, "x"), _inteiro(tag, "w"), _attr(tag, "hAnchor"), _attr(tag, "xAlign"), larg)
+            or eixo(_inteiro(tag, "y"), _inteiro(tag, "h"), _attr(tag, "vAnchor"), _attr(tag, "yAlign"), alt))
+
+
+def _paragrafo_em(pos, paragrafos, inicios):
+    """O parágrafo mais interno que contém `pos` (bisseção, e volta atrás no aninhado)."""
+    i = bisect.bisect_right(inicios, pos) - 1
+    passos = 0
+    while i >= 0 and passos < 64:
+        ini, fim, props = paragrafos[i]
+        if ini <= pos < fim:
+            return i
+        i, passos = i - 1, passos + 1
+    return None
+
+
+
+
+_RE_ALT = re.compile(r"<(?:wp|pic|a):(?:docPr|cNvPr)\b[^>]*>")
+_RE_ALT_ATTR = re.compile(r'\b(?:descr|title)="([^"]*)"')
+_RE_DELTEXT = re.compile(r"<w:delText\b[^>]*>(.*?)</w:delText>", re.S)
+
+
+def _texto_alternativo(xml):
+    vistos, saida = set(), []
+    for tag in _RE_ALT.findall(xml):
+        for v in _RE_ALT_ATTR.findall(tag):
+            t = " ".join(html.unescape(v).split())
+            if t and t not in vistos:
+                vistos.add(t)
+                saida.append(t)
+    return " | ".join(saida)
+
+
+def _texto_excluido(xml):
+    return " ".join(" ".join(html.unescape(t) for t in _RE_DELTEXT.findall(xml)).split())
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+_PARTES_EXTRA = re.compile(r"^word/(header\d+|footer\d+|footnotes|endnotes|comments)\.xml$")
 _NOME_DA_PARTE = {"header": "cabeçalho", "footer": "rodapé",
-                  "footnotes": "nota de rodapé", "endnotes": "nota de fim"}
+                  "footnotes": "nota de rodapé", "endnotes": "nota de fim",
+                  "comments": "comentário"}
+_RE_TAG_XML = re.compile(r"<[^>]+>")
+
+
+def _texto_xml(xml):
+    return html.unescape(" ".join(_RE_TAG_XML.sub(" ", xml).split()))
 
 
 def _nome_da_parte(nome_do_arquivo):
@@ -624,42 +1071,102 @@ def _nome_da_parte(nome_do_arquivo):
     return _NOME_DA_PARTE.get(base, base)
 
 
-def _varrer_runs(xml, achados, parte=""):
+def _varrer_runs(xml, achados, parte="", estilos=None, pagina=PAGINA_PADRAO):
     'As regras de run — as MESMAS para o corpo e para as partes de fora dele.'
 
 
 
 
 
-    escopos = _escopos_de_fundo(xml)
+
+    estilos = estilos or _SEM_ESTILOS
+    elementos = _elementos(xml)
+    escopos = _escopos_de_fundo(xml, estilos, elementos)
+    paragrafos = sorted((i, f, _props_proprias(xml[i:f], "pPr")) for n, i, f in elementos if n == "p")
+    inicios = [p[0] for p in paragrafos]
+    molduras = {}
     for achado_run in _RE_RUN.finditer(xml):
         run_xml = achado_run.group(1)
         texto = _texto_do_run(run_xml).strip()
         if not texto:
             continue
-        cor = _RE_COR.search(run_xml)
+        run_limpo = _RE_ALTERACAO.sub("", run_xml)
+        i_par = _paragrafo_em(achado_run.start(), paragrafos, inicios)
+        ppr = _RE_ALTERACAO.sub("", paragrafos[i_par][2]) if i_par is not None else ""
+        pstyle = _estilo_de(ppr, _RE_PSTYLE)
+        cadeia = estilos.cadeia_rpr(pstyle, _estilo_de(run_limpo, _RE_RSTYLE))
+        prop = lambda nome: _prop_efetiva(nome, run_limpo, cadeia)
+
+        fundo_run = (prop("shd") or "") + (prop("highlight") or "")
+        valor_cor = estilos.cor(prop("color"))
+        branco = bool(valor_cor) and valor_cor.strip().lower().lstrip("#") in _CORES_BRANCAS
 
 
 
-        if (cor and cor.group(1).strip().lower().lstrip("#") in _CORES_BRANCAS
-                and not _fundo_sustenta(run_xml, achado_run.start(), escopos,
-                                        cor.group(1))):
+        if branco and not _fundo_sustenta(fundo_run, achado_run.start(), escopos, valor_cor):
             achados.append(_achado(
                 "texto_invisivel_cor", "alta",
                 "texto em cor branca sobre fundo claro ou ausente — invisível na tela, "
                 "legível pela IA processante",
                 texto, parte))
-        sz = _RE_SZ.search(run_xml)
-        if sz and int(sz.group(1)) < 5:
+        elif valor_cor and not branco:
+            k = _contraste_com_fundo(fundo_run, achado_run.start(), escopos, valor_cor)
+            if k is not None and k < CONTRASTE_INVISIVEL:
+                achados.append(_achado(
+                    "texto_invisivel_cor", "alta",
+                    f"texto da cor do fundo (contraste {k:.2f}:1) — invisível na tela, "
+                    "legível pela IA processante", texto, parte))
+            elif k is not None and k < CONTRASTE_APAGADO:
+                achados.append(_achado(
+                    "texto_quase_invisivel", "media",
+                    f"texto muito claro para o fundo (contraste {k:.2f}:1) — quase invisível na "
+                    "tela; confira se é enfeite do timbrado ou texto escondido", texto, parte))
+        sz = _inteiro(prop("sz"))
+        if sz is not None and sz < 5:
             achados.append(_achado(
                 "fonte_microscopica", "alta",
-                f"fonte de {int(sz.group(1)) / 2:g}pt — abaixo do legível; nenhuma peça "
+                f"fonte de {sz / 2:g}pt — abaixo do legível; nenhuma peça "
                 "legítima usa esse corpo", texto, parte))
-        if _RE_VANISH.search(run_xml):
+        elif sz is not None and sz <= SZ_MINUSCULA:
+            achados.append(_achado(
+                "fonte_minuscula", "media",
+                f"fonte de {sz / 2:g}pt — difícil de ler na tela e no papel; confira se é "
+                "texto escondido", texto, parte))
+        if _ligado(prop("vanish")):
             achados.append(_achado(
                 "texto_oculto", "alta",
                 "texto marcado como oculto (w:vanish) — não imprime, não aparece, e "
                 "mesmo assim viaja no arquivo", texto, parte))
+        escala = _inteiro(prop("w"))
+        if escala is not None and 0 < escala < ESCALA_MINIMA:
+            espaco = _inteiro(prop("spacing"))
+            comprimido = espaco is not None and espaco < 0
+            achados.append(_achado(
+                "texto_comprimido", "alta" if comprimido else "media",
+                f"texto comprimido a {escala}% da largura"
+                + (" e com letras sobrepostas (espaçamento negativo)" if comprimido else "")
+                + " — vira um traço na tela, e a IA o lê inteiro", texto, parte))
+        if _ligado(prop("webHidden")) and not _RE_SO_NUMERO.fullmatch(texto):
+            achados.append(_achado(
+                "texto_oculto_web", "media",
+                "texto marcado para não aparecer na visualização web (w:webHidden) — confira "
+                "se é texto escondido", texto, parte))
+        if i_par is not None:
+            moldura = _rx_prop("framePr").search(ppr)
+            tag = moldura.group(0) if moldura else None
+            if tag is None:
+                for p_estilo in reversed(estilos.cadeia_ppr(pstyle)):
+                    achadas = _rx_prop("framePr").findall(p_estilo)
+                    if achadas:
+                        tag = achadas[-1]
+                        break
+            if _moldura_fora(tag, pagina):
+                molduras.setdefault(i_par, []).append(texto)
+    for textos in molduras.values():
+        achados.append(_achado(
+            "texto_fora_da_pagina", "alta",
+            "texto numa moldura (w:framePr) posta fora da página — não aparece, e a IA o lê",
+            " ".join(textos), parte))
 
     for instr in _RE_INSTR.findall(xml):
         if _CAMPOS_EXTERNOS.search(instr):
@@ -672,8 +1179,12 @@ def _varrer_runs(xml, achados, parte=""):
                 f"{parte} da peça" if parte else "texto da peça", parte)
 
 
-def varrer_docx(dados):
-    """Varre um .docx (bytes ou caminho). É a peça que o plugin ENTREGA."""
+def varrer_docx(dados, linguistico=False, detector=None):
+    'Varre um .docx (bytes ou caminho). É a peça que o plugin ENTREGA.'
+
+
+
+
     achados = []
     try:
         if isinstance(dados, (str, os.PathLike)):
@@ -688,7 +1199,16 @@ def varrer_docx(dados):
                 "aviso": "arquivo ilegível NÃO é arquivo limpo — conferir antes de entregar",
                 "achados": [], "camada_profunda": TEM_CAMADA_PROFUNDA}
 
-    _varrer_runs(doc, achados)
+    def _parte(nome):
+        try:
+            return z.read(nome).decode("utf-8", "replace") if nome in nomes else ""
+        except Exception:
+            return ""
+    estilos = _Estilos(_parte("word/styles.xml"),
+                       _parte(next((n for n in sorted(nomes) if re.match(r"^word/theme/theme\d*\.xml$", n)), "")),
+                       _parte("word/settings.xml"))
+    pagina = _pagina(doc)
+    _varrer_runs(doc, achados, estilos=estilos, pagina=pagina)
 
 
 
@@ -698,7 +1218,7 @@ def varrer_docx(dados):
             xml_parte = z.read(nome).decode("utf-8", "replace")
         except Exception:
             continue
-        _varrer_runs(xml_parte, achados, _nome_da_parte(nome))
+        _varrer_runs(xml_parte, achados, _nome_da_parte(nome), estilos, pagina)
 
     if any(n.endswith("vbaProject.bin") for n in nomes):
         achados.append(_achado("macro_embutida", "alta",
@@ -706,7 +1226,38 @@ def varrer_docx(dados):
 
     achados.extend(conferir_timbrado(z, nomes))
 
-    return _resultado(achados, "docx")
+    extra = {}
+    if linguistico:
+        textos = []
+        for nome in sorted(n for n in nomes if n == "word/comments.xml"):
+            try:
+                t = _texto_xml(z.read(nome).decode("utf-8", "replace"))
+            except Exception:
+                t = ""
+            if t:
+                textos.append(("comentário", "comentário", t))
+
+
+        for nome_prop in ("docProps/core.xml", "docProps/custom.xml", "docProps/app.xml"):
+            t = _texto_xml(_parte(nome_prop))
+            if t:
+                _invisiveis(t, achados, "propriedades do documento", "propriedades do documento")
+                textos.append(("metadados", "propriedades do documento", t))
+
+        for nome in ["word/document.xml"] + sorted(n for n in nomes if _PARTES_EXTRA.match(n)):
+            xml_parte = doc if nome == "word/document.xml" else _parte(nome)
+            onde = "corpo da peça" if nome == "word/document.xml" else _nome_da_parte(nome)
+            for fonte, t in (("texto alternativo", _texto_alternativo(xml_parte)),
+                             ("texto excluído", _texto_excluido(xml_parte))):
+                if t:
+                    _invisiveis(t, achados, f"{fonte} ({onde})", onde)
+                    textos.append((fonte, onde, t))
+        det = _detector_padrao() if detector is None else (detector or None)
+        if not _julgar_textos(textos, achados, det):
+            extra = _sem_detector(textos)
+        else:
+            extra = {"detector_linguistico": True}
+    return _resultado(achados, "docx", extra)
 
 
 
@@ -730,9 +1281,15 @@ _TOKENS_PDF = [
 RE_STREAM = re.compile(rb"stream\r?\n(.*?)(?:\r?\n)?endstream", re.S)
 _RE_STREAM = RE_STREAM
 _RE_BT_ET = re.compile(rb"BT\b(.*?)\bET\b", re.S)
-
-_RE_BRANCO = re.compile(rb"(?:^|[\s])(?:1(?:\.0+)?\s+1(?:\.0+)?\s+1(?:\.0+)?\s+rg|1(?:\.0+)?\s+g)\b")
 _RE_TR3 = re.compile(rb"(?:^|[\s])3\s+Tr\b")
+
+
+_RE_TR7 = re.compile(rb"(?:^|[\s])7\s+Tr\b")
+
+_ZERO_PDF = rb"-?(?:0+\.?0*|\.0+)"
+_RE_RECORTE_VAZIO = re.compile(rb"(?:^|\s)-?[\d.]+\s+-?[\d.]+\s+" + _ZERO_PDF + rb"\s+" + _ZERO_PDF
+                               + rb"\s+re\s+W\*?\s+n\b")
+_RE_Q_FECHA = re.compile(rb"(?:^|\s)Q\b")
 _RE_MOSTRA_TEXTO = re.compile(rb"\b(?:Tj|TJ|'|\")\B|\bTj\b|\bTJ\b")
 _RE_LITERAL = re.compile(rb"\(([^)\\]{4,200})\)")
 
@@ -747,6 +1304,16 @@ def decodificar_stream(bruto):
         return zlib.decompress(bruto)
     except Exception:
         pass
+
+
+
+    if bruto[:1] == b"x":
+        try:
+            parcial = zlib.decompressobj().decompress(bruto)
+            if parcial:
+                return parcial
+        except Exception:
+            pass
     limpo = bruto.strip()
     if limpo.endswith(b"~>"):
         try:
@@ -817,6 +1384,7 @@ class _MapaDePaginas:
 
             corte = dados.find(b"stream", pos, fim)
             corpos[num] = bytes(dados[pos:fim if corte < 0 else corte])
+        self.corpos = corpos
         paginas = [n for n, c in corpos.items() if _RE_E_PAGINA.search(c)]
         self.catalogos = {n for n, c in corpos.items() if _RE_E_CATALOGO.search(c)}
         self.comprimidos = {n for n, c in corpos.items() if _RE_E_OBJSTM.search(c)}
@@ -825,9 +1393,12 @@ class _MapaDePaginas:
 
         self.confiavel = bool(paginas) and len(ordem) == len(paginas)
         self.pagina_de = {}
+        self.conteudos = {}
         if self.confiavel:
             for indice, num in enumerate(ordem, 1):
                 self.pagina_de[num] = indice
+                for ref in _valor_de(corpos[num], rb"Contents"):
+                    self.conteudos.setdefault(ref, indice)
                 for chave in (rb"Contents", rb"Annots"):
                     for ref in _valor_de(corpos[num], chave):
                         self.pagina_de.setdefault(ref, indice)
@@ -887,8 +1458,470 @@ def _texto_do_lugar(lugares):
     return "; ".join(partes)
 
 
-def varrer_pdf(dados):
-    """Varre um PDF (bytes ou caminho). Estrutura e content streams — não renderiza."""
+
+_ESCAPES_PDF = {ord("n"): 10, ord("r"): 13, ord("t"): 9, ord("b"): 8, ord("f"): 12}
+
+
+def _decodificar_texto_pdf(b):
+    if b.startswith(b"\xfe\xff"):
+        return b[2:].decode("utf-16-be", "replace")
+    if b.startswith(b"\xff\xfe"):
+        return b[2:].decode("utf-16-le", "replace")
+    if b.startswith(b"\xef\xbb\xbf"):
+        return b[3:].decode("utf-8", "replace")
+
+    return b.decode("latin-1").replace("­", "")
+
+
+def _ler_string_pdf(buf, i):
+    '(texto, fim) da string PDF em buf[i] — literal `(...)` ou hexadecimal `<...>`.'
+
+    try:
+        if buf[i:i + 1] == b"(":
+            out, prof, j, n = bytearray(), 0, i, min(len(buf), i + 20000)
+            while j < n:
+                c = buf[j]
+                if c == 0x5C:
+                    j += 1
+                    if j >= n:
+                        break
+                    e = buf[j]
+                    if e in _ESCAPES_PDF:
+                        out.append(_ESCAPES_PDF[e])
+                    elif 0x30 <= e <= 0x37:
+                        k, v = j, 0
+                        while k < j + 3 and k < n and 0x30 <= buf[k] <= 0x37:
+                            v, k = v * 8 + buf[k] - 0x30, k + 1
+                        out.append(v & 0xFF)
+                        j = k
+                        continue
+                    elif e not in (10, 13):
+                        out.append(e)
+                elif c == 0x28:
+                    prof += 1
+                    if prof > 1:
+                        out.append(c)
+                elif c == 0x29:
+                    prof -= 1
+                    if prof == 0:
+                        return _decodificar_texto_pdf(bytes(out)), j + 1
+                    out.append(c)
+                else:
+                    out.append(c)
+                j += 1
+            return None, i
+        if buf[i:i + 1] == b"<" and buf[i + 1:i + 2] != b"<":
+            fim = buf.find(b">", i)
+            if fim < 0:
+                return None, i
+            h = re.sub(rb"[^0-9A-Fa-f]", b"", buf[i + 1:fim])
+            if len(h) % 2:
+                h += b"0"
+            return _decodificar_texto_pdf(bytes.fromhex(h.decode("ascii"))), fim + 1
+    except Exception:
+        pass
+    return None, i
+
+
+def _strings_da_chave(corpo, chave):
+    """Os valores-string de `/Chave` num dicionário (nunca um `<<` aninhado nem referência)."""
+    saida = []
+    for m in re.finditer(rb"/" + chave + rb"\s*(?=[(<])", corpo):
+        if corpo[m.end():m.end() + 2] == b"<<":
+            continue
+        t, _ = _ler_string_pdf(corpo, m.end())
+        if t and t.strip() and _legivel(t):
+            saida.append(t[:5000])
+    return saida
+
+
+_RE_E_EMBUTIDO = re.compile(rb"/Type\s*/EmbeddedFile\b")
+
+
+def _texto_embutido(dec):
+    'O texto de um arquivo embutido, quando ele é texto (UTF-8, UTF-16 com BOM ou Latin-1'
+
+    amostra = dec[:200_000]
+    if amostra[:2] in (b"\xff\xfe", b"\xfe\xff"):
+        t = amostra.decode("utf-16", "replace")
+    else:
+        try:
+            t = amostra.decode("utf-8")
+        except UnicodeDecodeError:
+            t = amostra.decode("latin-1")
+    t = t.lstrip("\ufeff")
+    return t[:20_000] if t.strip() and _legivel(t) else None
+
+
+def _legivel(t):
+    'Texto, e não bytes: o `/Contents` de uma ASSINATURA digital é o PKCS#7 em hexadecimal, e'
+
+    amostra = t[:2000]
+    bons = sum(ch.isprintable() or ch in "\n\r\t" for ch in amostra)
+    return bons >= 0.85 * len(amostra)
+
+
+
+
+
+
+
+
+
+
+
+
+LIMIAR_QUASE_BRANCO = 0.92
+_RE_TOK = re.compile(rb"\((?:\\.|[^\\()])*\)|<[0-9A-Fa-f\s]*>|[-+]?(?:\d+\.?\d*|\.\d+)"
+                     rb"|/[^\s/\[\]()<>{}%]*|[A-Za-z'\"][A-Za-z0-9*'\"]*|[\[\]]", re.S)
+_OPS_COR = {b"g": 1, b"rg": 3, b"k": 4, b"sc": 0, b"scn": 0}
+_OPS_PINTA = {b"f", b"F", b"f*", b"B", b"B*", b"b", b"b*"}
+_OPS_MOSTRA = {b"Tj", b"TJ", b"'", b'"'}
+
+
+def _luz(cor):
+    """Claridade média (0 preto, 1 branco) de (n, valores), ou None."""
+    if not cor:
+        return None
+    n, v = cor
+    if n == 1:
+        return v[0]
+    if n == 3:
+        return sum(v) / 3
+    if n == 4:
+        return sum((1 - x) * (1 - v[3]) for x in v[:3]) / 3
+    return None
+
+
+def _quase_branco(cor):
+    if not cor:
+        return False
+    n, v = cor
+    if n in (1, 3):
+        return all(x >= LIMIAR_QUASE_BRANCO for x in v)
+    if n == 4:
+        return all(x <= 1 - LIMIAR_QUASE_BRANCO for x in v)
+    return False
+
+
+def _amostra_de(strings):
+    partes = []
+    for s in strings:
+        t, _ = _ler_string_pdf(s, 0)
+        if t:
+            partes.append(t)
+    return " ".join(" ".join(partes).split())[:200]
+
+
+def _parece_conteudo(dec):
+    'Content stream é texto de operadores; fonte embutida, perfil ICC e imagem não são. MEDIDO em'
+
+    cabeca = dec[:2048]
+    if cabeca.lstrip()[:4] in (b"\x00\x01\x00\x00", b"OTTO", b"true", b"%!PS", b"%!Fo", b"\x01\x00\x04\x02"):
+        return False
+    return bool(cabeca) and sum(32 <= b < 127 or b in (9, 10, 13) for b in cabeca) >= 0.6 * len(cabeca)
+
+
+
+
+
+
+
+
+
+
+
+LIMIAR_OPACIDADE = 0.05
+_RE_GS_EM_LINHA = re.compile(rb"/([^\s/<>\[\]()]+)\s*<<([^<>]*)>>")
+_RE_CA = re.compile(rb"/ca\s+([-+]?(?:\d+\.?\d*|\.\d+))")
+
+
+def _opacidades(blobs, corpos):
+    """{nome do ExtGState: opacidade de preenchimento}, de dicionários em linha e por referência."""
+    def ca(corpo):
+        m = _RE_CA.search(corpo)
+        try:
+            return float(m.group(1)) if m else None
+        except ValueError:
+            return None
+    saida = {}
+    def guardar(nome, valor):
+        saida[nome] = min(valor, saida.get(nome, valor))
+    por_numero = {}
+    for num, corpo in corpos.items():
+        v = ca(corpo)
+        if v is not None:
+            por_numero[num] = v
+    for b in blobs:
+        for m in _RE_GS_EM_LINHA.finditer(b):
+            v = ca(m.group(2))
+            if v is not None:
+                guardar(m.group(1), v)
+        if por_numero:
+            for m in _RE_NOME_REF.finditer(b):
+                v = por_numero.get(int(m.group(2)))
+                if v is not None:
+                    guardar(m.group(1), v)
+    return saida
+
+
+def _texto_claro(dec, tem_imagem=False, estado=None, opacidades=None):
+    '[(severidade, amostra, tipo)] de texto mostrado com preenchimento quase branco (`cor`) ou'
+
+
+
+
+
+
+
+
+
+    estado = {} if estado is None else estado
+    achados, nums, strs = [], [], []
+    fill, pilha = estado.get("fill", (1, (0.0,))), list(estado.get("pilha", ()))
+    desenho_escuro = estado.get("escuro", False)
+    alfa, pilha_alfa = estado.get("alfa", 1.0), list(estado.get("pilha_alfa", ()))
+    opacidades = opacidades or {}
+    em_texto = cor_no_bloco = False
+    nome = None
+    transparentes = 0
+    for m in _RE_TOK.finditer(dec):
+        t = m.group(0)
+        c = t[:1]
+        if c in b"(<":
+            strs.append(t)
+            continue
+        if c in b"[]":
+            continue
+        if c == b"/":
+            nums, nome = [], t[1:]
+            continue
+        if c in b"+-.0123456789":
+            try:
+                nums.append(float(t))
+            except ValueError:
+                nums = []
+            continue
+        if t == b"q":
+            pilha.append(fill)
+            pilha_alfa.append(alfa)
+        elif t == b"Q":
+            fill = pilha.pop() if pilha else fill
+            alfa = pilha_alfa.pop() if pilha_alfa else alfa
+        elif t == b"gs":
+
+            if nome is not None and nome in opacidades:
+                alfa = opacidades[nome]
+        elif t in _OPS_COR:
+            precisa = _OPS_COR[t]
+            if precisa and len(nums) >= precisa:
+                fill = (precisa, tuple(nums[-precisa:]))
+            elif not precisa and len(nums) in (1, 3, 4):
+                fill = (len(nums), tuple(nums))
+            else:
+                fill = None
+            cor_no_bloco = em_texto
+        elif t == b"cs":
+            fill = (1, (0.0,))
+        elif t in _OPS_PINTA:
+            luz = _luz(fill)
+            if luz is not None and luz < 0.5:
+                desenho_escuro = True
+        elif t == b"Do":
+            desenho_escuro = True
+        elif t == b"BT":
+            em_texto, cor_no_bloco = True, False
+        elif t == b"ET":
+            em_texto = False
+        elif t in _OPS_MOSTRA and em_texto:
+            if alfa < LIMIAR_OPACIDADE and transparentes < 5:
+                transparentes += 1
+                achados.append(("media" if tem_imagem else "alta", _amostra_de(strs), "opacidade"))
+            elif _quase_branco(fill) and len(achados) - transparentes < 5:
+                branco_exato = cor_no_bloco and all(x == (0.0 if fill[0] == 4 else 1.0) for x in fill[1])
+                alta = branco_exato or not (desenho_escuro or tem_imagem)
+                achados.append(("alta" if alta else "media", _amostra_de(strs), "cor"))
+        nums, strs, nome = [], [], None
+    estado.update(fill=fill, pilha=tuple(pilha), escuro=desenho_escuro, alfa=alfa,
+                  pilha_alfa=tuple(pilha_alfa))
+    return achados
+
+
+
+_RE_OFF = re.compile(rb"/OFF\s*\[([^\]]*)\]")
+_RE_PROPRIEDADES = re.compile(rb"/Properties\s*<<(.*?)>>", re.S)
+_RE_NOME_REF = re.compile(rb"/([^\s/<>\[\]()]+)\s+(\d{1,10})\s+\d{1,5}\s+R")
+_RE_OC_BDC = re.compile(rb"/OC\s*/([^\s/<>\[\]()]+)\s*BDC(.*?)EMC", re.S)
+_RE_OC_REF = re.compile(rb"/OC\s+(\d{1,10})\s+\d{1,5}\s+R")
+_RE_IMAGEM = re.compile(rb"/Subtype\s*/Image\b")
+_RE_TOK_STR = re.compile(rb"\((?:\\.|[^\\()])*\)|<[0-9A-Fa-f\s]*>", re.S)
+_RE_INFO = re.compile(rb"/Info\s+(\d{1,10})\s+\d{1,5}\s+R")
+_CHAVES_INFO = (b"Title", b"Subject", b"Keywords", b"Author", b"Creator", b"Producer")
+
+
+def _camadas_off(blobs):
+    refs = set()
+    for b in blobs:
+        for m in _RE_OFF.finditer(b):
+            refs.update(int(x) for x in _RE_REF.findall(m.group(1)))
+    nomes = set()
+    if refs:
+        for b in blobs:
+            for m in _RE_PROPRIEDADES.finditer(b):
+                for nome, ref in _RE_NOME_REF.findall(m.group(1)):
+                    if int(ref) in refs:
+                        nomes.add(nome)
+    return refs, nomes
+
+
+
+
+
+
+
+
+ALTURA_MINIMA_PT = 3.0
+_MIN_MICRO_ALTA = 5
+_MAX_PAGINAS_PROFUNDA = 300
+_RE_PAGINA_BBOX = re.compile(r'<page\s+width="([\d.]+)"\s+height="([\d.]+)"\s*>(.*?)</page>', re.S)
+_RE_PALAVRA_BBOX = re.compile(r'<word\s+xMin="([-\d.]+)"\s+yMin="([-\d.]+)"\s+xMax="([-\d.]+)"\s+'
+                              r'yMax="([-\d.]+)"\s*>(.*?)</word>', re.S)
+
+
+def analisar_bbox(xhtml):
+    """Achados da saída de `pdftotext -bbox-layout`: palavra fora da página e corpo < 3 pt."""
+    fora, micro = [], []
+    for n, m in enumerate(_RE_PAGINA_BBOX.finditer(xhtml), 1):
+        w, h = float(m.group(1)), float(m.group(2))
+        for p in _RE_PALAVRA_BBOX.finditer(m.group(3)):
+            x0, y0, x1, y1 = (float(p.group(i)) for i in range(1, 5))
+            palavra = html.unescape(p.group(5)).strip()
+            letras = sum(ch.isalnum() for ch in palavra)
+            if not letras:
+                continue
+            if x1 <= 0 or y1 <= 0 or x0 >= w or y0 >= h:
+                fora.append((n, palavra))
+            elif (y1 - y0) < ALTURA_MINIMA_PT and letras >= 3:
+                micro.append((n, palavra))
+    achados = []
+    if fora:
+        onde = _texto_do_lugar({n for n, _ in fora})
+        achados.append(_achado(
+            "texto_fora_da_pagina", "alta",
+            f"texto posto fora da área da página — não aparece, e a extração o lê; onde: {onde}",
+            " ".join(p for _, p in fora[:40]), onde))
+    if micro:
+        onde = _texto_do_lugar({n for n, _ in micro})
+        sev = "alta" if len(micro) >= _MIN_MICRO_ALTA else "media"
+        achados.append(_achado(
+            "fonte_microscopica", sev,
+            f"{len(micro)} palavra(s) com corpo efetivo abaixo de {ALTURA_MINIMA_PT:g} pt — "
+            f"ilegível na página, lida pela IA; onde: {onde}",
+            " ".join(p for _, p in micro[:40]), onde))
+    return achados
+
+
+
+
+
+
+
+
+
+
+_MIN_CMP = 8
+
+
+def _normalizar_cmp(t):
+    t = unicodedata.normalize("NFKD", t)
+    return "".join(ch for ch in t.lower() if ch.isalnum() and not unicodedata.combining(ch))
+
+
+def _literais_legiveis(dec):
+    saida = []
+    for s in re.findall(rb"\((?:\\.|[^\\()])*\)", dec):
+        t, _ = _ler_string_pdf(s, 0)
+        if t and _legivel(t) and sum(ch.isalpha() for ch in t) >= 0.7 * max(len(t.strip()), 1):
+            saida.append(t)
+    return saida
+
+
+def _texto_fora_da_pagina(por_pagina, texto_poppler, max_paginas):
+    """[(página, trecho)] do texto literal da página que o poppler não devolveu."""
+    faltas = []
+    for pagina, literais in sorted(por_pagina.items()):
+        if pagina > max_paginas:
+            continue
+
+
+
+        cands = [(t, _normalizar_cmp(t)) for t in literais if t.isascii()]
+        cands = [(t, n) for t, n in cands if len(n) >= _MIN_CMP]
+        faltam = [(t, n) for t, n in cands if n not in texto_poppler]
+
+
+        if not cands or len(faltam) > len(cands) - len(faltam):
+            continue
+        faltas.extend((pagina, " ".join(t.split())) for t, _ in faltam)
+    return faltas
+
+
+def _candidatos_pdftotext(exe=None):
+    if exe:
+        return [exe]
+    vistos, saida = set(), []
+    for c in [os.environ.get("DSR_PDFTOTEXT", "")] + [
+            os.path.join(d, nome) for d in os.environ.get("PATH", "").split(os.pathsep) if d
+            for nome in ("pdftotext.exe", "pdftotext")]:
+        if c and os.path.isfile(c):
+            chave = os.path.normcase(os.path.abspath(c))
+            if chave not in vistos:
+                vistos.add(chave)
+                saida.append(c)
+    return saida
+
+
+def camada_profunda_pdf(caminho, exe=None, timeout=180, max_paginas=_MAX_PAGINAS_PROFUNDA):
+    """{'rodou': bool, 'motivo'?, 'achados': [...], 'exe'?}. Nunca levanta."""
+    import subprocess
+    if not caminho or not os.path.isfile(str(caminho)):
+        return {"rodou": False, "achados": [], "motivo": "sem arquivo em disco para o poppler ler"}
+    candidatos = _candidatos_pdftotext(exe)
+    if not candidatos:
+        return {"rodou": False, "achados": [], "motivo": "pdftotext (poppler) fora do PATH"}
+    motivos = []
+    for c in candidatos:
+        try:
+            proc = subprocess.run([c, "-bbox-layout", "-enc", "UTF-8", "-l", str(max_paginas),
+                                   str(caminho), "-"], capture_output=True, timeout=timeout)
+        except subprocess.TimeoutExpired:
+            motivos.append(f"{c}: não terminou em {timeout} s")
+            continue
+        except OSError as e:
+            motivos.append(f"{c}: não executa ({e.__class__.__name__})")
+            continue
+        saida = proc.stdout.decode("utf-8", "replace")
+        if proc.returncode != 0 or "<page" not in saida:
+            erro = proc.stderr.decode("utf-8", "replace")
+            motivos.append(f"{c}: sem saída -bbox-layout"
+                           + (" (é o pdftotext do xpdf, não o do poppler)" if "xpdf" in erro.lower()
+                              or "-bbox" in erro else f" (exit {proc.returncode})"))
+            continue
+        return {"rodou": True, "achados": analisar_bbox(saida), "exe": c,
+                "texto": _normalizar_cmp(" ".join(html.unescape(p.group(5))
+                                                  for p in _RE_PALAVRA_BBOX.finditer(saida))),
+                "max_paginas": max_paginas}
+    return {"rodou": False, "achados": [], "motivo": "; ".join(motivos)[:400]}
+
+
+def varrer_pdf(dados, profunda=False, caminho=None, detector=None, timeout_profunda=180):
+    'Varre um PDF (bytes ou caminho). Estrutura e content streams — não renderiza.'
+
+
+
+
+    if caminho is None and isinstance(dados, (str, os.PathLike)):
+        caminho = dados
     achados = []
     try:
         if isinstance(dados, (str, os.PathLike)):
@@ -928,8 +1961,15 @@ def varrer_pdf(dados):
 
     invisiveis = {}
     ja_acusados = {a["id"] for a in achados}
+    comprimidos, textos, xmp, camada_txt, literais_pagina, estados_pagina = [], [], [], [], {}, {}
+
+    pre = [decodificar_stream(m.group(1)) for m in RE_STREAM.finditer(dados)
+           if mapa.objeto_em(m.start()) in mapa.comprimidos][:200]
+    refs_off, nomes_off = _camadas_off([dados] + pre)
+    opacidades = _opacidades([dados] + pre, mapa.corpos)
     for pos, dec in _streams(dados):
         if mapa.objeto_em(pos) in mapa.comprimidos:
+            comprimidos.append(dec)
 
 
             for ident, sev, rx, desc in _TOKENS_PDF:
@@ -939,20 +1979,89 @@ def varrer_pdf(dados):
                     achados.append(_achado(ident, sev, f"{desc}; onde: {SEM_PAGINA} (o arquivo guarda a "
                                            "estrutura comprimida)", m.group(0).decode("latin-1"), SEM_PAGINA))
             continue
+
+
+        if _RE_E_EMBUTIDO.search(mapa.corpos.get(mapa.objeto_em(pos), b"")):
+            t = _texto_embutido(dec)
+            if t:
+                textos.append(("arquivo embutido", "", t))
+            continue
         if _cmap_devolve_invisivel(dec):
             invisiveis.setdefault("caractere_invisivel", (_achado(
                 "caractere_invisivel", "media",
                 "caractere de largura zero no texto de uma fonte do documento — some na tela, "
                 "entra no texto extraído", "(caractere invisível removido da amostra)"), set()))[1].add(None)
+        if b"xmpmeta" in dec[:4096] or b"<rdf:RDF" in dec[:4096]:
+            t = _texto_xml(dec.decode("utf-8", "replace"))
+            if t:
+                xmp.append(t)
+            continue
+        corpo = mapa.corpos.get(mapa.objeto_em(pos), b"")
+
+        pag = mapa.conteudos.get(mapa.objeto_em(pos))
+        estado = estados_pagina.setdefault(pag, {}) if pag is not None else None
+        if _RE_IMAGEM.search(corpo) or not _parece_conteudo(dec):
+            continue
+        if b"BT" not in dec:
+            if estado is not None:
+                _texto_claro(dec, tem_imagem, estado, opacidades)
+            continue
+        lugar = mapa.lugar_em(pos)
+        onde = _texto_do_lugar({lugar}) if lugar is not None else ""
+        if profunda and mapa.objeto_em(pos) in mapa.conteudos:
+            literais_pagina.setdefault(mapa.conteudos[mapa.objeto_em(pos)], []).extend(
+                _literais_legiveis(dec))
+        if _RE_MOSTRA_TEXTO.search(dec):
+            for sev, amostra, tipo in _texto_claro(dec, tem_imagem, estado, opacidades):
+                if tipo == "opacidade":
+                    achados.append(_achado(
+                        "texto_transparente", sev,
+                        "texto desenhado com opacidade zero (ou quase) — invisível na página, "
+                        "legível na extração" + ("" if sev == "alta" else
+                                                 "; com imagem no arquivo, pode ser a camada de "
+                                                 "reconhecimento de texto de um escaneado"),
+                        amostra, onde))
+                elif sev == "alta":
+                    achados.append(_achado(
+                        "texto_invisivel_cor", "alta",
+                        "texto desenhado com preenchimento branco ou quase branco — invisível "
+                        "na página, legível na extração", amostra, onde))
+                else:
+                    achados.append(_achado(
+                        "texto_claro_sobre_desenho", "media",
+                        "texto em branco ou quase branco depois de um desenho escuro ou imagem — "
+                        "pode ser título sobre faixa; confira se aparece na página", amostra, onde))
+
+            if nomes_off:
+                for m_oc in _RE_OC_BDC.finditer(dec):
+                    if m_oc.group(1) in nomes_off and _RE_MOSTRA_TEXTO.search(m_oc.group(2)):
+                        camada_txt.append((onde, _amostra_de(_RE_TOK_STR.findall(m_oc.group(2)))))
+            m_ref = _RE_OC_REF.search(corpo)
+            if m_ref and int(m_ref.group(1)) in refs_off:
+                camada_txt.append((onde, _amostra_de(_RE_TOK_STR.findall(dec))))
+        for m_rv in _RE_RECORTE_VAZIO.finditer(dec):
+            m_q = _RE_Q_FECHA.search(dec, m_rv.end())
+            trecho_rv = dec[m_rv.end():m_q.start() if m_q else len(dec)]
+            blocos_rv = [b for b in _RE_BT_ET.findall(trecho_rv) if _RE_MOSTRA_TEXTO.search(b)]
+            if blocos_rv:
+                achados.append(_achado(
+                    "texto_em_recorte_vazio", "alta",
+                    "texto desenhado dentro de um recorte de área zero (re W n com largura e altura "
+                    "zero) — não aparece na página, e a extração o lê",
+                    b" ".join(_RE_LITERAL.findall(b" ".join(blocos_rv)))[:200]
+                    .decode("latin-1", "replace")))
+                break
         for bloco in _RE_BT_ET.findall(dec):
             if not _RE_MOSTRA_TEXTO.search(bloco):
                 continue
             amostra = b" ".join(_RE_LITERAL.findall(bloco))[:200].decode("latin-1", "replace")
-            if _RE_BRANCO.search(bloco):
+            if _RE_TR7.search(bloco):
                 achados.append(_achado(
-                    "texto_invisivel_cor", "alta",
-                    "texto desenhado com preenchimento branco — invisível na página, "
-                    "legível na extração", amostra))
+                    "texto_recorte_render", "media" if tem_imagem else "alta",
+                    "texto em modo de recorte (7 Tr): entra só no recorte e não é pintado"
+                    + (" — com imagem no arquivo pode ser texto preenchido por imagem; confira na "
+                       "página" if tem_imagem else " — sem imagem no arquivo, nada o mostra"),
+                    amostra))
             if _RE_TR3.search(bloco):
                 if tem_imagem:
                     achados.append(_achado(
@@ -968,12 +2077,81 @@ def varrer_pdf(dados):
         onde = _texto_do_lugar(lugares)
         achados.append(_achado(a["id"], a["severidade"], f"{a['descricao']}; onde: {onde}", a["trecho"], onde))
 
-    return _resultado(achados, "pdf")
+
+    for onde, amostra in camada_txt:
+        achados.append(_achado(
+            "camada_desligada", "alta",
+            "texto numa camada que o documento declara DESLIGADA — não aparece na página, e a "
+            "extração o lê" + (f"; onde: {onde}" if onde else ""), amostra, onde))
+        if amostra:
+            textos.append(("camada desligada", onde, amostra))
+    if refs_off and not camada_txt:
+        achados.append(_achado(
+            "camada_desligada", "baixa",
+            "o documento declara camada desligada, sem texto achado nela pela leitura da "
+            "estrutura — informativo", "/OCProperties /OFF"))
+    for num, corpo in mapa.corpos.items():
+        if b"/ByteRange" in corpo or re.search(rb"/Type\s*/Sig\b", corpo):
+            continue
+        lugar = mapa.pagina_de.get(num)
+        onde = _texto_do_lugar({lugar}) if lugar is not None else ""
+        for t in _strings_da_chave(corpo, b"Contents"):
+            textos.append(("anotação", onde, t))
+        if b"/FT" in corpo or re.search(rb"/T\s*[(<]", corpo):
+            for t in _strings_da_chave(corpo, b"V"):
+                textos.append(("campo de formulário", onde, t))
+    for blob in pre:
+
+        for t in _strings_da_chave(blob, b"Contents"):
+            textos.append(("anotação", SEM_PAGINA, t))
+        for m_v in re.finditer(rb"/FT\s*/\w+", blob):
+            for t in _strings_da_chave(blob[m_v.start():m_v.start() + 600], b"V")[:1]:
+                textos.append(("campo de formulário", SEM_PAGINA, t))
+    for num in {int(n) for n in _RE_INFO.findall(dados)}:
+        corpo = mapa.corpos.get(num, b"")
+        partes = [t for chave in _CHAVES_INFO for t in _strings_da_chave(corpo, chave)]
+        if partes:
+            textos.append(("metadados", "propriedades do documento", " | ".join(partes)))
+    for t in xmp:
+        textos.append(("metadados", "propriedades do documento", t))
+    for fonte, onde, t in textos:
+        if fonte != "camada desligada":
+            _invisiveis(t, achados, f"texto de {fonte}", onde)
+
+    extra_prof = {}
+    if profunda:
+        prof = camada_profunda_pdf(caminho, timeout=timeout_profunda)
+        if prof["rodou"]:
+            achados.extend(prof["achados"])
+            extra_prof["camada_profunda"] = True
+            faltas = _texto_fora_da_pagina(literais_pagina, prof["texto"], prof["max_paginas"])
+            if faltas and not any(a["id"] == "texto_fora_da_pagina" for a in prof["achados"]):
+                onde = _texto_do_lugar({p for p, _ in faltas})
+                achados.append(_achado(
+                    "texto_fora_da_pagina", "media",
+                    "texto escrito no arquivo que o leitor de PDF não mostra na página (desenhado "
+                    f"fora da área visível, provavelmente); onde: {onde}",
+                    " | ".join(t for _, t in faltas[:10]), onde))
+                for p, t in faltas[:20]:
+                    textos.append(("texto fora da página", _texto_do_lugar({p}), t))
+        else:
+            extra_prof["camada_profunda_motivo"] = prof.get("motivo", "")
+    det = _detector_padrao() if detector is None else (detector or None)
+    extra = {"detector_linguistico": True} if _julgar_textos(textos, achados, det) else _sem_detector(textos)
+    extra.update(extra_prof)
+    return _resultado(achados, "pdf", extra)
 
 
 
 
-def _resultado(achados, tipo):
+def _sem_detector(textos):
+    return {"detector_linguistico": False,
+            "textos_nao_exibidos": [{"fonte": f, "onde": o, "texto": " ".join(t.split())[:300]}
+                                    for f, o, t in textos[:20]]}
+
+
+def _resultado(achados, tipo, extra=None):
+    extra = dict(extra or {})
     vistos, unicos = set(), []
     for a in achados:
 
@@ -989,10 +2167,12 @@ def _resultado(achados, tipo):
         "ok": True, "tipo": tipo, "suspeito": bool(unicos),
         "severidade_max": {3: "alta", 2: "media", 1: "baixa", 0: "nenhuma"}[sev_max],
         "exit_code": codigo, "total": len(unicos), "achados": unicos[:50],
-        "camada_profunda": TEM_CAMADA_PROFUNDA,
+        "camada_profunda": bool(extra.pop("camada_profunda", TEM_CAMADA_PROFUNDA)),
     }
-    if not TEM_CAMADA_PROFUNDA:
-        out["aviso_cobertura"] = AVISO_SEM_CAMADA_PROFUNDA
+    out["aviso_cobertura"] = AVISO_COM_CAMADA_PROFUNDA if out["camada_profunda"] else AVISO_SEM_CAMADA_PROFUNDA
+    if extra.get("detector_linguistico") is False:
+        out["aviso_cobertura"] += AVISO_SEM_DETECTOR
+    out.update(extra)
     if codigo == 1:
         out["acao"] = "escalar"
         out["aviso"] = (
@@ -1006,23 +2186,30 @@ def _resultado(achados, tipo):
     return out
 
 
-def varrer(caminho):
+def varrer(caminho, entrada=False, profunda=False):
+    '`entrada=True`: documento lido de fora ou arquivo final a conferir — o texto não exibido'
+
     ext = os.path.splitext(str(caminho))[1].lower()
     if ext in (".docx", ".docm"):
-        return varrer_docx(caminho)
+        return varrer_docx(caminho, linguistico=entrada)
     if ext == ".pdf":
-        return varrer_pdf(caminho)
+        return varrer_pdf(caminho, profunda=profunda)
     return {"ok": False, "exit_code": 2, "achados": [], "camada_profunda": TEM_CAMADA_PROFUNDA,
             "erro": f"extensão não coberta por esta varredura: {ext or '(sem extensão)'}"}
 
 
 def main(argv):
+
+
+    sem_profunda = "--sem-camada-profunda" in argv
+    argv = [a for a in argv if a != "--sem-camada-profunda"]
     if len(argv) != 2 or not os.path.isfile(argv[1]):
         print(json.dumps({"ok": False, "exit_code": 2,
                           "erro": "informe UM arquivo .pdf ou .docx existente",
-                          "uso": "python3 varredura_documento.py <arquivo>"}, ensure_ascii=False))
+                          "uso": "python3 varredura_documento.py <arquivo> [--sem-camada-profunda]"},
+                         ensure_ascii=False))
         return 2
-    r = varrer(argv[1])
+    r = varrer(argv[1], entrada=True, profunda=not sem_profunda)
     code = r.get("exit_code", 2)
     print(json.dumps(r, ensure_ascii=False))
     return code

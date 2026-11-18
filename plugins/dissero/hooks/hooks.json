@@ -81,7 +81,7 @@
         ]
       },
       {
-        "matcher": "Bash|Shell|PowerShell|Pwsh|Write|Edit|^(?:mcp__.*__)?(?:[Bb]ash|[Ss]h|[Ss]hell|[Zz]sh|[Pp]ower_?[Ss]hell|[Pp]wsh|[Cc]md|[Tt]erminal|[Rr]un_?[Ii]n_?[Tt]erminal|[Cc]tx_(?:[Bb]atch_)?[Ee]xecute(?:_[Ff]ile)?|[Rr]un_?[Cc]ommand|[Ee]xec(?:ute)?(?:_[Cc]ommand)?|[Mm]onitor)$|^mcp__.*__(?:[Ff]ile_?[Ss]ystem|[Ff]iles?|[Ff]ile_?[Uu]pload|(?:[Cc]opy|[Mm]ove|[Rr]ename|[Ww]rite|[Cc]reate|[Uu]pload|[Ss]ave|[Pp]ut|[Ee]dit)_?[Ff]ile(?:_[Cc]ontent)?)$|^SendUserFile$|^(?:mcp__.*__)?present_files$|^Artifact$|^mcp__.*__(?:batch|update|create|(?:create|update)_doc|(?:create|update)_draft|update_file|criar_nota|reescrever_nota|write_pdf)$",
+        "matcher": "Bash|Shell|PowerShell|Pwsh|Write|Edit|MultiEdit|NotebookEdit|^(?:mcp__.*__)?(?:[Bb]ash|[Ss]h|[Ss]hell|[Zz]sh|[Pp]ower_?[Ss]hell|[Pp]wsh|[Cc]md|[Tt]erminal|[Rr]un_?[Ii]n_?[Tt]erminal|[Cc]tx_(?:[Bb]atch_)?[Ee]xecute(?:_[Ff]ile)?|[Rr]un_?[Cc]ommand|[Ee]xec(?:ute)?(?:_[Cc]ommand)?|[Mm]onitor)$|^mcp__.*__(?:[Ff]ile_?[Ss]ystem|[Ff]iles?|[Ff]ile_?[Uu]pload|(?:[Cc]opy|[Mm]ove|[Rr]ename|[Ww]rite|[Cc]reate|[Uu]pload|[Ss]ave|[Pp]ut|[Ee]dit)_?[Ff]ile(?:_[Cc]ontent)?)$|^SendUserFile$|^(?:mcp__.*__)?present_files$|^Artifact$|^mcp__.*__(?:batch|update|create|(?:create|update)_doc|(?:create|update)_draft|update_file|criar_nota|reescrever_nota|write_pdf)$",
         "hooks": [
           {
             "type": "command",

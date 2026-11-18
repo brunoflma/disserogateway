@@ -23,6 +23,7 @@ IDS = [
     "admissibilidade_recursal", "atualizacao_monetaria", "horas_extras",
     "salario_liquido_inss", "dosimetria_penal", "progressao_regime",
     "auditoria_pjecalc", "jurimetria_admissibilidade", "revisional_taxa_media",
+    "tributo_federal_lei_9430", "relevancia_presuncao_valor", "resumo_343a",
 ]
 SHA_RX = re.compile(r"^[0-9a-f]{64}$")
 
@@ -48,8 +49,8 @@ def validar(dados, hoje=None):
     if not isinstance(dados, dict) or dados.get("schema_version") != VERSAO:
         return ["schema_version inválida"]
     itens = dados.get("capacidades")
-    if not isinstance(itens, list) or len(itens) != 9:
-        return ["o catálogo deve conter exatamente nove capacidades"]
+    if not isinstance(itens, list) or len(itens) != len(IDS):
+        return ["o catálogo deve conter exatamente doze capacidades"]
     if [x.get("id") for x in itens if isinstance(x, dict)] != IDS:
         erros.append("ordem/IDs das capacidades divergem do plano aprovado")
     hoje = hoje or dt.date.today()

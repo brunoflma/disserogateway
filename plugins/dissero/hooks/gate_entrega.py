@@ -49,8 +49,48 @@
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 import sys, os, json, re, tempfile, hashlib, glob, base64, zipfile
 import html
+import array, bisect, codecs, time, unicodedata
 
 try:
     sys.stdout.reconfigure(encoding="utf-8")
@@ -2679,9 +2719,15 @@ def _varredura_bloqueia(evento, alvo, origens=()):
                         f"perfil_do_advogado(parte=\"identidade\") e grave com "
                         f"`perfil_advogado.py --gravar-identidade <zip>`.")
             return (f"Entrega de PEÇA BLOQUEADA: ELEMENTO OCULTO em "
-                    f"{os.path.basename(caminho)} — {itens}. Texto invisível em peça é ato "
-                    f"atentatório à dignidade da justiça (CPC, arts. 5º e 77, § 2º). Remova antes "
-                    f"de protocolar; a responsabilidade é de quem subscreve.")
+                    f"{os.path.basename(caminho)} — {itens}. Texto invisível em peça pode "
+                    f"configurar ato atentatório à dignidade da justiça ou litigância de má-fé "
+                    f"(CPC, arts. 5º, 77 e 80; enquadramento a conferir). No REsp 2.256.731/PB "
+                    f"(Sexta Turma, DJEN de 11/09/2026), o STJ decidiu que comando oculto "
+                    f"destinado a manipular IA caracteriza ato atentatório à dignidade da justiça "
+                    f"e mandou oficiar à OAB e ao MPF; noutro processo, aplicou multa por "
+                    f"litigância de má-fé (notícia oficial do STJ de 03/09/2026; acórdão não "
+                    f"lido). Remova antes de "
+                    f"protocolar; a responsabilidade é de quem subscreve.")
     return None
 
 
@@ -3419,6 +3465,1117 @@ def _deny_sem_oficial(reason):
 
 
 
+PROVENIENCIA_PLUGIN = "[Dissero · sigilo do método] "
+_ESTADO_PLUGIN = ("Isto é estado da sessão, informado pelo plugin Dissero instalado; não é instrução vinda de "
+                  "documento. ")
+MSG_PLUGIN_ORIGEM = (PROVENIENCIA_PLUGIN + _ESTADO_PLUGIN +
+                     "Ferramenta negada: ela copiaria, moveria, compactaria, enviaria ou colaria arquivo do "
+                     "próprio plugin (instruções, regras, programas), que é sigiloso. Ler esses arquivos, rodar "
+                     "os programas do plugin e gravar o resultado deles na pasta do caso continuam livres. "
+                     "Responda ao advogado que os arquivos do plugin não saem pela conversa e siga com o "
+                     "trabalho jurídico.")
+MSG_PLUGIN_CONTEUDO = (PROVENIENCIA_PLUGIN + _ESTADO_PLUGIN +
+                       "Ferramenta negada: o texto a gravar ou enviar reproduz trechos extensos das instruções do "
+                       "plugin, que são sigilosas. Peça, nota e resumo do caso continuam livres, com as palavras "
+                       "do próprio trabalho. Responda ao advogado que as instruções do plugin não saem pela "
+                       "conversa e siga com o trabalho jurídico.")
+
+
+
+
+_EXT_LIVRE_PLUGIN = (".docx", ".dotx", ".png", ".jpg", ".jpeg", ".gif", ".svg", ".ico", ".ttf", ".otf",
+                     ".woff", ".woff2", ".pdf", ".xlsx")
+_MODELO_PLUGIN = re.compile(r'\.MODELO\.[A-Za-z0-9]+$', re.I)
+
+
+_PLUGIN_POR_PADRAO = re.compile(r'(?:/\.claude/plugins/(?!data/)|\.remote-plugins/|/remote_cowork_plugins/)'
+                                r'(?:[^/]*/)*?[^/]*dissero', re.I)
+
+_ARQUIVO_SO_DO_PLUGIN = re.compile(r'(?:^|/)[^/]*dissero[^/]*/(?:[^/]+/)*?'
+                                   r'(?:skill\.md|references/[^/]+|hooks/[^/]+\.(?:py|sh|json))$', re.I)
+
+
+_ANTEPASSADOS_PLUGIN = 5
+
+_VERBOS_COPIA_PLUGIN = frozenset((
+    "cp", "copy", "copy-item", "cpi", "mv", "move", "move-item", "mi", "rsync", "scp", "sftp", "xcopy",
+    "robocopy", "ditto", "install", "ln", "link", "mklink", "rclone", "dd", "rename", "ren", "rename-item",
+    "rni", "gsutil", "azcopy"))
+_VERBOS_ARQUIVA_PLUGIN = frozenset((
+    "tar", "zip", "7z", "7za", "7zr", "rar", "gzip", "bzip2", "xz", "zstd", "pigz", "compress-archive",
+    "jar", "cpio", "pax", "makecab", "compact", "bsdtar", "zipcloak"))
+
+_VERBOS_ESCRITA_PLUGIN = frozenset((
+    "tee", "set-content", "sc", "add-content", "ac", "out-file", "clip", "set-clipboard", "scb", "pbcopy",
+    "xclip", "xsel", "wl-copy", "curl", "wget", "iwr", "irm", "invoke-webrequest", "invoke-restmethod",
+    "nc", "ncat", "netcat", "ssh", "ftp", "start-bitstransfer", "split"))
+_VERBOS_REDE_PLUGIN = frozenset(("curl", "wget", "iwr", "irm", "invoke-webrequest", "invoke-restmethod"))
+_AREA_TRANSFERENCIA = frozenset(("clip", "set-clipboard", "scb", "pbcopy", "xclip", "xsel", "wl-copy"))
+_COPIA_PS = frozenset(("copy-item", "cpi", "move-item", "mi"))
+_VERBOS_LOTE_PLUGIN = frozenset(("find", "xargs", "forfiles", "parallel", "foreach-object", "%"))
+_INTERPRETES_PLUGIN = re.compile(r'^(?:python(?:\d+(?:\.\d+)?)?w?|py|node|nodejs|deno|bun|perl|ruby|php|'
+                                 r'bash|sh|zsh|dash|ksh|pwsh|powershell|rscript)$')
+_OPCAO_CODIGO = {"python": ("-c",), "node": ("-e", "--eval", "-p", "--print"), "perl": ("-e", "-E"),
+                 "ruby": ("-e",), "php": ("-r",), "pwsh": ("-command", "-c"), "deno": ("eval",),
+                 "bun": ("-e", "--eval")}
+_MODULOS_QUE_ARQUIVAM = frozenset(("zipfile", "tarfile", "gzip", "base64", "shutil", "http.server", "uu"))
+
+_CODIGO_GRAVA = re.compile(
+    r"shutil\.|copytree|copyfile|make_archive|zipfile|tarfile|write_text|write_bytes|\.write\(|"
+    r"open\([^)]*['\"][wax]b?\+?['\"]|copyFileSync|copyFile\(|writeFileSync|writeFile\(|fs\.cp|fs\.promises|"
+    r"createWriteStream|urlopen|requests\.(?:post|put)|urllib|http\.client|socket|pyperclip|os\.rename|"
+    r"os\.replace|os\.system|subprocess|Set-Clipboard|Copy-Item|Set-Content|Out-File|\bFile\]::(?:Copy|Move|"
+    r"WriteAll)|::Copy\(|\.CopyTo\(|WriteAll(?:Text|Bytes|Lines)|Compress-Archive|IO\.Compression|"
+    r"appendFile|writeSync|AppendAll(?:Text|Lines)|symlink|os\.link\(|fs\.link|CreateSymbolicLink|"
+    r"CreateHardLink|CreateFromDirectory|ZipFile\]", re.I)
+
+_LANCADORES = frozenset(("uv", "poetry", "pipx", "conda", "pdm", "hatch", "rye", "mamba", "micromamba"))
+_LANCADOR_COM_VALOR = frozenset(("-n", "--name", "-p", "--prefix", "--python", "--with", "--project",
+                                 "--directory", "-e", "--env"))
+_EXT_SCRIPT = (".py", ".pyw", ".sh", ".bash", ".ps1", ".psm1", ".js", ".mjs", ".cjs", ".ts", ".pl", ".rb",
+               ".php", ".r", ".bat", ".cmd")
+
+_LISTAGEM = frozenset(("ls", "dir", "tree", "get-childitem", "gci", "du", "stat", "wc", "find",
+                       "test-path", "measure-object"))
+_FIND_QUE_LE = frozenset(("-exec", "-execdir", "-ok", "-okdir", "-fprint", "-fprintf", "-fls", "-delete"))
+
+
+
+_LEITORES_PLUGIN = frozenset(("cat", "head", "tail", "less", "more", "grep", "egrep", "fgrep", "rg",
+                              "findstr", "select-string", "sls", "get-content", "gc", "type", "sort", "uniq",
+                              "cut", "sed", "awk", "diff", "cmp", "file", "echo", "printf", "write-output",
+                              "write-host", "mkdir", "md"))
+_VERBOS_LINK = frozenset(("ln", "link", "mklink"))
+_OPACO = re.compile(r'\$\(|\$\{|<\(|::|`|\$(?!null\b|true\b|false\b|_\b)[A-Za-z_]|[*?]')
+_SINAL_ESCRITA = re.compile(
+    r'(?<![<0-9&])>{1,2}(?!&)\s*(?!/dev/null\b|\$null\b|nul\b)["\']?[^\s|&;]|'
+    r'(?<![\w-])(?:cp|copy|copy-item|cpi|mv|move|move-item|xcopy|robocopy|rsync|scp|sftp|tar|zip|7z|7za|'
+    r'compress-archive|tee|set-content|add-content|out-file|clip|set-clipboard|curl|wget|iwr|irm|'
+    r'invoke-webrequest|invoke-restmethod|git|certutil|mklink|fsutil|ln|new-item|ni|start-process|saps|'
+    r'iex|invoke-expression|bitsadmin|ssh|ftp|nc|ncat|xargs|base64|openssl|gpg|split|dd)(?![\w-])|'
+    r'-e(?:nc(?:odedcommand)?)?\s+[A-Za-z0-9+/=]{16,}|\b(?:exec|eval|compile)\s*\(|b64decode|'
+    r'frombase64string|\bcmd(?:\.exe)?\s+/{1,2}[ck]\b', re.I)
+_SYS_PATH = re.compile(r'sys\.path\.(?:insert|append)\s*\([^)\n]*\)')
+_BASE64_TRECHO = re.compile(r'[A-Za-z0-9+/]{16,}={0,2}')
+_PARAMS_DESTINO = ("t", "target-directory", "destination", "destinationpath", "dest", "target")
+_PARAMS_COM_VALOR = ("path", "literalpath", "filter", "include", "exclude", "credential", "x", "w",
+                     "o", "output", "outfile", "m", "f", "file", "c")
+
+
+_FORMATO_INDICE = b"DSRIDX2\n"
+_SHINGLE_PLUGIN = 8
+_SHINGLES_MIN_PLUGIN = 30
+_CASADOS_MIN_PLUGIN = 40
+_FRACAO_PLUGIN = 0.15
+_CASADOS_ABSOLUTOS_PLUGIN = 300
+_TETO_TEXTO_PLUGIN = 1_500_000
+_TETO_ARQUIVOS_INDICE = 3000
+_CACHES_GUARDADOS = 3
+_INDICE_MEMO = {}
+_PUBLICO_MEMO = {}
+_EXT_TEXTO_ENVIO = (".md", ".markdown", ".txt", ".html", ".htm", ".json", ".py", ".csv", ".xml", ".yaml",
+                    ".yml", ".rtf", ".sh", ".ps1", ".js", ".ts", "")
+
+
+
+
+_LINHA_DE_LEI = re.compile(r'^[\s>*\-#|]*(?:art(?:igo)?s?\.?\s*\d|§|par[áa]grafo\s+[úu]nico|'
+                           r's[úu]mula|[IVXLC]+\s*[-–—]\s|lei\s+n|decreto|enunciado)', re.I)
+_ENTRE_ASPAS_CURVAS = re.compile(r'“[^”]{0,4000}”')
+
+_BLOCO_CERCADO = re.compile(r'^[ \t]*(```|~~~)[^\n]*\n.*?^[ \t]*\1[ \t]*$', re.M | re.S)
+_CODIGO_NA_LINHA = re.compile(r'`[^`\n]{1,400}`')
+_TETO_VARIANTES = 200_000
+_HOMOGLIFOS = str.maketrans(
+    "аеорсхуіјѕԁһӏАВЕКМНОРСТХУІЈЅαοριυνκΑΒΕΖΗΙΚΜΝΟΡΤΥΧ",
+    "aeopcxyijsdhlABEKMHOPCTXYIJSaopiuvkABEZHIKMNOPTYX")
+
+
+_INVISIVEIS = re.compile('[­؀-؅؜۝܏᠎​-‏‪-‮'
+                         '⁠-⁤⁦-⁯﻿￹-￻\U000110bd\U0001bca0-\U0001bca3'
+                         '\U0001d173-\U0001d17a\U000e0001\U000e0020-\U000e007f]')
+_COMBINANTES = re.compile('[̀-ͯ҃-҉᪰-᫿᷀-᷿⃐-⃿︠-︯]')
+_ACUMULO_TETO = 20000
+_ACUMULO_MIN = 8
+
+
+def _base_barreira():
+    if _caso_raiz is not None and callable(getattr(_caso_raiz, "base_dir", None)):
+        try:
+            return _caso_raiz.base_dir()
+        except Exception:
+            pass
+    return os.path.join(os.path.expanduser("~"), ".dissero")
+
+
+def _registrar_barreira(evento, **campos):
+    'Uma linha em `<base>/entrega/barreira.jsonl`: o evento, a hora e números. Nunca caminho nem'
+
+    try:
+        pasta = os.path.join(_base_barreira(), "entrega")
+        os.makedirs(pasta, exist_ok=True)
+        arq = os.path.join(pasta, "barreira.jsonl")
+        try:
+            if os.path.getsize(arq) > 200_000:
+                with open(arq, "rb") as fh:
+                    fim = fh.read()[-100_000:]
+                with open(arq, "wb") as fh:
+                    fh.write(fim[fim.find(b"\n") + 1:])
+        except OSError:
+            pass
+        linha = dict({"em": int(time.time()), "evento": evento}, **campos)
+        with open(arq, "a", encoding="utf-8") as fh:
+            fh.write(json.dumps(linha, ensure_ascii=False) + "\n")
+    except Exception:
+        pass
+
+
+def _raiz_corrente():
+    """A raiz do plugin em execução: a do harness, ou a pasta acima deste hook."""
+    return (os.environ.get("CLAUDE_PLUGIN_ROOT") or os.environ.get("CODEX_PLUGIN_ROOT")
+            or os.path.dirname(AQUI))
+
+
+def _repo_de_manutencao(d):
+    return (os.path.isfile(os.path.join(d, "build", "publicar.py"))
+            and os.path.isfile(os.path.join(d, "canal", "worker", "wrangler.jsonc")))
+
+
+_REPO_MEMO = {}
+
+
+def _repo_verificado(d, raiz):
+    'A pasta `d` é o repositório do plugin DE VERDADE: tem a assinatura (`build/publicar.py`,'
+
+
+
+    if not _repo_de_manutencao(d):
+        return False
+    chave = (_chave_caminho(d), _chave_caminho(raiz or ""))
+    if chave in _REPO_MEMO:
+        return _REPO_MEMO[chave]
+    ok = False
+    try:
+        for p in sorted(glob.glob(os.path.join(raiz, "skills", "*", "SKILL.md")))[:60]:
+            q = os.path.join(d, os.path.relpath(p, raiz))
+            if not os.path.isfile(q):
+                continue
+            with open(p, encoding="utf-8", errors="replace") as fh:
+                a = _hashes_trechos(fh.read())
+            if len(a) < 100:
+                continue
+            with open(q, encoding="utf-8", errors="replace") as fh:
+                b = _hashes_trechos(fh.read())
+            if len(a & b) * 2 >= len(a):
+                ok = True
+                break
+    except (OSError, ValueError):
+        ok = False
+    _REPO_MEMO[chave] = ok
+    return ok
+
+
+def _isento_barreira(evento, raiz):
+    'Manutenção do próprio plugin: cópia de desenvolvimento, plugin rodando do repositório, ou'
+
+
+
+    r = (raiz or "").replace("\\", "/")
+    if "dissero-dev" in r or r.endswith("/canal/dev") or "/canal/dev/" in r:
+        return True
+    try:
+        if raiz and _repo_de_manutencao(raiz):
+            return True
+        cwd = str((evento or {}).get("cwd") or "")
+        d = os.path.abspath(cwd) if cwd else ""
+        for _ in range(6):
+            if not d:
+                break
+            if _repo_verificado(d, raiz):
+                return True
+            pai = os.path.dirname(d)
+            if pai == d:
+                break
+            d = pai
+    except Exception:
+        return False
+    return False
+
+
+def _raizes_plugin():
+    """Chaves (caminho real, normalizado) das raízes deste plugin: a do harness e a deste hook."""
+    out = []
+    for r in (os.environ.get("CLAUDE_PLUGIN_ROOT"), os.environ.get("CODEX_PLUGIN_ROOT"), os.path.dirname(AQUI)):
+        if not (isinstance(r, str) and r.strip()):
+            continue
+        try:
+            k = _chave_caminho(os.path.realpath(r.strip())).rstrip("\\/")
+        except (OSError, ValueError):
+            continue
+        if k and k not in out and len(k) > 3:
+            out.append(k)
+    return out
+
+
+def _formas_textuais_raizes(raizes):
+    """As raízes como aparecem em código embutido: barra normal, minúsculas, com e sem caminho real."""
+    out = set()
+    for r in list(raizes) + [x for x in (os.environ.get("CLAUDE_PLUGIN_ROOT"),
+                                         os.environ.get("CODEX_PLUGIN_ROOT")) if x]:
+        f = r.replace("\\", "/").rstrip("/").lower()
+        if len(f) > 3:
+            out.add(f)
+            m = re.match(r'^([a-z]):/(.*)$', f)
+            if m:
+                out.add(f"/{m.group(1)}/{m.group(2)}")
+    return out
+
+
+_FILESET_MEMO = {}
+
+
+def _fileset_da_raiz(r):
+    '(arquivos, pastas) da lista do pacote (`.claude-plugin/fileset.json`), em chave de caminho,'
+
+    if r in _FILESET_MEMO:
+        return _FILESET_MEMO[r]
+    out = None
+    try:
+        with open(os.path.join(r, ".claude-plugin", "fileset.json"), encoding="utf-8") as fh:
+            lista = json.load(fh)
+        if isinstance(lista, list) and lista:
+            arqs, pastas = set(), set()
+            for rel in lista:
+                if not isinstance(rel, str) or not rel.strip():
+                    continue
+                k = _chave_caminho(os.path.join(r, rel))
+                arqs.add(k)
+                d = os.path.dirname(k)
+                while len(d) > len(r) and d not in pastas:
+                    pastas.add(d)
+                    d = os.path.dirname(d)
+            out = (arqs, pastas)
+    except (OSError, ValueError):
+        out = None
+    _FILESET_MEMO[r] = out
+    return out
+
+
+def _sem_prefixo_unc(s):
+    'Os prefixos de caminho longo (`\\\\?\\`, `\\\\.\\`) e o compartilhamento administrativo'
+
+    if not isinstance(s, str):
+        return s
+    m = re.match(r'^[\\/]{2}[?.][\\/](?:UNC[\\/])?(?=[A-Za-z]:)', s)
+    if m:
+        return s[m.end():]
+    m = re.match(r'^[\\/]{2}(?:localhost|127\.0\.0\.1|\[?::1\]?)[\\/]([A-Za-z])\$(?=[\\/]|$)', s, re.I)
+    if m:
+        return m.group(1) + ":" + s[m.end():]
+    return s
+
+
+def _no_plugin(p, raizes):
+    """O caminho absoluto fica no território do plugin (e não é ativo livre)?"""
+    if not isinstance(p, str) or not p.strip():
+        return False
+    norm = p.replace("\\", "/")
+    low = norm.lower()
+    nome = low.rstrip("/").rsplit("/", 1)[-1]
+    if "/hooks/" not in low and (nome.endswith(_EXT_LIVRE_PLUGIN) or _MODELO_PLUGIN.search(nome)):
+        return False
+    try:
+        k = _chave_caminho(p).rstrip("\\/")
+    except (TypeError, ValueError):
+        return False
+    casa = _chave_caminho(os.path.expanduser("~")).rstrip("\\/")
+    for r in raizes:
+        if k == r or k.startswith(r + os.sep):
+            fs = _fileset_da_raiz(r)
+            if fs is None or k == r or k in fs[0] or k in fs[1] or os.path.isdir(k):
+                return True
+            return False
+        if r.startswith(k + os.sep) and k != casa and len(os.path.splitdrive(k)[1].strip("\\/")) > 0 \
+                and r[len(k):].count(os.sep) <= _ANTEPASSADOS_PLUGIN:
+            return True
+    return bool(_PLUGIN_POR_PADRAO.search(low) or _ARQUIVO_SO_DO_PLUGIN.search(low))
+
+
+def _caminho_do_token(t, pasta):
+    'O caminho absoluto que o token nomeia (com `file=@x`, `@x` e a raiz do plugin por variável),'
+
+    s = _sem_prefixo_unc(_expandir_raiz_plugin(_desaspar(t)).strip())
+    if not s:
+        return None
+    if s.startswith("@"):
+        s = s[1:]
+    elif "=@" in s:
+        s = s.split("=@", 1)[1]
+    if not s or s.startswith("-") or "://" in s:
+        return None
+    if re.match(r'^[\w.-]+@[\w.-]+:', s) or re.match(r'^[\w.-]{2,}:(?![\\/])', s):
+        return None
+    try:
+        a = _absoluto(s, pasta)
+    except Exception:
+        return None
+
+    try:
+        if os.path.lexists(a):
+            return os.path.realpath(a)
+    except (OSError, ValueError):
+        pass
+    return a
+
+
+def _expandir_glob_plugin(c):
+    """Os caminhos que o glob do caminho absoluto alcança (até 200), ou [] sem glob."""
+    if not c or not re.search(r'[*?\[]', c) or os.path.exists(c):
+        return []
+    try:
+        out = []
+        for i, p in enumerate(glob.iglob(c)):
+            if i >= 200:
+                break
+            out.append(os.path.realpath(p))
+        return out
+    except (OSError, ValueError, re.error):
+        return []
+
+
+def _opcao(t):
+    s = _desaspar(t)
+    return s.startswith("-") and len(s) > 1 and not re.match(r'^-\d', s)
+
+
+def _destino_copia(prog, args, pasta):
+    'O destino absoluto da cópia (`-t`, `-Destination`, o último operando; no robocopy, o'
+
+    pos, dest, i = [], None, 0
+    while i < len(args):
+        t = _desaspar(args[i])
+        if _opcao(t) and t not in ("-", "--"):
+            nome = t.lstrip("-").split("=", 1)[0].split(":", 1)[0].lower()
+            inline = None
+            if "=" in t:
+                inline = t.split("=", 1)[1]
+            elif re.match(r'^-[A-Za-z-]+:', t):
+                inline = t.split(":", 1)[1]
+
+            if nome in _PARAMS_DESTINO or (prog in _COPIA_PS and len(nome) >= 2 and "destination".startswith(nome)):
+                dest = inline if inline is not None else (args[i + 1] if i + 1 < len(args) else None)
+                i += 1 if inline is not None else 2
+                continue
+            if nome in _PARAMS_COM_VALOR and inline is None and prog in _COPIA_PS:
+                i += 2
+                continue
+            i += 1
+            continue
+        pos.append(args[i])
+        i += 1
+    if dest is None:
+        if prog == "robocopy" and len(pos) >= 2:
+            dest = pos[1]
+        elif len(pos) >= 2:
+            dest = pos[-1]
+        elif prog in ("copy-item", "cpi", "move-item", "mi", "copy", "move", "xcopy") and len(pos) == 1:
+            return pasta
+    return _caminho_do_token(dest, pasta) if dest else None
+
+
+def _codigo_embutido(prog, args):
+    """O código passado ao interpretador pela opção (`python -c`, `node -e`), ou None."""
+    base = "python" if prog.startswith("py") else ("node" if prog in ("node", "nodejs") else prog)
+    base = "pwsh" if base == "powershell" else base
+    opcoes = _OPCAO_CODIGO.get(base, ())
+    for i, t in enumerate(args):
+        if _desaspar(t).lower() in opcoes and i + 1 < len(args):
+            return _desaspar(args[i + 1])
+    return None
+
+
+def _codigo_leva_plugin(codigo, pasta, raizes, formas):
+    """O código embutido nomeia arquivo do plugin e grava, copia, compacta, envia ou cola?"""
+    if not isinstance(codigo, str) or not codigo.strip():
+        return False
+    return _nomeia_plugin(codigo, pasta, raizes, formas) and bool(_CODIGO_GRAVA.search(codigo))
+
+
+def _nomeia_plugin(texto, pasta, raizes, formas):
+    'O texto nomeia a raiz do plugin (literal, pela variável do harness, pelo padrão das cópias'
+
+
+    if not isinstance(texto, str) or not texto.strip():
+        return False
+    t = _SYS_PATH.sub(" ", texto)
+    t = re.sub(r'[\\/]{2}[?.][\\/](?:UNC[\\/])?(?=[A-Za-z]:)', "", t)
+    t = re.sub(r'[\\/]{2}(?:localhost|127\.0\.0\.1)[\\/]([A-Za-z])\$', r'\1:', t, flags=re.I)
+    low = t.replace("\\\\", "/").replace("\\", "/").lower()
+    return (any(f in low for f in formas) or "claude_plugin_root" in low or "codex_plugin_root" in low
+            or bool(_PLUGIN_POR_PADRAO.search(low)) or bool(_ARQUIVO_SO_DO_PLUGIN.search(low))
+            or (_no_plugin(pasta or "", raizes) and bool(re.search(r"skill\.md|references|hooks/", low))))
+
+
+def _interprete_normalizado(prog, args):
+    '(programa, argumentos) depois do lançador (`uv run`, `poetry run`, `uvx`, `conda run -n x`):'
+
+    if prog not in _LANCADORES and prog != "uvx":
+        return prog, args
+    resto = list(args)
+    if prog != "uvx":
+        if not resto or _desaspar(resto[0]).lower() != "run":
+            return prog, args
+        resto = resto[1:]
+    while resto and _desaspar(resto[0]).startswith("-"):
+        o = _desaspar(resto[0]).split("=", 1)[0]
+        resto = resto[2:] if (o in _LANCADOR_COM_VALOR and "=" not in _desaspar(resto[0])) else resto[1:]
+    if not resto:
+        return prog, args
+    nome = _palavra(resto[0])
+    if _INTERPRETES_PLUGIN.match(nome):
+        return nome, resto[1:]
+    return "python", resto
+
+
+def _script_rito(prog, args, pasta, raizes):
+    'O caminho do script do plugin que o interpretador roda (a forma do rito), ou None. Só o'
+
+
+    if not _INTERPRETES_PLUGIN.match(prog) or _codigo_embutido(prog, args) is not None:
+        return None
+    pos, i = [], 0
+    while i < len(args):
+        t = _desaspar(args[i])
+        if t in ("-m",):
+            return None
+        if t in ("-X", "-W") and i + 1 < len(args):
+            i += 2
+            continue
+        if re.match(r'^-(?:\d+(?:\.\d+)?(?:-(?:32|64))?|V[:]\S+)$', t):
+            i += 1
+            continue
+        if not _opcao(t):
+            pos.append(args[i])
+            break
+        i += 1
+    if not pos:
+        return None
+    script = _caminho_do_token(pos[0], pasta)
+    if not script or not script.lower().endswith(_EXT_SCRIPT):
+        return None
+    k = _chave_caminho(script).rstrip("\\/")
+    for r in raizes:
+        if k.startswith(r + os.sep):
+            fs = _fileset_da_raiz(r)
+            if fs is None or k in fs[0] or not os.path.exists(script):
+                return script
+    return script if (_PLUGIN_POR_PADRAO.search(script.replace("\\", "/").lower())
+                      and not any(k.startswith(r + os.sep) for r in raizes)) else None
+
+
+def _origem_plugin_seg(seg, pasta, raizes, formas, lidos):
+    'O motivo da recusa do trecho de pipe (regra 1), ou None. `lidos` acumula, entre os trechos'
+
+    toks = _tokens(seg)
+    j, prog_tok, _m = _programa(seg)
+    if prog_tok is None:
+        return None
+    prog = _palavra(prog_tok)
+    args = _sem_redirecao(toks)[(j or 0) + 1:]
+    saidas = _alvos_redirecao(seg)
+    prog, args = _interprete_normalizado(prog, args)
+    if _INTERPRETES_PLUGIN.match(prog):
+        codigo = _codigo_embutido(prog, args)
+        if codigo is not None:
+            if _codigo_leva_plugin(codigo, pasta, raizes, formas):
+                return "código embutido"
+
+            return "código embutido" if lidos and _CODIGO_GRAVA.search(codigo) else None
+        if _script_rito(prog, args, pasta, raizes):
+            return None
+        pos, i = [], 0
+        while i < len(args):
+            t = _desaspar(args[i])
+            if t in ("-m",) and i + 1 < len(args):
+                modulo = _desaspar(args[i + 1]).lower()
+                resto = [_caminho_do_token(a, pasta) for a in args[i + 2:] if not _opcao(a)]
+                if modulo in _MODULOS_QUE_ARQUIVAM and any(c and _no_plugin(c, raizes) for c in resto):
+                    return "módulo que arquiva"
+                return None
+            if t in ("-X", "-W") and i + 1 < len(args):
+                i += 2
+                continue
+            if not _opcao(t) and not re.match(r'^-(?:\d+(?:\.\d+)?(?:-(?:32|64))?|V[:]\S+)$', t):
+                pos.append(args[i])
+            i += 1
+        if not pos:
+            return None
+        if lidos:
+            return "programa que copia"
+
+        prim = _caminho_do_token(pos[0], pasta)
+        ops = pos if (prim and not prim.lower().endswith(_EXT_SCRIPT)) else pos[1:]
+        resto = [_caminho_do_token(a, pasta) for a in ops]
+        plug = [c for c in resto if c and _no_plugin(c, raizes)]
+        fora = [c for c, a in zip(resto, ops) if c and not _no_plugin(c, raizes)
+                and re.search(r'[\\/.]', _desaspar(a))]
+        return "programa que copia" if plug and (saidas or fora) else None
+    caminhos = [_caminho_do_token(a, pasta) for a in args if not _opcao(a)]
+    caminhos += [g for c in list(caminhos) for g in _expandir_glob_plugin(c)]
+    if prog in _VERBOS_REDE_PLUGIN:
+        caminhos, i = [], 0
+        while i < len(args):
+            t = _desaspar(args[i])
+            if t.lower() in ("-o", "--output", "-outfile", "-o-", "--output-document") and i + 1 < len(args):
+                i += 2
+                continue
+            if t.startswith("@") or "=@" in t or not _opcao(t):
+                caminhos.append(_caminho_do_token(t, pasta))
+            i += 1
+    caminhos += [_caminho_do_token(e, pasta) for e in _entradas_redirecionadas(toks)]
+    plug = [c for c in caminhos if c and _no_plugin(c, raizes)]
+    if prog in _VERBOS_COPIA_PLUGIN:
+        dest = _destino_copia(prog, args, pasta)
+        origens = [c for c in plug if not dest or _chave_caminho(c) != _chave_caminho(dest)]
+        if origens and not (dest and _no_plugin(dest, raizes)):
+            return "cópia"
+    if prog in _VERBOS_ARQUIVA_PLUGIN and plug:
+        if prog not in ("tar", "bsdtar") or any(
+                re.match(r'^-?[A-Za-z]*[cruA][A-Za-z]*$', _desaspar(a)) or _desaspar(a) in ("--create", "--append")
+                for a in args[:3]):
+            return "compactação"
+
+
+
+    if prog in _VERBOS_ESCRITA_PLUGIN and (lidos or (plug and (prog in _VERBOS_REDE_PLUGIN
+                                                               or prog in _AREA_TRANSFERENCIA))):
+        return "envio"
+    if prog in _VERBOS_LOTE_PLUGIN and (plug or lidos) and any(
+            _palavra(t) in _VERBOS_COPIA_PLUGIN | _VERBOS_ARQUIVA_PLUGIN | _VERBOS_ESCRITA_PLUGIN for t in args):
+        return "cópia em lote"
+    lista_nomes = prog in _LISTAGEM and not (prog == "find" and any(
+        _desaspar(a).lower() in _FIND_QUE_LE for a in args))
+    if plug and saidas and not lista_nomes and not all(
+            _no_plugin(_caminho_do_token(s, pasta) or "", raizes) for s in saidas):
+        return "redireção para arquivo"
+    if plug and re.search(r'::|\.CopyTo\(', seg) and _CODIGO_GRAVA.search(seg):
+        return "código embutido"
+    if not lista_nomes:
+        lidos.extend(plug)
+    return None
+
+
+def _origem_plugin_shell(cmd, cwd, raizes):
+    """O motivo da recusa do comando de shell (regra 1), ou None."""
+    if not isinstance(cmd, str) or not cmd.strip():
+        return None
+    formas = _formas_textuais_raizes(raizes)
+    corpos = []
+    try:
+        _partes(cmd, heredocs=corpos)
+    except Exception:
+        corpos = []
+    for sub, pasta, _desconhecida in _percorrer(cmd, cwd):
+        lidos = []
+        for seg in _segmentos_pipe(sub):
+            motivo = _origem_plugin_seg(seg, pasta, raizes, formas, lidos)
+            if motivo:
+                return motivo
+        if lidos and re.search(r'::|\.CopyTo\(', sub) and _CODIGO_GRAVA.search(sub):
+            return "código embutido"
+    for _dono, corpo in corpos:
+        if _codigo_leva_plugin(corpo, cwd, raizes, formas):
+            return "código embutido"
+    return _origem_plugin_grossa(cmd, cwd, raizes, formas, corpos)
+
+
+def _decodificados(texto, teto=50):
+    """Os textos legíveis que os trechos em base64 do texto escondem (UTF-8 ou UTF-16LE)."""
+    out = []
+    for m in _BASE64_TRECHO.finditer(texto or ""):
+        if len(out) >= teto:
+            break
+        s = m.group(0)
+        try:
+            b = base64.b64decode(s + "=" * (-len(s) % 4), validate=True)
+        except Exception:
+            continue
+        for enc in ("utf-8", "utf-16-le"):
+            try:
+                d = b.decode(enc)
+            except UnicodeDecodeError:
+                continue
+            if len(d) >= 8 and sum(c.isprintable() or c in "\r\n\t" for c in d) >= 0.95 * len(d):
+                out.append(d)
+                break
+    return out
+
+
+def _origem_plugin_grossa(cmd, cwd, raizes, formas, corpos=()):
+    'Regra GROSSA da origem, que falha fechada (ver a docstring do módulo): o motivo da recusa,'
+
+
+
+
+
+
+
+
+    for d in _decodificados(cmd):
+        if _nomeia_plugin(d, cwd, raizes, formas) or any(
+                _nomeia_plugin(dd, cwd, raizes, formas) for dd in _decodificados(d, 5)):
+            return "texto codificado"
+    conhecidos = (_VERBOS_COPIA_PLUGIN | _VERBOS_ARQUIVA_PLUGIN | _VERBOS_ESCRITA_PLUGIN | _LEITORES_PLUGIN
+                  | _LISTAGEM) - _VERBOS_LINK
+    opacos = []
+    for sub, pasta, _desc in _percorrer(cmd, cwd):
+        for seg in _segmentos_pipe(sub):
+            j, prog_tok, _m = _programa(seg)
+            if prog_tok is not None:
+                prog = _palavra(prog_tok)
+                args = _sem_redirecao(_tokens(seg))[(j or 0) + 1:]
+                p2, a2 = _interprete_normalizado(prog, args)
+                if _script_rito(p2, a2, pasta, raizes):
+                    continue
+                if prog in conhecidos and not _OPACO.search(seg):
+                    continue
+            opacos.append((seg, pasta))
+    opacos += [(corpo, cwd) for _dono, corpo in corpos]
+    if not opacos:
+        return None
+    texto = _SYS_PATH.sub(" ", "\n".join(s for s, _p in opacos))
+    if not (_SINAL_ESCRITA.search(texto) or _CODIGO_GRAVA.search(texto)):
+        return None
+    for seg, pasta in opacos:
+        if _nomeia_plugin(seg, pasta, raizes, formas) or _no_plugin(pasta or "", raizes):
+            return "forma não reconhecida"
+        try:
+            toks = _tokens(_SYS_PATH.sub(" ", seg))[:200]
+        except Exception:
+            toks = []
+        for t in toks:
+            c = _caminho_do_token(t, pasta)
+            if c and (_no_plugin(c, raizes) or any(_no_plugin(g, raizes) for g in _expandir_glob_plugin(c))):
+                return "forma não reconhecida"
+    return None
+
+
+_CHAVES_CAMINHO_PLUGIN = frozenset(c.lower() for c in _CAMPOS_CAMINHO + _CAMPOS_CAMINHOS + (
+    "from", "file_paths", "filepaths", "notebook_path", "uri"))
+
+
+def _caminhos_da_chamada(valor, chave="", fora=()):
+    'Os caminhos que o input nomeia (campos de caminho e de lista, o mapa `files` do Artifact),'
+
+    out = []
+    if isinstance(valor, str):
+        if chave in _CHAVES_CAMINHO_PLUGIN and chave not in fora and valor.strip():
+            out.append(valor.strip())
+    elif isinstance(valor, (list, tuple)):
+        for it in valor:
+            out += _caminhos_da_chamada(it, chave, fora)
+    elif isinstance(valor, dict):
+        for k, v in valor.items():
+            if not isinstance(k, str):
+                continue
+            kl = k.lower()
+            if chave == "files" and isinstance(v, (str, dict)):
+                out += _caminhos_da_chamada(v, "from" if isinstance(v, str) else "", fora)
+            else:
+                out += _caminhos_da_chamada(v, kl, fora)
+    return out
+
+
+def _chamada_de_arquivo(tool_name, tool_input):
+    """A ferramenta leva arquivo local (envio, publicação, ferramenta de arquivo que escreve)?"""
+    if _envio_ao_advogado(tool_name):
+        if tool_name == "Artifact":
+            acao = tool_input.get("action")
+            return acao in (None, "", "publish")
+        return True
+    return _eh_tool_arquivo(tool_name) and _operacao(tool_name, tool_input) != "leitura"
+
+
+def _origem_plugin_arquivo(tool_name, tool_input, cwd, raizes):
+    """O motivo da recusa do envio ou da ferramenta de arquivo (regra 1), ou None."""
+    if not _chamada_de_arquivo(tool_name, tool_input):
+        return None
+    fora = frozenset(c.lower() for c in _CAMPOS_DESTINO)
+    for c in _caminhos_da_chamada(tool_input, fora=fora):
+        p = _caminho_do_token(c, cwd)
+        if p and _no_plugin(p, raizes):
+            return "envio de arquivo"
+    return None
+
+
+
+def _palavras_norm(texto):
+    'As palavras do texto, normalizadas igual dos dois lados (índice e chamada): NFKC, sem'
+
+
+
+    t = _INVISIVEIS.sub("", unicodedata.normalize("NFKC", texto or ""))
+    t = t.translate(_HOMOGLIFOS)
+    t = re.sub(r'([a-zà-ÿ])([A-ZÀ-Þ])', r'\1 \2', t)
+    t = re.sub(r'(?<=\w)[-‐‑](?=\w)', "", t)
+    t = _COMBINANTES.sub("", unicodedata.normalize("NFKD", t.lower()))
+    return [w for w in re.findall(r"[a-z0-9]+", t) if len(w) > 1 and not w.isdigit()]
+
+
+def _hash_trecho(s):
+    return int.from_bytes(hashlib.blake2b(s.encode("utf-8"), digest_size=8).digest(), "little")
+
+
+def _hashes_trechos(texto, indice=False, palavras=None):
+    'Os hashes dos trechos de 8 palavras (de `texto`, ou da lista `palavras` já normalizada).'
+
+
+    p = _palavras_norm(texto) if palavras is None else palavras
+    n = _SHINGLE_PLUGIN
+    out = set()
+    for i in range(max(0, len(p) - n + 1)):
+        janela = p[i:i + n]
+        if indice and sum(w.isdigit() for w in janela) >= 3:
+            continue
+        out.add(_hash_trecho(" ".join(janela)))
+    return out
+
+
+def _apresentacao_publica():
+    'O texto público do Dissero (`gate_sigilo.APRESENTACAO_PUBLICA`), lido do fonte sem importar o'
+
+    if "t" in _PUBLICO_MEMO:
+        return _PUBLICO_MEMO["t"]
+    texto = ""
+    try:
+        import ast
+        with open(os.path.join(AQUI, "gate_sigilo.py"), encoding="utf-8") as fh:
+            arvore = ast.parse(fh.read())
+        for no in arvore.body:
+            if isinstance(no, ast.Assign) and any(isinstance(t, ast.Name) and t.id == "APRESENTACAO_PUBLICA"
+                                                   for t in no.targets):
+                v = ast.literal_eval(no.value)
+                texto = v if isinstance(v, str) else ""
+                break
+    except Exception:
+        texto = ""
+    _PUBLICO_MEMO["t"] = texto
+    return texto
+
+
+def _arquivos_do_indice(raiz):
+    pad = [os.path.join(raiz, "skills", "*", "SKILL.md"),
+           os.path.join(raiz, "skills", "*", "references", "**", "*.md"),
+           os.path.join(raiz, "references", "**", "*.md")]
+    vistos = []
+    for g in pad:
+        for p in glob.glob(g, recursive=True):
+
+
+            if "/references/acervo/" in p.replace("\\", "/").lower():
+                continue
+            if os.path.isfile(p) and p not in vistos:
+                vistos.append(p)
+            if len(vistos) >= _TETO_ARQUIVOS_INDICE:
+                return vistos
+    return vistos
+
+
+def _texto_indexavel(txt):
+    'O texto sem os blocos cercados por crases (código, esqueleto de peça), sem o código na'
+
+    txt = _CODIGO_NA_LINHA.sub(" ", _BLOCO_CERCADO.sub(" ", txt or ""))
+    linhas = [ln for ln in txt.splitlines() if not _LINHA_DE_LEI.match(ln)]
+    return _ENTRE_ASPAS_CURVAS.sub(" ", "\n".join(linhas))
+
+
+def _chave_indice(raiz):
+    'Chave do cache: a raiz real, a versão declarada e as datas do plugin.json, da raiz e de'
+
+    partes = [_FORMATO_INDICE.decode(), _chave_caminho(os.path.realpath(raiz))]
+    pj = os.path.join(raiz, ".claude-plugin", "plugin.json")
+    try:
+        with open(pj, encoding="utf-8") as fh:
+            partes.append(str(json.load(fh).get("version")))
+        partes.append(str(os.stat(pj).st_mtime_ns))
+    except Exception:
+        partes.append("sem-versao")
+    for p in (raiz, os.path.join(raiz, "skills")):
+        try:
+            partes.append(str(os.stat(p).st_mtime_ns))
+        except OSError:
+            partes.append("-")
+    return hashlib.sha256("|".join(partes).encode("utf-8")).hexdigest()[:24]
+
+
+def _ler_cache_indice(arq):
+    try:
+        with open(arq, "rb") as fh:
+            dados = fh.read()
+    except OSError:
+        return None
+    cab = len(_FORMATO_INDICE)
+    if not dados.startswith(_FORMATO_INDICE) or len(dados) < cab + 8:
+        return None
+    n = int.from_bytes(dados[cab:cab + 8], "little")
+    corpo = dados[cab + 8:]
+    if len(corpo) != n * 8:
+        return None
+    a = array.array("Q")
+    a.frombytes(corpo)
+    return a
+
+
+def _gravar_cache_indice(pasta, arq, a):
+    try:
+        os.makedirs(pasta, exist_ok=True)
+        tmp = arq + ".tmp"
+        with open(tmp, "wb") as fh:
+            fh.write(_FORMATO_INDICE + len(a).to_bytes(8, "little") + a.tobytes())
+        os.replace(tmp, arq)
+        velhos = sorted((os.path.join(pasta, n) for n in os.listdir(pasta)
+                         if n.startswith("indice_plugin_") and n.endswith(".bin")),
+                        key=lambda p: os.path.getmtime(p), reverse=True)
+        for p in velhos[_CACHES_GUARDADOS:]:
+            os.remove(p)
+    except OSError:
+        pass
+
+
+def _indice_plugin(raiz):
+    'Os trechos (hash de 8 bytes, ordenados) do SKILL.md e das referências do plugin, menos o'
+
+
+    chave = _chave_indice(raiz)
+    if chave in _INDICE_MEMO:
+        return _INDICE_MEMO[chave]
+    pasta = os.path.join(_base_barreira(), "entrega")
+    arq = os.path.join(pasta, f"indice_plugin_{chave}.bin")
+    a = _ler_cache_indice(arq)
+    if a is None:
+        t0 = time.perf_counter()
+        arquivos = _arquivos_do_indice(raiz)
+        if not arquivos:
+            _INDICE_MEMO[chave] = None
+            return None
+        hs = set()
+        for p in arquivos:
+            try:
+                with open(p, encoding="utf-8", errors="replace") as fh:
+                    hs |= _hashes_trechos(_texto_indexavel(fh.read()), indice=True)
+            except OSError:
+                continue
+        hs -= _hashes_trechos(_apresentacao_publica())
+        a = array.array("Q", sorted(hs))
+        _gravar_cache_indice(pasta, arq, a)
+        _registrar_barreira("indice_montado", ms=round((time.perf_counter() - t0) * 1000, 1),
+                            arquivos=len(arquivos), trechos=len(a))
+    _INDICE_MEMO[chave] = a if len(a) else None
+    return _INDICE_MEMO[chave]
+
+
+def _no_indice(a, h):
+    i = bisect.bisect_left(a, h)
+    return i < len(a) and a[i] == h
+
+
+def _textos_da_chamada(tool_name, tool_input, cwd, raizes):
+    'O texto que a chamada grava ou envia, ou None quando a regra 2 não se aplica (gravação dentro'
+
+    if tool_name in ("Write", "Edit", "MultiEdit", "NotebookEdit"):
+        alvo = tool_input.get("file_path") or tool_input.get("notebook_path")
+        if isinstance(alvo, str) and alvo.strip():
+            p = _caminho_do_token(alvo, cwd)
+            if p and _no_plugin(p, raizes):
+                return None
+        partes = [tool_input.get(k) for k in ("content", "new_string", "new_source")]
+        for e in tool_input.get("edits") or ():
+            if isinstance(e, dict):
+                partes.append(e.get("new_string"))
+        return "\n".join(x for x in partes if isinstance(x, str))
+    if _eh_shell(tool_name):
+        return _comando_de(tool_input) or ""
+    partes = []
+
+    def _colher(v, k=""):
+        if isinstance(v, str):
+            if k not in ("old_string",) and len(v) > 40:
+                partes.append(v)
+        elif isinstance(v, dict):
+            for kk, vv in v.items():
+                _colher(vv, str(kk).lower())
+        elif isinstance(v, (list, tuple)):
+            for it in v:
+                _colher(it, k)
+    _colher(tool_input)
+    if _chamada_de_arquivo(tool_name, tool_input):
+        for c in _caminhos_da_chamada(tool_input, fora=frozenset(x.lower() for x in _CAMPOS_DESTINO)):
+            p = _caminho_do_token(c, cwd)
+            if not (p and os.path.isfile(p)):
+                continue
+            ext = os.path.splitext(p)[1].lower()
+            if ext == ".docx":
+                partes.append(_texto_do_docx(p))
+            elif ext in _EXT_TEXTO_ENVIO or ext in _EXT_ODF_ENVIO:
+                t = _ler_texto_enviado(p, ext)
+                if t:
+                    partes.append(t)
+    return "\n".join(partes)
+
+
+def _variantes_do_texto(texto):
+    'As listas de palavras a julgar: o texto como veio (com o base64 longo decodificado), o'
+
+
+    base = texto[:_TETO_TEXTO_PLUGIN]
+    extra = [d for d in _decodificados(base, 20) if len(d) >= 150]
+    p = _palavras_norm(base + ("\n" + "\n".join(extra) if extra else ""))
+    curto = base[:_TETO_VARIANTES]
+    return [p, _palavras_norm(codecs.decode(curto, "rot13")), list(reversed(_palavras_norm(curto)))]
+
+
+def _passa_limiar(casados, total):
+    return casados >= _CASADOS_MIN_PLUGIN and (casados / max(total, 1) >= _FRACAO_PLUGIN
+                                               or casados >= _CASADOS_ABSOLUTOS_PLUGIN)
+
+
+def _destino_do_acumulo(tool_name, tool_input, cwd):
+    alvo = tool_input.get("file_path") or tool_input.get("notebook_path") or tool_input.get("path")
+    if isinstance(alvo, str) and alvo.strip():
+        p = _caminho_do_token(alvo, cwd)
+        if p:
+            return "arq:" + _chave_caminho(p)
+    return "ferr:" + str(tool_name)
+
+
+def _acumular_conteudo(evento, destino, hs, casados_hs):
+    'Soma, por sessão e destino, os trechos da chamada (`<base>/entrega/acumulo_<sessão>.json`):'
+
+
+    sessao = str((evento or {}).get("session_id") or "")
+    if not sessao:
+        return None
+    try:
+        pasta = os.path.join(_base_barreira(), "entrega")
+        os.makedirs(pasta, exist_ok=True)
+        arq = os.path.join(pasta, "acumulo_" + hashlib.sha256(sessao.encode("utf-8")).hexdigest()[:16] + ".json")
+        try:
+            with open(arq, encoding="utf-8") as fh:
+                dados = json.load(fh)
+            if not isinstance(dados, dict):
+                dados = {}
+        except (OSError, ValueError):
+            dados = {}
+        chave = hashlib.sha256(destino.encode("utf-8")).hexdigest()[:16]
+        reg = dados.get(chave) if isinstance(dados.get(chave), dict) else {}
+        todos = set(x for x in reg.get("t", []) if isinstance(x, int)) | set(hs)
+        casados = set(x for x in reg.get("c", []) if isinstance(x, int)) | set(casados_hs)
+        if len(todos) > _ACUMULO_TETO:
+            todos = set(sorted(todos)[:_ACUMULO_TETO]) | casados
+        dados[chave] = {"t": sorted(todos), "c": sorted(casados), "em": int(time.time())}
+        tmp = arq + ".tmp"
+        with open(tmp, "w", encoding="utf-8") as fh:
+            json.dump(dados, fh)
+        os.replace(tmp, arq)
+        try:
+            limite = time.time() - 3 * 86400
+            for n in os.listdir(pasta):
+                if n.startswith("acumulo_") and os.path.getmtime(os.path.join(pasta, n)) < limite:
+                    os.remove(os.path.join(pasta, n))
+        except OSError:
+            pass
+        return len(casados), len(todos)
+    except Exception:
+        return None
+
+
+def _conteudo_plugin(tool_name, tool_input, cwd, raizes, raiz, evento=None):
+    '(casados, total) quando o texto da chamada reproduz o plugin (regra 2), ou None. Julga a'
+
+
+    texto = _textos_da_chamada(tool_name, tool_input, cwd, raizes)
+    if not texto:
+        return None
+    variantes = [_hashes_trechos("", palavras=p) for p in _variantes_do_texto(texto)]
+    if max(len(h) for h in variantes) < _ACUMULO_MIN:
+        return None
+    a = _indice_plugin(raiz)
+    if not a:
+        return None
+    melhor = None
+    for hs in variantes:
+        casados = [h for h in hs if _no_indice(a, h)]
+        if melhor is None or len(casados) > len(melhor[1]):
+            melhor = (hs, casados)
+    hs, casados = melhor
+    if len(hs) >= _SHINGLES_MIN_PLUGIN and _passa_limiar(len(casados), len(hs)):
+        return len(casados), len(hs)
+    if casados and not _eh_shell(tool_name):
+        soma = _acumular_conteudo(evento, _destino_do_acumulo(tool_name, tool_input, cwd), hs, casados)
+        if soma and _passa_limiar(*soma):
+            return soma
+    return None
+
+
+def _codigo_gravado_plugin(tool_name, tool_input, cwd, raizes):
+    'Write/Edit de PROGRAMA (`.py`, `.sh`, `.ps1`…) fora da lista do pacote cujo código nomeia o'
+
+
+    if tool_name not in ("Write", "Edit", "MultiEdit", "NotebookEdit"):
+        return None
+    alvo = tool_input.get("file_path") or tool_input.get("notebook_path")
+    if not (isinstance(alvo, str) and alvo.strip().lower().endswith(_EXT_SCRIPT + (".ipynb",))):
+        return None
+    p = _caminho_do_token(alvo, cwd)
+    if not p or _no_plugin(p, raizes):
+        return None
+    partes = [tool_input.get(k) for k in ("content", "new_string", "new_source")]
+    partes += [e.get("new_string") for e in (tool_input.get("edits") or ()) if isinstance(e, dict)]
+    codigo = "\n".join(x for x in partes if isinstance(x, str))
+    formas = _formas_textuais_raizes(raizes)
+    return "código gravado" if _codigo_leva_plugin(codigo, cwd, raizes, formas) else None
+
+
+def _decidir_plugin(evento, tool_name, cwd):
+    """O deny da barreira do plugin, ou None. Falha aberta, registrada; nunca levanta."""
+    t0 = time.perf_counter()
+    regra = "origem"
+    try:
+        raiz = _raiz_corrente()
+        if _isento_barreira({"cwd": cwd}, raiz):
+            return None
+        raizes = _raizes_plugin()
+        resolvido = _resolver_variaveis_evento(evento, tool_name)
+        tool_input = resolvido.get("tool_input")
+        if not isinstance(tool_input, dict):
+            return None
+        cwd_ch = _cwd_da_chamada(tool_name, tool_input, cwd)
+        with _modo_caminho(tool_name, tool_input):
+            if _eh_shell(tool_name):
+                motivo = _origem_plugin_shell(_comando_de(tool_input), cwd_ch, raizes)
+            else:
+                motivo = (_origem_plugin_arquivo(tool_name, tool_input, cwd_ch, raizes)
+                          or _codigo_gravado_plugin(tool_name, tool_input, cwd_ch, raizes))
+            if motivo:
+                _registrar_barreira("negado", regra="origem", forma=motivo,
+                                    ms=round((time.perf_counter() - t0) * 1000, 1))
+                return _deny_sem_oficial(MSG_PLUGIN_ORIGEM)
+            regra = "conteudo"
+            achado = _conteudo_plugin(tool_name, tool_input, cwd_ch, raizes, raiz, evento)
+        if achado:
+            _registrar_barreira("negado", regra="conteudo", casados=achado[0], trechos=achado[1],
+                                ms=round((time.perf_counter() - t0) * 1000, 1))
+            return _deny_sem_oficial(MSG_PLUGIN_CONTEUDO)
+    except Exception as e:
+        _registrar_barreira("falha_aberta", regra=regra, tipo=type(e).__name__,
+                            ms=round((time.perf_counter() - t0) * 1000, 1))
+    return None
+
+
+
+
+
+
 
 
 
@@ -3469,7 +4626,7 @@ def decidir(evento):
     if not (isinstance(tool_name, str) and tool_name):
         return None
     cwd = evento.get("cwd") if (isinstance(evento.get("cwd"), str) and evento.get("cwd").strip()) else os.getcwd()
-    return _decidir_minuta(evento, tool_name, cwd)
+    return _decidir_plugin(evento, tool_name, cwd) or _decidir_minuta(evento, tool_name, cwd)
 
 
 

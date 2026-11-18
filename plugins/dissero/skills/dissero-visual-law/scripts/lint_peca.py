@@ -6,11 +6,21 @@ Mede no `.docx` gerado o que a leitura de revisão não conta:
   forma ................ L1–L7, L10, L12, L30, L33 (dialeto, aspas, realce, recuo, negrito de
                          dado, parágrafo numerado)
   lastro ............... L8, L9, L11, L13–L15, L24, CRUZAMENTO-DOC (julgado e documento citados),
-                         L34 (percentual sem base, documento ou norma)
+                         L34 (percentual sem base, documento ou norma), L36 (valor em algarismo
+                         × por extenso), L41 (valor só em algarismo nos pedidos —
+                         aviso)
+  citação .............. L37 (classe processual × tribunal), L38 (súmula, tema ou OJ acima do
+                         maior número publicado), L39 (número a um dígito de precedente
+                         conferido), L40 (paráfrase mais forte que a ementa) — só aviso
   mapa ................. L35 (questão, tese descartada e motivo do mapa argumentativo na peça)
   estratégia e tom ..... L25, L26 (linguagem contra a cobertura de precedentes da tese)
   língua do documento .. L16, L19 (vocabulário interno e notação de documentação na peça)
   tratamento ........... L20 (forma de tratamento × grau de jurisdição)
+  competência .......... L42 (ente federal endereçado à Justiça Estadual; JEF)
+  recurso especial ..... L43 (sem o tópico de relevância, pela entrada do checklist de
+                         admissibilidade)
+  IA ................... L44 (trecho visível dirigido a ferramenta de IA)
+  gratuidade ........... L45 (Súmula 463, I, 40% do teto e ADC 80 × data de ajuizamento — aviso)
   prosa ................ L21 (risca), L22 (repetição de âncora), L28 (padrões de IA)
   estrutura ............ L17, L18 (paginação e caixa), L23 (referência cruzada), L27 (grifo),
                          L29 (assinatura com OAB), F1/F2 (capa)
@@ -20,6 +30,8 @@ Mede no `.docx` gerado o que a leitura de revisão não conta:
 Uso: python3 lint_peca.py peca.docx [--fragmento] [--precedentes achados.json]
           [--juntada JUNTADA_TRACKER.json] [--conferencia CONFERENCIA.json]
           [--grau primeiro|segundo|superior] [--processo CNJ]... [--session-id ID]
+          [--competencia COMPETENCIA.json] [--admissibilidade ADMISSIBILIDADE.json]
+          [--ajuizamento AAAA-MM-DD]
   --fragmento   capítulo/fragmento sem capa: dispensa as checagens de endereçamento
                 e de qualificação das partes (seções F1/F2) e a de assinatura (L29).
   --grau primeiro|segundo|superior   GRAU DE JURISDIÇÃO da peça, derivado da classe
@@ -43,6 +55,18 @@ Uso: python3 lint_peca.py peca.docx [--fragmento] [--precedentes achados.json]
                 a peça TRANSCREVE prova documental (L14 — conferência literal): confere o
                 trecho transcrito contra o teor lido. Se o ledger da juntada já aponta o
                 dataset no campo `conferencia`, este flag é dispensável.
+  --competencia COMPETENCIA.json   resultado `dsr.competencia.v1` do verificador de competência
+                (`competencia.py --gravar`). Omitido, o linter lê o COMPETENCIA.json ao lado do
+                .docx e na pasta do caso desta sessão, nunca o do diretório corrente (os dois
+                divergindo, nenhum vale) e, sem nenhum, infere
+                o ente federal pela capa e só AVISA (L42). Ilegível quando passado: REPROVADO.
+  --admissibilidade ADMISSIBILIDADE.json   a ENTRADA do checklist de admissibilidade
+                (`dsr.admissibilidade.entrada.v1`: `recurso`, `acordao_publicado_em`, critério
+                `relevancia_questao_federal`). Governa o L43; omitido, vale o ADMISSIBILIDADE.json
+                ao lado do .docx ou na pasta do caso, com a mesma resolução do COMPETENCIA.json.
+                Ilegível quando passado: REPROVADO.
+  --ajuizamento AAAA-MM-DD   data de ajuizamento da ação. Governa o L45 (marco da ADC 80);
+                omitida, peça sem número de processo é inaugural (ajuíza-se agora).
   --session-id ID   id da sessão do harness: localiza a pasta do caso registrada para ela.
   Nome NU (sem diretório) na peça e nos três artefatos: vale o da pasta do caso DESTA sessão
   (`DSR_CASO_RAIZ` ou a que `caso_raiz.py registrar` gravou para o `--session-id`) quando
@@ -220,6 +244,12 @@ except Exception as _e:
           f"do linter ({_e}) — L20 (tratamento por grau), L21 (risca), L22 (repetição) e L28 "
           f"(padrões de IA) não podem ser medidos")
     sys.exit(1)
+
+
+try:
+    import competencia as _competencia
+except Exception:
+    _competencia = None
 
 
 
@@ -1463,6 +1493,1547 @@ def l35_mensagem(trecho):
     return (f"L35 TRECHO DO MAPA ARGUMENTATIVO NA PEÇA: «{t}». Questão, tese descartada "
             f"e motivo do descarte são controle do advogado e ficam no mapa; retire-os da peça.")
 
+
+
+
+
+
+
+
+
+_EXT_UNIDADES = {"zero": 0, "um": 1, "uma": 1, "dois": 2, "duas": 2, "tres": 3, "quatro": 4,
+                 "cinco": 5, "seis": 6, "sete": 7, "oito": 8, "nove": 9}
+_EXT_DEZ_A_DEZENOVE = {"dez": 10, "onze": 11, "doze": 12, "treze": 13, "catorze": 14,
+                       "quatorze": 14, "quinze": 15, "dezesseis": 16, "dezasseis": 16,
+                       "dezessete": 17, "dezassete": 17, "dezoito": 18, "dezenove": 19,
+                       "dezanove": 19}
+_EXT_DEZENAS = {"vinte": 20, "trinta": 30, "quarenta": 40, "cinquenta": 50, "sessenta": 60,
+                "setenta": 70, "oitenta": 80, "noventa": 90}
+_EXT_CENTENAS = {"cem": 100, "cento": 100, "duzentos": 200, "duzentas": 200, "trezentos": 300,
+                 "trezentas": 300, "quatrocentos": 400, "quatrocentas": 400, "quinhentos": 500,
+                 "quinhentas": 500, "seiscentos": 600, "seiscentas": 600, "setecentos": 700,
+                 "setecentas": 700, "oitocentos": 800, "oitocentas": 800, "novecentos": 900,
+                 "novecentas": 900}
+_EXT_ESCALAS = {"mil": 10 ** 3, "milhao": 10 ** 6, "milhoes": 10 ** 6, "bilhao": 10 ** 9,
+                "bilhoes": 10 ** 9, "trilhao": 10 ** 12, "trilhoes": 10 ** 12}
+_EXT_ESCRITA_UNI = ("", "um", "dois", "três", "quatro", "cinco", "seis", "sete", "oito", "nove",
+                    "dez", "onze", "doze", "treze", "catorze", "quinze", "dezesseis", "dezessete",
+                    "dezoito", "dezenove")
+_EXT_ESCRITA_DEZ = ("", "", "vinte", "trinta", "quarenta", "cinquenta", "sessenta", "setenta",
+                    "oitenta", "noventa")
+_EXT_ESCRITA_CEM = ("", "cento", "duzentos", "trezentos", "quatrocentos", "quinhentos",
+                    "seiscentos", "setecentos", "oitocentos", "novecentos")
+_EXT_ESCRITA_ESC = ((10 ** 12, "trilhão", "trilhões"), (10 ** 9, "bilhão", "bilhões"),
+                    (10 ** 6, "milhão", "milhões"), (10 ** 3, "mil", "mil"))
+
+
+def _ext_norm(s):
+    import unicodedata
+    return "".join(c for c in unicodedata.normalize("NFD", str(s))
+                   if unicodedata.category(c) != "Mn").lower()
+
+
+def _ext_grupo(n):
+    """Extenso de 1 a 999."""
+    if n == 100:
+        return "cem"
+    c, resto = divmod(n, 100)
+    partes = [_EXT_ESCRITA_CEM[c]] if c else []
+    if resto:
+        if resto < 20:
+            partes.append(_EXT_ESCRITA_UNI[resto])
+        else:
+            d, u = divmod(resto, 10)
+            partes.append(_EXT_ESCRITA_DEZ[d] + (f" e {_EXT_ESCRITA_UNI[u]}" if u else ""))
+    return " e ".join(partes)
+
+
+def extenso_inteiro(n):
+    'Extenso de um inteiro não negativo (masculino), sem moeda: 1250 → "mil duzentos e'
+
+
+
+    n = int(n)
+    if n == 0:
+        return "zero"
+    grupos = []
+    for valor, sing, plur in _EXT_ESCRITA_ESC:
+        q, n = divmod(n, valor)
+        if q:
+            nome = "mil" if valor == 1000 else (sing if q == 1 else plur)
+            grupos.append((q * valor, "mil" if (valor == 1000 and q == 1)
+                           else f"{_ext_grupo(q)} {nome}"))
+    if n:
+        grupos.append((n, _ext_grupo(n)))
+    texto = grupos[0][1]
+    for i in range(1, len(grupos)):
+        resto = grupos[i:]
+        q_unico = resto[0][0]
+        while q_unico >= 1000 and q_unico % 1000 == 0:
+            q_unico //= 1000
+        liga = len(resto) == 1 and (q_unico < 100 or q_unico % 100 == 0)
+        texto += (" e " if liga else " ") + grupos[i][1]
+    return texto
+
+
+def extenso_de_valor(centavos):
+    'Extenso de um valor em reais dado em centavos: 150000050 → "um milhão e quinhentos mil'
+
+    reais, cent = divmod(int(centavos), 100)
+    if not reais and not cent:
+        return "zero real"
+    partes = []
+    if reais:
+        de = " de" if reais >= 10 ** 6 and reais % 10 ** 6 == 0 else ""
+        partes.append(f"{extenso_inteiro(reais)}{de} {'real' if reais == 1 else 'reais'}")
+    if cent:
+        partes.append(f"{extenso_inteiro(cent)} {'centavo' if cent == 1 else 'centavos'}")
+    return " e ".join(partes)
+
+
+def _ext_ler_inteiro(tokens):
+    'Tokens (sem acento, minúsculos, sem pontuação) → inteiro, ou None se não for extenso'
+
+
+    if not tokens:
+        return None
+    total = atual = 0
+    classe_ant = 9
+    escala_ant = 10 ** 15
+    tem_numero = False
+    for i, tok in enumerate(tokens):
+        if tok == "e":
+            prox = tokens[i + 1] if i + 1 < len(tokens) else ""
+            if i == 0 or not prox or prox in _EXT_ESCALAS or prox == "e":
+                return None
+            continue
+        if tok in _EXT_ESCALAS:
+            esc = _EXT_ESCALAS[tok]
+            if esc >= escala_ant:
+                return None
+            if esc == 1000:
+                total += (atual or 1) * 1000
+            else:
+                if not atual:
+                    return None
+                total += atual * esc
+            atual, classe_ant, escala_ant = 0, 9, esc
+            tem_numero = True
+            continue
+        for tabela, classe in ((_EXT_CENTENAS, 3), (_EXT_DEZENAS, 2),
+                               (_EXT_DEZ_A_DEZENOVE, 1.5), (_EXT_UNIDADES, 1)):
+            if tok in tabela:
+                if classe >= classe_ant or (classe_ant == 1.5 and classe == 1):
+                    return None
+                if tok == "cem" and i + 1 < len(tokens) and tokens[i + 1] == "e":
+                    return None
+                atual += tabela[tok]
+                classe_ant = classe
+                tem_numero = True
+                break
+        else:
+            return None
+    return total + atual if tem_numero else None
+
+
+_EXT_TOKEN_RX = re.compile(r"[a-z]+")
+
+
+def _valor_de_extenso_e_cauda(texto):
+    '(centavos, palavras depois da moeda) ou (None, []). A cauda é o que sobra depois de'
+
+
+
+    if re.search(r"\d", str(texto or "")):
+        return None, []
+    toks = _EXT_TOKEN_RX.findall(_ext_norm(texto))
+    moedas = ("real", "reais")
+    i_moeda = next((i for i, t in enumerate(toks) if t in moedas), None)
+    i_cent = next((i for i, t in enumerate(toks) if t in ("centavo", "centavos")), None)
+    if i_moeda is None and i_cent is None:
+        return None, []
+    if i_moeda is None or (i_cent is not None and i_cent < i_moeda):
+        cent = _ext_ler_inteiro(toks[:i_cent])
+        return (cent, toks[i_cent + 1:]) if cent is not None and cent < 100 else (None, [])
+    inteiro = toks[:i_moeda]
+    if inteiro and inteiro[-1] == "de":
+        inteiro = inteiro[:-1]
+    reais = _ext_ler_inteiro(inteiro)
+    if reais is None:
+        return None, []
+    total = reais * 100
+    depois = toks[i_moeda + 1:]
+    if depois and depois[0] == "e" and "centavo" in "".join(depois[:6]):
+        fim = next(i for i, t in enumerate(depois) if t in ("centavo", "centavos"))
+        cent = _ext_ler_inteiro(depois[1:fim])
+        if cent is None or cent >= 100:
+            return None, []
+        total += cent
+        depois = depois[fim + 1:]
+    return total, depois
+
+
+def valor_de_extenso(texto):
+    'Extenso de valor em reais → centavos, ou None se o texto não for extenso legível (ou'
+
+
+    return _valor_de_extenso_e_cauda(texto)[0]
+
+
+L36_VALOR_RX = re.compile(
+    r"R\$\s*(\d{1,3}(?:\.\d{3})+|\d+)(?:,(\d{2}))?(?:\s+(mil|milh[ãa]o|milh[õo]es|bilh[ãa]o|bilh[õo]es))?"
+    r"\s*\(([^()]{3,240})\)", re.I)
+L36_PERC_RX = re.compile(r"(?<![\d,.])(\d{1,3})\s?%\s*\(([^()]{3,120}?por\s+cento)\s*\)", re.I)
+_L36_ESCALA_NUM = {"mil": 10 ** 3, "milhao": 10 ** 6, "milhoes": 10 ** 6, "bilhao": 10 ** 9,
+                   "bilhoes": 10 ** 9}
+
+
+def _l36_brl(centavos):
+    reais, cent = divmod(int(centavos), 100)
+    return "R$ " + f"{reais:,}".replace(",", ".") + f",{cent:02d}"
+
+
+def _l36_divergencias(texto, mascara=None):
+    '[(trecho, algarismo, extenso, percentual, qualificado)]. `qualificado`: o parêntese'
+
+
+    achados = []
+    for m in L36_VALOR_RX.finditer(texto or ""):
+        if mascara is not None and mascara[m.start():m.end()] != texto[m.start():m.end()]:
+            continue
+        extenso = m.group(4)
+        if not re.search(r"\b(?:rea(?:l|is)|centavos?)\b", extenso, re.I):
+            continue
+        lido, cauda = _valor_de_extenso_e_cauda(extenso)
+        if lido is None:
+            continue
+        num = int(m.group(1).replace(".", "")) * 100 + int(m.group(2) or 0)
+        if m.group(3):
+            num *= _L36_ESCALA_NUM[_ext_norm(m.group(3))]
+        if num != lido:
+            achados.append((m.group(0), num, lido, False, bool(cauda)))
+    for m in L36_PERC_RX.finditer(texto or ""):
+        if mascara is not None and mascara[m.start():m.end()] != texto[m.start():m.end()]:
+            continue
+        if re.search(r"\d", m.group(2)):
+            continue
+        toks = _EXT_TOKEN_RX.findall(_ext_norm(m.group(2)))[:-2]
+        lido = _ext_ler_inteiro(toks)
+        if lido is not None and lido != int(m.group(1)):
+            achados.append((m.group(0), int(m.group(1)), lido, True, False))
+    return achados
+
+
+def l36_achados(texto, mascara=None):
+    '[(trecho, valor_do_algarismo, valor_do_extenso, percentual)] das divergências que'
+
+
+
+    return [a[:4] for a in _l36_divergencias(texto, mascara) if not a[4]]
+
+
+def l36_avisos(texto, mascara=None):
+    'Mesmo formato de `l36_achados`, para as divergências com qualificação depois da moeda'
+
+    return [a[:4] for a in _l36_divergencias(texto, mascara) if a[4]]
+
+
+def l36_mensagem(trecho, algarismo, extenso, percentual=False, qualificado=False):
+    if percentual:
+        diz_num = f"{extenso_inteiro(algarismo)} por cento"
+        diz_ext = f"{extenso}%"
+    else:
+        diz_num = extenso_de_valor(algarismo)
+        diz_ext = _l36_brl(extenso)
+    if qualificado:
+        return (f"L36 VALOR × EXTENSO A CONFERIR: «{trecho}». O algarismo diz {diz_num}; o "
+                f"extenso diz {diz_ext}, com uma qualificação depois da moeda. Se o extenso é de "
+                f"propósito outro valor (por parte, por mês, cada), deixe a frase como está; se "
+                f"não, confira na fonte e corrija o que estiver errado.")
+    return (f"L36 VALOR × EXTENSO DIVERGENTE: «{trecho}». O algarismo diz {diz_num}; o extenso "
+            f"diz {diz_ext}. Confira na fonte qual dos dois é o valor certo e corrija o outro: o "
+            f"linter não decide qual está errado.")
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+_L37_NUM = r"(?=[\s\-]*(?:n[º°o]\.?\s*)?\d)"
+L37_CLASSES = (
+
+    ("AREsp", re.compile(r"(?<![\w-])E?AREsp\b" + _L37_NUM), ("STJ",), ()),
+    ("REsp", re.compile(r"(?<![\w-])E?R(?:Esp|ESP|esp)\b" + _L37_NUM), ("STJ",), ()),
+    ("ARE", re.compile(r"(?<![\w-])ARE\b" + _L37_NUM), ("STF",), ()),
+    ("RE", re.compile(r"(?<![\w-])RE\b" + _L37_NUM), ("STF",), ()),
+    ("AIRR", re.compile(r"(?<![\w])(?:[A-Z][A-Za-z]{0,3}-)*AIRR\b" + _L37_NUM), ("TST",), ()),
+    ("RR", re.compile(r"(?<![\w])(?:[A-Z][A-Za-z]{0,3}-)*RR(?:Ag)?\b" + _L37_NUM), ("TST",), ()),
+    ("RHC", re.compile(r"(?<![\w-])RHC\b" + _L37_NUM), ("STJ", "STF", "TST", "TSE", "STM"),
+     ("TJ", "TRF", "TRT")),
+)
+_L37_SIGLA_RX = re.compile(
+    r"\b(STF|STJ|TST|TSE|STM|TJ[A-Z]{2}|TJDFT|TRF\s?-?\d|TRT\s?-?\d{1,2}"
+    r"|Supremo\s+Tribunal\s+Federal|Superior\s+Tribunal\s+de\s+Justi[çc]a"
+    r"|Tribunal\s+Superior\s+do\s+Trabalho|Tribunal\s+de\s+Justi[çc]a"
+    r"|Tribunal\s+Regional\s+Federal|Tribunal\s+Regional\s+do\s+Trabalho)\b")
+_L37_ORIGEM_RX = re.compile(r"inadmit|negou\s+seguimento|interp|admit|remet|subiu|origem|recorrid"
+                            r"|\bcontra\b|oriund|impetr|proferid|na\s+origem", re.I)
+
+_L37_ORIGEM_DEPOIS_RX = re.compile(r"^[^,;.]{0,40}?\b(?:na|de|da)\s+origem\b|^\s*\(\s*origem", re.I)
+
+
+def _l37_sigla(s):
+    s = " ".join(s.split())
+    nomes = {"supremo tribunal federal": "STF", "superior tribunal de justica": "STJ",
+             "tribunal superior do trabalho": "TST", "tribunal de justica": "TJ",
+             "tribunal regional federal": "TRF", "tribunal regional do trabalho": "TRT"}
+    n = _ext_norm(s)
+    if n in nomes:
+        return nomes[n]
+    s = s.replace(" ", "").replace("-", "").upper()
+    for pref in ("TJ", "TRF", "TRT"):
+        if s.startswith(pref):
+            return pref
+    return s
+
+
+def _temas_citados(texto):
+    '[(número, tribunal|None, de_repercussao_geral, rótulo)] dos temas, com a natureza dita'
+
+    out = []
+    for tipo, num, _v, trib, rotulo in citacoes_sumula_tema(texto):
+        if tipo != "tema":
+            continue
+        rg = False
+        for m in _RX_TEMA.finditer(texto):
+            if m.group(2).replace(".", "") == num:
+                perto = texto[m.start():m.end() + 40]
+                rg = bool(re.search(r"repercuss[ãa]o\s+geral", perto, re.I))
+                break
+        out.append((num, trib, rg, rotulo))
+    return out
+
+
+def _l37_tribunal_perto(texto, ini, fim):
+    'Tribunal mais perto da classe: primeiro depois dela (até 90 caracteres, sem cruzar'
+
+
+
+
+    depois = re.split(r";|\.\s+(?=[A-ZÀ-Ý])", texto[fim:fim + 90])[0]
+    m = _L37_SIGLA_RX.search(depois)
+    if m and not (_L37_ORIGEM_RX.search(depois[:m.start()])
+                  or _L37_ORIGEM_DEPOIS_RX.search(depois[m.end():])):
+        return _l37_sigla(m.group(1))
+    antes = re.split(r";|\.\s+(?=[A-ZÀ-Ý])", texto[max(0, ini - 60):ini])[-1]
+    ms = list(_L37_SIGLA_RX.finditer(antes))
+    if ms and not _L37_ORIGEM_RX.search(antes[ms[-1].end():]):
+        return _l37_sigla(ms[-1].group(1))
+    return None
+
+
+def l37_achados(texto):
+    '[(trecho, classe, tribunal_citado, esperados)] das citações em que a classe processual'
+
+    texto = texto or ""
+    achados, usados = [], []
+    for rotulo, rx, esperados, vedados in L37_CLASSES:
+        for m in rx.finditer(texto):
+            if any(a <= m.start() < b for a, b in usados):
+                continue
+            usados.append((m.start(), m.end()))
+            trib = _l37_tribunal_perto(texto, m.start(), m.end())
+            if not trib:
+                continue
+            ruim = (trib in vedados) if vedados else (trib not in esperados)
+            if ruim:
+                fim_tr = m.end() + 25
+                while fim_tr < len(texto) and not texto[fim_tr].isspace():
+                    fim_tr += 1
+                trecho = texto[m.start():fim_tr].strip()
+                achados.append((trecho, rotulo, trib, esperados))
+
+
+
+
+    for m in _RX_SUMULA.finditer(texto):
+        if not m.group(1):
+            continue
+        num = m.group(2).replace(".", "")
+        trib = _l37_tribunal_colado(texto[m.end():])
+        if trib and trib != "STF":
+            achados.append((f"Súmula Vinculante {num} do {trib}", "Súmula Vinculante", trib,
+                            ("STF",)))
+    for m in _RX_TEMA.finditer(texto):
+        num = m.group(2).replace(".", "")
+        resto = texto[m.end():]
+        rg = bool(m.group(1) and re.match(r"de\s+repercuss", m.group(1), re.I))
+        m_rg = re.match(r"\s+de\s+repercuss[ãa]o\s+geral\b", resto, re.I)
+        if m_rg:
+            rg, resto = True, resto[m_rg.end():]
+        trib = _l37_tribunal_colado(resto)
+        if trib and not rg:
+            rg = bool(re.match(r"[^,;.]{0,12}?\bde\s+repercuss[ãa]o\s+geral\b",
+                               resto[_L37_COLA_RX.match(resto).end():], re.I))
+        if rg and trib and trib != "STF":
+            achados.append((f"Tema {num}/{trib} (repercussão geral)", "Tema", trib, ("STF",)))
+    return achados
+
+
+_L37_COLA_RX = re.compile(r"\s*(?:/\s*|-\s*|,?\s+d[oa]\s+)(STF|STJ|TST|TSE|STM|TJ[A-Z]{2}|TRF\s?-?\d"
+                          r"|TRT\s?-?\d{1,2})\b")
+
+
+def _l37_tribunal_colado(resto):
+    """Sigla de tribunal colada ao número que acaba de ser lido ("/STJ", " do STJ", "-TST")."""
+    m = _L37_COLA_RX.match(resto)
+    return _l37_sigla(m.group(1)) if m else None
+
+
+def l37_mensagem(trecho, classe, tribunal, esperados):
+    esp = " ou ".join(esperados)
+    return (f"L37 CLASSE × TRIBUNAL: «{' '.join(str(trecho).split())}» — {classe} junto de "
+            f"{tribunal}, mas {classe} é da competência do {esp}. Confira o tribunal e a classe na "
+            f"fonte oficial; se o {tribunal} é o tribunal de origem, deixe isso claro na frase.")
+
+
+
+
+
+
+
+
+
+
+
+
+TETOS_PRECEDENTE = {
+    "sumula_stf": {"rotulo": "Súmula do STF", "teto": 736, "conferido_em": "16/11/2026",
+                   "fonte": "https://portal.stf.jus.br/jurisprudencia/sumariosumulas.asp?base=30"},
+    "sumula_vinculante": {"rotulo": "Súmula Vinculante", "teto": 63, "conferido_em": "16/11/2026",
+                          "fonte": "https://portal.stf.jus.br/jurisprudencia/sumariosumulas.asp?base=26"},
+    "sumula_stj": {"rotulo": "Súmula do STJ", "teto": 676, "conferido_em": "16/11/2026",
+                   "fonte": "https://processo.stj.jus.br/SCON/sumstj/toc.jsp"},
+    "sumula_tst": {"rotulo": "Súmula do TST", "teto": 463, "conferido_em": "16/11/2026",
+                   "fonte": "https://jurisprudencia.tst.jus.br/?tipoJuris=SUM&orgao=TST&pesquisar=1"},
+    "tema_stf_rg": {"rotulo": "Tema de Repercussão Geral do STF", "teto": 1501,
+                    "conferido_em": "16/11/2026",
+                    "fonte": "https://portal.stf.jus.br/jurisprudenciaRepercussao/tema.asp?num=1501"},
+    "tema_stj_repetitivo": {"rotulo": "Tema Repetitivo do STJ", "teto": 1474,
+                            "conferido_em": "16/11/2026",
+                            "fonte": "https://processo.stj.jus.br/repetitivos/temas_repetitivos/"},
+    "tema_tst_irr": {"rotulo": "Tema de Recursos Repetitivos do TST (IRR)", "teto": 317,
+                     "conferido_em": "16/11/2026",
+                     "fonte": "https://www.tst.jus.br/nugep-sp/recursos-repetitivos/tabela-completa"},
+    "oj_tst_sbdi1": {"rotulo": "OJ da SBDI-1 do TST", "teto": 421, "conferido_em": "16/11/2026",
+                     "fonte": "https://jurisprudencia.tst.jus.br/?tipoJuris=OJ&orgao=TST&pesquisar=1"},
+    "oj_tst_sbdi1_transitoria": {"rotulo": "OJ Transitória da SBDI-1 do TST", "teto": 79,
+                                 "conferido_em": "16/11/2026",
+                                 "fonte": "https://jurisprudencia.tst.jus.br/?tipoJuris=OJ&orgao=TST&pesquisar=1"},
+    "oj_tst_sbdi2": {"rotulo": "OJ da SBDI-2 do TST", "teto": 158, "conferido_em": "16/11/2026",
+                     "fonte": "https://jurisprudencia.tst.jus.br/?tipoJuris=OJ&orgao=TST&pesquisar=1"},
+    "oj_tst_sdc": {"rotulo": "OJ da SDC do TST", "teto": 38, "conferido_em": "16/11/2026",
+                   "fonte": "https://jurisprudencia.tst.jus.br/?tipoJuris=OJ&orgao=TST&pesquisar=1"},
+    "oj_tst_pleno": {"rotulo": "OJ do Tribunal Pleno do TST", "teto": 13, "conferido_em": "16/11/2026",
+                     "fonte": "https://jurisprudencia.tst.jus.br/?tipoJuris=OJ&orgao=TST&pesquisar=1"},
+}
+_L38_TEMA_RX = re.compile(r"\bTema\s+((?:de\s+Repercuss[ãa]o\s+Geral|Repetitivo)\s+)?"
+                          r"(?:n(?:[º°o]\.?|\.)\s*)?(\d{1,3}(?:\.\d{3})+|\d{1,4})\b", re.I)
+_L38_IRR_COLA_RX = re.compile(
+    r"(?:\s*/\s*|-|,?\s+d[oa]\s+(?:(?:C\.|Col\.|E\.|colendo|egr[eé]gio)\s*)?)"
+    r"(?:TST\b|Tribunal\s+Superior\s+do\s+Trabalho\b)"
+    r"|\s*(?:,\s*)?(?:d[oe]\s+)?IRR\b", re.I)
+L38_OJ_RX = re.compile(
+    r"\b(?:OJ|Orienta[çc][ãa]o\s+Jurisprudencial)\s+(Transit[óo]ria\s+)?(?:n(?:[º°o]\.?|\.)\s*)?"
+
+
+    r"(\d{1,4})\b((?:[^.;\n]|(?<=\b[EC])\.|(?<=\bEg)\.|(?<=\bCol)\.){0,60})", re.I)
+
+
+
+_L38_TRT_COLA_RX = re.compile(
+    r"(?:\s*,?\s*(?:Transit[óo]ria\b|d[oa]\b|S?E?B?DI\s?-?\s?(?:[12]|II?)\b|SDC\b|SE\b|Pleno\b"
+    r"|Se[çc][ãa]o\s+(?:Especializada\s+)?(?:de|em)\s+Diss[íi]dios\s+(?:Individuais|Coletivos)"
+    r"(?:\s+\d)?\b|E\.|Eg\.|C\.|Col\.|egr[eé]gio\b|colendo\b))*"
+    r"\s*(TRT(?:\s+da\s+\d{1,2}\s*[ªºa°]?\s+Regi[ãa]o|\s*[-/]?\s*(?:\d{1,2}(?:\s*[ªºa°])?|(?-i:[A-Z]{2}))\b"
+    r"|\b)|Tribunal\s+Regional\s+do\s+Trabalho(?:\s+da\s+\S+\s+Regi[ãa]o)?)", re.I)
+
+
+def _l38_trt_colado(perto):
+    """O fim do trecho do TRT colado à OJ (índice em `perto`), ou None."""
+    m = _L38_TRT_COLA_RX.match(perto or "")
+    return m.end() if m else None
+
+
+def _l38_especie_oj(transitoria, perto):
+    if _l38_trt_colado(perto) is not None:
+        return None
+    p = _ext_norm(perto)
+    if re.search(r"\bs?b?di\s?-?\s?(?:2|ii)\b", p):
+        return "oj_tst_sbdi2"
+    if re.search(r"\bsdc\b", p):
+        return "oj_tst_sdc"
+    if re.search(r"\bpleno\b", p):
+        return "oj_tst_pleno"
+    if re.search(r"\bs?b?di\s?-?\s?(?:1|i)\b|\btst\b", p):
+        return "oj_tst_sbdi1_transitoria" if transitoria else "oj_tst_sbdi1"
+    return None
+
+
+def l38_achados(texto):
+    """[(rótulo citado, número, chave do teto)] dos números acima do teto da espécie."""
+    texto = texto or ""
+    achados = []
+    for tipo, num, vinc, trib, rotulo in citacoes_sumula_tema(texto):
+        if tipo != "sumula":
+            continue
+        chave = ("sumula_vinculante" if vinc else
+                 {"STF": "sumula_stf", "STJ": "sumula_stj", "TST": "sumula_tst"}.get(trib))
+        if chave and int(num) > TETOS_PRECEDENTE[chave]["teto"]:
+
+
+            achados.append((f"Súmula Vinculante {num}" if vinc else rotulo, int(num), chave))
+    for num, trib, rg, rotulo in _temas_citados(texto):
+
+        chave = ("tema_stf_rg" if (trib == "STF" or (rg and not trib)) else
+                 "tema_stj_repetitivo" if trib == "STJ" and not rg else None)
+        if chave and int(num) > TETOS_PRECEDENTE[chave]["teto"]:
+            achados.append((rotulo, int(num), chave))
+    for m in _L38_TEMA_RX.finditer(texto):
+        if m.group(1) and re.match(r"de\s+repercuss", m.group(1), re.I):
+            continue
+        num = int(m.group(2).replace(".", ""))
+        if (_L38_IRR_COLA_RX.match(texto, m.end())
+                and num > TETOS_PRECEDENTE["tema_tst_irr"]["teto"]):
+            achados.append((f"Tema {num}/TST", num, "tema_tst_irr"))
+    for m in L38_OJ_RX.finditer(texto):
+
+        transitoria = bool(m.group(1) or re.match(r"\s*,?\s*transit[óo]ria", m.group(3), re.I))
+        chave = _l38_especie_oj(transitoria, m.group(3))
+        if chave and int(m.group(2)) > TETOS_PRECEDENTE[chave]["teto"]:
+            achados.append((m.group(0)[:len(m.group(0)) - len(m.group(3))].strip()
+                            + " (" + TETOS_PRECEDENTE[chave]["rotulo"] + ")",
+                            int(m.group(2)), chave))
+    return achados
+
+
+def l38_oj_regionais(texto):
+    'OJs citadas como de TRT ("OJ 45 da SDI-1 do TRT-2", "Orientação Jurisprudencial 12 do'
+
+
+    texto = texto or ""
+    achados = []
+    for m in L38_OJ_RX.finditer(texto):
+        fim = _l38_trt_colado(m.group(3))
+        if fim is not None:
+            rot = re.sub(r"\s+", " ", texto[m.start():m.start(3) + fim]).strip(" ,")
+            if rot not in achados:
+                achados.append(rot)
+    return achados
+
+
+def l38_mensagem_oj_regional(rotulos):
+    return ("L38 OJ REGIONAL SEM TETO CONFERIDO: " + "; ".join(f"«{r}»" for r in rotulos)
+            + " — cada TRT numera as próprias orientações, e o número delas não se confere aqui. "
+            "Confira número e enunciado no site do TRT de origem.")
+
+
+def l38_mensagem(rotulo, teto, data):
+    return (f"L38 NÚMERO ACIMA DO MAIOR PUBLICADO: «{rotulo}» — em {data} o maior número "
+            f"publicado nessa espécie era o {teto}. Confira o número na fonte oficial; se o "
+            f"enunciado é posterior a essa data, desconsidere este aviso.")
+
+
+
+
+
+
+
+
+
+
+def l39_vizinhos(numero, conferidos, minimo=3):
+    alvo = re.sub(r"\D", "", str(numero))
+    if len(alvo) < minimo:
+        return []
+    out = []
+    for c in sorted(conferidos):
+        d = re.sub(r"\D", "", str(c))
+        if len(d) == len(alvo) and d != alvo and sum(a != b for a, b in zip(d, alvo)) == 1:
+            out.append(c)
+    return out
+
+
+def l39_mensagem(citado, vizinhos):
+    return (f"L39 NÚMERO A UM DÍGITO DE PRECEDENTE CONFERIDO: «{citado}», ausente da Relação, "
+            f"difere em um só algarismo de {', '.join(f'«{v}»' for v in vizinhos)}, que está "
+            f"conferido. Veja se não é erro de digitação (os dois podem existir e ser citados "
+            f"juntos); o linter não corrige o número.")
+
+
+
+
+
+
+
+
+
+
+
+
+_L40_CATEGORIAS = {
+    "quantificador": (
+        ("todos", "todas", "sempre", "nunca", "jamais", "nenhum", "nenhuma", "em qualquer caso",
+         "em qualquer hipotese", "em todos os casos", "invariavelmente", "necessariamente",
+         "automaticamente"),
+        ("alguns", "algumas", "em regra", "via de regra", "em geral", "geralmente", "por vezes",
+         "eventualmente", "excepcionalmente", "em certos casos", "em determinados casos",
+         "nem sempre", "a depender", "conforme as circunstancias")),
+    "deontico": (
+        ("deve", "devem", "devera", "deverao", "e obrigatorio", "e obrigatoria", "impoe-se",
+         "e imperativo", "ha de", "hao de"),
+        ("pode", "podem", "podera", "poderao", "e facultado", "e facultada", "faculta-se",
+         "e possivel", "admite-se", "e licito", "e admissivel")),
+}
+
+
+def _l40_acha(texto_norm, termos):
+    """Termos presentes, fora de negação ("não pode", "nem sempre" conta como termo próprio)."""
+    achados = []
+    for t in termos:
+        for m in re.finditer(r"(?<![\w-])" + re.escape(t) + r"(?![\w-])", texto_norm):
+            antes = texto_norm[max(0, m.start() - 5):m.start()]
+            if re.search(r"\b(?:nao|nem)\s+$", antes) and not t.startswith("nem "):
+                continue
+            achados.append(t)
+            break
+    return achados
+
+
+def l40_achados(frase_peca, ementa):
+    """[(categoria, forte_na_peça, fraco_na_ementa)]."""
+    if not (frase_peca and ementa):
+        return []
+    p, e = _ext_norm(frase_peca), _ext_norm(ementa)
+    out = []
+    for cat, (fortes, fracos) in _L40_CATEGORIAS.items():
+        fp = _l40_acha(p, fortes)
+        fe = _l40_acha(e, fracos)
+        if fp and fe and not _l40_acha(e, fortes):
+            out.append((cat, fp[0], fe[0]))
+    return out
+
+
+
+
+
+
+_L40_ORGAO = (r"(?:stj|stf|tst|tse|stm|tribunal|corte|turma|secao|plenario|orgao\s+especial"
+              r"|colegiado|acordao|julgado|precedente|ementa|superior\s+tribunal|supremo)")
+_L40_VERBO = (r"(?:decid|fix|entend|firm|assent|reconhec|consign|estabelec|afirm|conclu|defin"
+              r"|julg|declar|proclam|admit|orient|pacific|sediment|enunci|registr)\w*")
+_L40_ATRIBUI_RX = re.compile(
+    r"\b(?:o|a|os|as|do|da|pelo|pela)\s+" + _L40_ORGAO + r"\b[^.;]{0,80}?\b" + _L40_VERBO
+    + r"|\b" + _L40_VERBO + r"\s+(?:o|a|os|as)\s+" + _L40_ORGAO + r"\b"
+    + r"|\b(?:segundo|para|conforme|consoante|de\s+acordo\s+com|na\s+linha\s+d[oa])\s+(?:o|a)\s+"
+    + _L40_ORGAO + r"\b")
+
+
+def _l40_frases(paragrafo):
+    'Frases do parágrafo. Não parte em abreviatura ("Rel.", "Min.", "art.", "nº"): token de'
+
+    frases, ini = [], 0
+    for m in re.finditer(r"[.;!?](?=\s+[A-ZÀ-Ý«\"“])", paragrafo):
+        tok = re.search(r"(\S+)$", paragrafo[ini:m.start()])
+        tok = tok.group(1) if tok else ""
+        if m.group(0) == "." and ((len(tok) <= 3 and not tok.isupper()) or "º" in tok):
+            continue
+        frases.append(paragrafo[ini:m.end()].strip())
+        ini = m.end()
+    resto = paragrafo[ini:].strip()
+    return frases + ([resto] if resto else [])
+
+
+def l40_frases_da_tese(paragrafo, numeros):
+    'Frases de `paragrafo` que atribuem a tese ao tribunal: citam um dos `numeros` (só'
+
+    out = []
+    for f in _l40_frases(paragrafo or ""):
+        digitos = {re.sub(r"\D", "", n) for n in NUM_PROC_RX.findall(f)}
+        if digitos & {re.sub(r"\D", "", str(n)) for n in numeros} or _L40_ATRIBUI_RX.search(_ext_norm(f)):
+            out.append(f)
+    return out
+
+
+def l40_mensagem(categoria, forte, fraco, numero):
+    nome = "o quantificador" if categoria == "quantificador" else "a força deôntica"
+    return (f"L40 PARÁFRASE MAIS FORTE QUE A EMENTA: a peça diz «{forte}» onde a ementa do "
+            f"julgado nº {numero} diz «{fraco}» — mudou {nome}. Releia a ementa e ajuste a "
+            f"frase ao que o tribunal decidiu, ou diga que a conclusão é sua.")
+
+
+
+
+
+
+
+
+
+
+
+
+
+L41_VALOR_RX = re.compile(
+    r"R\$\s*(?:\d{1,3}(?:\.\d{3})+|\d+)(?:,\d{1,2})?"
+    r"(?:\s+(?:mil|milh[ãa]o|milh[õo]es|bilh[ãa]o|bilh[õo]es)\b)?", re.I)
+_L41_EXTENSO_DEPOIS_RX = re.compile(r"\s*\(([^()]{3,240})\)")
+
+
+_L41_NUMERO_EXTENSO_RX = re.compile(
+    r"\b(?:dois|duas|tr[eê]s|quatro|cinco|seis|sete|oito|nove|dez|onze|doze|treze|[cq]uatorze"
+    r"|catorze|quinze|dezesseis|dezessete|dezoito|dezenove|vinte|trinta|quarenta|cinq[uü]enta"
+    r"|sessenta|setenta|oitenta|noventa|cem|cento|duzent[oa]s|trezent[oa]s|quatrocent[oa]s"
+    r"|quinhent[oa]s|seiscent[oa]s|setecent[oa]s|oitocent[oa]s|novecent[oa]s|mil"
+    r"|milh[ãa]o|milh[õo]es|bilh[ãa]o|bilh[õo]es"
+    r"|uma?\s+(?:mil|rea(?:l|is)|centavos?|milh[ãa]o|bilh[ãa]o))\b", re.I)
+_L41_PREFIXO = r"(?:(?:[IVXLC]+|\d{1,2})\s*[-–—.)]\s*)?"
+_L41_PEDIDOS_RX = re.compile(
+    _L41_PREFIXO + r"(?:d[oa]s?\s+)?(?:conclus[ãa]o\s+e\s+)?(?:d[oa]s?\s+)?"
+    r"(?:pedidos?|requerimentos?)"
+    r"(?:\s+(?:finais|e\s+(?:d[oa]s?\s+)?requerimentos?|e\s+d[oa]\s+valor\s+da\s+causa))?"
+    r"\s*[.:]?", re.I)
+_L41_SECAO_RX = re.compile(r"(?:CAP[IÍ]TULO\b|" + _L41_PREFIXO + r"D[OA]S?\s)", re.I)
+
+_L41_LIGACAO = frozenset("a o as os e ou de do da dos das em no na nos nas por pelo pela pelos "
+                         "pelas para com sem sob sobre entre ao aos à às que".split())
+
+
+def l41_titulo_de_pedidos(texto):
+    """O parágrafo é o título da seção de pedidos (inteiro, curto)."""
+    t = " ".join(str(texto or "").split())
+    return len(t) <= 90 and bool(_L41_PEDIDOS_RX.fullmatch(t))
+
+
+def l41_titulo_de_secao(texto):
+    'O parágrafo é um título de seção e fecha os pedidos: curto, começando por "CAPÍTULO",'
+
+
+
+
+    t = " ".join(str(texto or "").split())
+    if not (0 < len(t) <= 90 and any(c.isalpha() for c in t) and _L41_SECAO_RX.match(t)):
+        return False
+    if t == t.upper():
+        return True
+    if t.endswith(".") or len(t.split()) > 10:
+        return False
+    palavras = re.findall(r"[^\W\d_]+", t)
+    return all(p[0].isupper() for p in palavras if p.lower() not in _L41_LIGACAO)
+
+
+def l41_achados(texto, mascara=None):
+    'Valores em reais sem extenso, na ordem do texto. `mascara`: o texto com o itálico'
+
+    texto = texto or ""
+    out = []
+    for m in L41_VALOR_RX.finditer(texto):
+        if mascara is not None and mascara[m.start():m.end()] != texto[m.start():m.end()]:
+            continue
+        depois = _L41_EXTENSO_DEPOIS_RX.match(texto, m.end())
+        if depois and _L41_NUMERO_EXTENSO_RX.search(depois.group(1)):
+            continue
+        antes = texto[max(0, m.start() - 240):m.start()]
+        if re.search(r"\b(?:rea(?:l|is)|centavos?)\s*\(\s*$", antes, re.I):
+            continue
+        out.append(" ".join(m.group(0).split()))
+    return out
+
+
+def l41_mensagem(valores, trecho):
+    vals = ", ".join(f"«{v}»" for v in valores)
+    return (f"L41 VALOR SEM EXTENSO NOS PEDIDOS: {vals} em «{' '.join(str(trecho).split())[:160]}». "
+            f"Valor em algarismo sem o por extenso nos pedidos: confira se a banca escreve por "
+            f"extenso.")
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+_L42_SUPERIOR_RX = re.compile(r"\bSUPERIOR\s+TRIBUNAL\b|\bSUPREMO\s+TRIBUNAL\b|\bTRIBUNAL\s+SUPERIOR\b")
+
+
+
+
+
+
+_L42_DISTRITO_FEDERAL_RX = re.compile(r"\bDISTRITO\s+FEDERAL\b")
+_L42_NAO_JUIZO_FEDERAL_RX = re.compile(
+    r"\b(?:COMPETENCIA|JURISDICAO)\s+FEDERAL(?:\s+DELEGADA)?\b"
+    r"|\b(?:CAIXA\s+ECONOMICA|RECEITA|POLICIA(?:\s+RODOVIARIA)?|UNIVERSIDADE|UNIAO|AUTARQUIA"
+    r"|EMPRESA\s+PUBLICA|FUNDACAO(?:\s+PUBLICA)?|SERVIDORA?\s+PUBLIC[OA]"
+    r"|INSTITUTO|CONSELHO|DEPUTADO|SENADO|RODOVIA|FAZENDA|CONSTITUICAO)\s+FEDERA(?:L|IS)\b")
+_L42_FEDERAL_FORTE_RX = re.compile(
+    r"\bJUIZ[AO]?\s+FEDERA(?:L|IS)\b|\bJUIZO\s+FEDERAL\b|\bJUSTICA\s+FEDERAL\b"
+    r"|\b(?:SUB)?SECAO\s+JUDICIARIA\b|\bTRF\b|\bTRIBUNAL\s+REGIONAL\s+FEDERAL\b"
+    r"|\bJUIZADOS?\s+ESPECIA(?:L|IS)\s+(?:(?:CIVE(?:L|IS)|CRIMINA(?:L|IS))\s+)?FEDERA(?:L|IS)\b"
+    r"|\bJEF\b|\bDESEMBARGADORA?\s+FEDERAL\b|\bTURMA\s+(?:NACIONAL|REGIONAL)\s+DE\s+UNIFORMIZACAO\b")
+_L42_FEDERAL_MEDIO_RX = re.compile(r"\bVARAS?\s+(?:[\w-]+\s+){0,4}FEDERA(?:L|IS)\b")
+_L42_ESTADUAL_FORTE_RX = re.compile(r"\bJUIZ[AO]?\s+DE\s+DIREITO\b|\bJUIZO\s+DE\s+DIREITO\b|\bCOMARCA\b")
+_L42_JEF_RX = re.compile(r"\bJUIZADOS?\s+ESPECIA(?:L|IS)\b|\bTURMAS?\s+RECURSA(?:L|IS)\b"
+                         r"|\bTURMA\s+(?:NACIONAL|REGIONAL)\s+DE\s+UNIFORMIZACAO\b|\bJEF\b"
+                         r"|\bVARA-?\s?GABINETE\b")
+_L42_TRIBUNAL_FEDERAL_RX = re.compile(r"\bTRIBUNAL\s+REGIONAL\s+FEDERAL\b|\bTRF\b")
+_L42_TRABALHO_RX = re.compile(r"\bVARA\s+(?:UNICA\s+)?DO\s+TRABALHO\b|\bJUIZ[AO]?\s+DO\s+TRABALHO\b"
+                              r"|\bTRIBUNAL\s+REGIONAL\s+DO\s+TRABALHO\b")
+_L42_ELEITORAL_RX = re.compile(r"\bZONA\s+ELEITORAL\b|\bJUIZ[AO]?\s+ELEITORAL\b"
+                               r"|\bTRIBUNAL\s+REGIONAL\s+ELEITORAL\b")
+_L42_ESTADUAL_RX = re.compile(
+    r"\bJUIZ[AO]?\s+DE\s+DIREITO\b|\bJUIZO\s+DE\s+DIREITO\b|\bCOMARCA\b|\bVARAS?\s+CIVE(?:L|IS)\b"
+    r"|\bFAZENDA\s+PUBLICA\b|\bTRIBUNAL\s+DE\s+JUSTICA\b|\bJUIZADOS?\s+ESPECIA(?:L|IS)\b"
+    r"|\bCOLEGIO\s+RECURSAL\b|\bVARAS?\s+D[AE]\s+FAMILIA\b"
+    r"|\bFORO\s+(?:CENTRAL|REGIONAL|DISTRITAL)\b|\bFORO\s+D[AEO]S?\b|\bVARA\s+(?:CRIMINAL|DE\s+FALENCIAS"
+    r"|DE\s+ACIDENTES?|DE\s+SUCESSOES|DA\s+INFANCIA|DE\s+REGISTROS|DE\s+EXECUCOES|UNICA|JUDICIAL)\b"
+    r"|\bVARAS?\s+(?:REGIONA(?:L|IS)\s+)?EMPRESARIA(?:L|IS)\b|\bDIREITO\s+BANCARIO\b")
+
+
+_L42_CABECALHO_RX = re.compile(
+    r"^\s*(?:URGENTE|PRIORIDADE|PROCESSOS?\b|AUTOS\b|REF\b|REFERENCIA|DISTRIBUICAO|PROC\b|N[Oº°]?\s*\d"
+    r"|CARTA\s+PRECATORIA|PEDIDO\s+DE\s+TUTELA|COM\s+PEDIDO|SEGREDO\s+DE\s+JUSTICA|TRAMITACAO)")
+_L42_JUIZO_RX = re.compile(
+    r"\bJUIZ[AO]?\b|\bJUIZO\b|\bVARAS?\b|\bTRIBUNA(?:L|IS)\b|\bTURMAS?\b|\bDESEMBARGADORA?\b|\bFORO\b"
+    r"|\bCOMARCA\b|\b(?:SUB)?SECAO\s+JUDICIARIA\b|\bZONA\b|\bMINISTRO\b|\bJUIZADOS?\b|\bCOLEGIO\b"
+    r"|\bTRF\b|\bJEF\b|\bJEC\b|\bCAMARA\b|\bRELATORA?\b")
+_L42_QUALIFICACAO_RX = re.compile(r"\bCPF\b|\bCNPJ\b|\bEM\s+FACE\b|\bVEM\b|,\s*BRASILEIR|\bINSCRIT")
+_L42_TJ_RX = re.compile(r"\bTRIBUNAL\s+DE\s+JUSTICA\b")
+_L42_CAMPOS = ("justica", "delegada", "jef", "excecao")
+_L42_NOME_JUSTICA = {"estadual": "JUSTIÇA ESTADUAL", "trabalho": "JUSTIÇA DO TRABALHO",
+                     "eleitoral": "JUSTIÇA ELEITORAL"}
+_L42_CAPA_MAX = 12
+
+
+def _l42_norm(texto):
+    return " ".join(_sem_acento(texto or "").upper().split())
+
+
+def l42_ramo_enderecamento(texto):
+    "(ramo, jef) do endereçamento: ramo 'federal' | 'estadual' | 'trabalho' | 'eleitoral' |"
+
+
+
+
+    t = re.sub(r"\((?:A|O|AS|OS)\)", "", _l42_norm(texto))
+    if not t or _L42_SUPERIOR_RX.search(t):
+        return None, False
+    sem_df = _L42_NAO_JUIZO_FEDERAL_RX.sub(" ", _L42_DISTRITO_FEDERAL_RX.sub(" ", t))
+    if _L42_FEDERAL_FORTE_RX.search(sem_df) or (
+            _L42_FEDERAL_MEDIO_RX.search(sem_df) and not _L42_ESTADUAL_FORTE_RX.search(sem_df)):
+        return "federal", bool(_L42_JEF_RX.search(sem_df))
+    if _L42_TRABALHO_RX.search(t):
+        return "trabalho", False
+    if _L42_ELEITORAL_RX.search(t):
+        return "eleitoral", False
+    if _L42_ESTADUAL_RX.search(t):
+        return "estadual", False
+    return None, False
+
+
+def l42_entes_na_capa(paragrafos):
+    'Entes federais nomeados nos parágrafos da capa, em ordem e sem repetição. Banco do Brasil'
+
+
+    if _competencia is None:
+        return []
+    out = []
+    for p in paragrafos:
+        for rotulo in _competencia.entes_nomeados(p):
+            if rotulo not in out:
+                out.append(rotulo)
+    return out
+
+
+def _l42_ler(caminho):
+    """O COMPETENCIA.json lido e validado, ou levanta ValueError dizendo por quê."""
+    with open(caminho, "rb") as f:
+        dados = json.loads(f.read().decode("utf-8-sig"))
+    if not isinstance(dados, dict) or dados.get("schema") != "dsr.competencia.v1":
+        raise ValueError("não é um resultado dsr.competencia.v1")
+    if dados.get("justica") not in ("federal", "estadual", "trabalho", "eleitoral", "indeterminada"):
+        raise ValueError(f"justiça «{dados.get('justica')}» desconhecida")
+    return dados
+
+
+def artefatos_do_caso(caminho_docx, nome, session_id=None):
+    'Caminhos absolutos de `nome` (COMPETENCIA.json, ADMISSIBILIDADE.json) na pasta do caso'
+
+
+
+    candidatos = []
+    if _caso_raiz is not None:
+        try:
+            raiz, origem = _caso_raiz.resolver(session_id=session_id)
+            if origem == "atual":
+
+
+                _pont = _caso_raiz._ler_ponteiro(_caso_raiz.caminho_ponteiro_atual()) or {}
+                _dono = str(_pont.get("session_id") or "").strip()
+                if _dono and _dono != str(session_id or "").strip():
+                    origem = "outra_sessao"
+            achado = (os.path.join(raiz, nome)
+                      if origem in ("env", "sessao", "atual") else "")
+            if achado and os.path.isfile(achado):
+                candidatos.append(os.path.abspath(achado))
+        except Exception:
+            pass
+    ao_lado = os.path.join(os.path.dirname(os.path.abspath(caminho_docx or ".")), nome)
+    if os.path.isfile(ao_lado) and os.path.abspath(ao_lado) not in candidatos:
+        candidatos.append(os.path.abspath(ao_lado))
+    return candidatos
+
+
+def competencia_do_caso(caminho_docx, session_id=None):
+    '(dados, arquivo, aviso) do COMPETENCIA.json da peça: o da pasta do caso desta sessão e o'
+
+
+
+    candidatos = artefatos_do_caso(caminho_docx, "COMPETENCIA.json", session_id)
+    lidos, avisos = {}, []
+    for c in candidatos:
+        try:
+            lidos[c] = _l42_ler(c)
+        except Exception as e:
+            avisos.append(f"L42 COMPETENCIA.json ilegível e ignorado ({c}): {e}")
+    chaves = {tuple(str(d.get(k)) for k in _L42_CAMPOS) for d in lidos.values()}
+    if len(chaves) > 1:
+        avisos.append("L42 os COMPETENCIA.json da pasta do caso e ao lado do .docx divergem ("
+                      + " × ".join(lidos) + "): nenhum é usado. Rode o verificador de novo e "
+                      "deixe um só")
+        return None, None, avisos
+    if not lidos:
+        return None, None, avisos
+    arquivo, dados = next(iter(lidos.items()))
+    return dados, arquivo, avisos
+
+
+def l42_enderecamento(paragrafos, teto=3):
+    '(endereçamento, quantos parágrafos ele ocupa, contando os cabeçalhos pulados). Pula o'
+
+
+
+
+    paras = [str(p) for p in (paragrafos or [])]
+    i = 0
+    while i < len(paras) - 1 and i < 6 and _L42_CABECALHO_RX.match(_l42_norm(paras[i])):
+        i += 1
+    if i >= len(paras):
+        return "", 0
+    partes = [paras[i]]
+    if l42_ramo_enderecamento(paras[i])[0] is not None:
+        return paras[i], i + 1
+    for j in range(i + 1, min(i + teto, len(paras))):
+        t = _l42_norm(paras[j])
+        if _L42_QUALIFICACAO_RX.search(t) or not _L42_JUIZO_RX.search(t):
+            break
+        partes.append(paras[j])
+        if l42_ramo_enderecamento(" ".join(partes))[0] is not None:
+            break
+    return " ".join(partes), i + len(partes)
+
+
+def l42_processos_em_curso(textos, processos_arg=()):
+    'Números CNJ da capa (endereçamento, cabeçalho, qualificação) e de `--processo`: a peça é'
+
+    out = []
+    for t in textos:
+        for m in CNJ_RX.finditer(str(t)):
+            if m.group(0) not in out:
+                out.append(m.group(0))
+    for p in processos_arg or ():
+        d = re.sub(r"\D", "", p or "")
+        if len(d) == 20:
+            cnj = f"{d[:7]}-{d[7:9]}.{d[9:13]}.{d[13]}.{d[14:16]}.{d[16:]}"
+            if cnj not in out:
+                out.append(cnj)
+    return out
+
+
+def _l42_segmento(cnj):
+    """O segmento J do CNJ (4 federal, 5 trabalho, 6 eleitoral, 8 estadual)."""
+    d = re.sub(r"\D", "", cnj)
+    return d[13] if len(d) == 20 else ""
+
+
+def _l42_capa_tem_ente(capa, dados):
+    """A capa nomeia algum ente federal (o do arquivo, pelo nome, ou qualquer um reconhecido)."""
+    if l42_entes_na_capa(capa):
+        return True
+    t = _l42_norm(" ".join(str(c) for c in capa))
+    for e in dados.get("entes_federais") or []:
+        nome = _l42_norm(e.get("nome")) if isinstance(e, dict) else ""
+        if nome and nome in t:
+            return True
+    return False
+
+
+def l42_achados(primeiro, capa, dados=None, arquivo=None, processos=(), explicito=False):
+    '[(nível, mensagem)] do L42. `primeiro`: o endereçamento; `capa`: os demais parágrafos'
+
+
+
+    ramo, jef_end = l42_ramo_enderecamento(primeiro)
+    end = " ".join(str(primeiro).split())[:120]
+    t_end = _l42_norm(primeiro)
+    if ramo is None:
+
+
+        if (dados is not None and dados.get("justica") == "federal" and t_end
+                and not _L42_SUPERIOR_RX.search(t_end)
+                and _L42_JUIZO_RX.search(re.sub(r"\bMINISTRO\b", " ", t_end))):
+            return [("AVISO",
+                     f"L42 ENDEREÇAMENTO NÃO RECONHECIDO: «{end}», e o verificador de "
+                     f"competência ({arquivo}) apontou a Justiça Federal. O lint não reconheceu o "
+                     f"juízo como federal nem como estadual; confira-o.")]
+        return []
+    if dados is None:
+        entes = l42_entes_na_capa(capa)
+        if not entes or ramo != "estadual":
+            return []
+        return [("AVISO",
+                 f"L42 ENTE FEDERAL NA CAPA COM ENDEREÇAMENTO ESTADUAL (inferido, sem "
+                 f"COMPETENCIA.json): a capa nomeia {', '.join(entes)} e a peça se dirige a "
+                 f"«{end}». Ente federal em polo leva a causa à Justiça Federal (CF, art. 109, I), "
+                 f"salvo falência, insolvência civil, acidente do trabalho, Justiça Eleitoral e do "
+                 f"Trabalho, e a "
+                 f"competência delegada previdenciária (art. 109, §3º). Rode o verificador de "
+                 f"competência (competencia.py --pedido ... --gravar <pasta da peça>) e, havendo "
+                 f"exceção, declare-a lá.")]
+    justica = dados.get("justica")
+    nomes = ", ".join(f"{e.get('nome')} ({e.get('base')})"
+                      for e in (dados.get("entes_federais") or []) if isinstance(e, dict))
+    sugerido = dados.get("enderecamento_sugerido") or (
+        "AO JUÍZO FEDERAL DA ___ VARA FEDERAL DA SUBSEÇÃO JUDICIÁRIA DE ___")
+    delegada = bool(dados.get("delegada"))
+    segmentos = {_l42_segmento(c) for c in processos or ()}
+    if delegada:
+
+
+        if ramo == "federal" and _L42_TRIBUNAL_FEDERAL_RX.search(t_end):
+            return []
+        if ramo == "estadual" and _L42_TJ_RX.search(t_end):
+            return [("AVISO",
+                     f"L42 RECURSO DA COMPETÊNCIA DELEGADA ENDEREÇADO AO TRIBUNAL DE JUSTIÇA: "
+                     f"«{end}». Na competência delegada o recurso vai ao Tribunal Regional Federal "
+                     f"(CF, art. 109, §4º), segundo o verificador ({arquivo}). Confira o "
+                     f"tribunal.")]
+    if justica == "federal" and ramo == "estadual" and processos:
+
+
+        return [("AVISO",
+                 f"L42 PROCESSO EM CURSO{' NA JUSTIÇA ESTADUAL' if '8' in segmentos else ''} ({', '.join(list(processos)[:3])}) E "
+                 f"O VERIFICADOR APONTOU A FEDERAL ({arquivo}) por {nomes or 'ente federal em polo'}: "
+                 f"em peça do processo (contestação, recurso, cumprimento, pedido de remessa) o "
+                 f"endereçamento ao juízo onde ele corre («{end}») está certo. Não mude o juízo: "
+                 f"argua a incompetência absoluta em preliminar (CPC, arts. 64 e 337, II — "
+                 f"dispositivos não conferidos nesta regra) ou peça a remessa à Justiça Federal, a "
+                 f"quem cabe decidir sobre o interesse do ente federal (Súmula 150 do STJ).")]
+    if justica == "federal" and ramo == "estadual" and not explicito and not _l42_capa_tem_ente(
+            capa, dados):
+        return [("AVISO",
+                 f"L42 COMPETENCIA.json DE OUTRA PEÇA? O arquivo ({arquivo}) aponta a Justiça "
+                 f"Federal por {nomes or 'ente federal em polo'}, que a capa não nomeia, e a peça se "
+                 f"dirige a «{end}». Se a peça é desta causa, nomeie o ente na qualificação; se é "
+                 f"de outra peça, rode o verificador para ela e passe o arquivo com --competencia.")]
+    if justica == "federal" and ramo == "estadual":
+        return [("ERRO",
+                 f"L42 ENTE FEDERAL ENDEREÇADO À JUSTIÇA ESTADUAL: a peça se dirige a «{end}», "
+                 f"mas o verificador de competência ({arquivo}) apontou a Justiça Federal por "
+                 f"{nomes or 'ente federal em polo'} — CF, art. 109, I. Enderece ao juízo federal "
+                 f"(«{sugerido}»). Se a causa é exceção do art. 109, I (falência, insolvência civil, acidente do "
+                 f"trabalho, Justiça Eleitoral ou do Trabalho) ou de competência delegada, "
+                 f"declare a exceção e rode o verificador de novo. Se a peça é de processo que já "
+                 f"corre neste juízo (contestação, recurso, cumprimento), ponha o número dos autos "
+                 f"na capa ou passe --processo: aí o L42 só avisa.")]
+    if justica == "federal" and ramo in ("trabalho", "eleitoral"):
+        return [("AVISO",
+                 f"L42 CAUSA FEDERAL ENDEREÇADA À {_L42_NOME_JUSTICA[ramo]}: «{end}», e o "
+                 f"verificador ({arquivo}) apontou a Justiça Federal. Confira o juízo, ou declare "
+                 f"a exceção e rode o verificador de novo.")]
+    if (justica == "federal" and ramo == "federal" and dados.get("jef") == "sim" and not jef_end
+            and not _L42_TRIBUNAL_FEDERAL_RX.search(t_end) and "4" not in segmentos):
+        return [("AVISO",
+                 f"L42 CAUSA DO JEF ENDEREÇADA À VARA FEDERAL COMUM: «{end}». O verificador "
+                 f"({arquivo}) apontou o Juizado Especial Federal, cuja competência é absoluta "
+                 f"onde houver vara instalada (Lei 10.259/2001, art. 3º, §3º). Confira se a "
+                 f"subseção tem JEF e, tendo, enderece a ele.")]
+    if justica in _L42_NOME_JUSTICA and ramo == "federal":
+        rotulo = " (competência delegada)" if delegada else ""
+        return [("AVISO",
+                 f"L42 ENDEREÇAMENTO FEDERAL EM CAUSA DA {_L42_NOME_JUSTICA[justica]}{rotulo}: "
+                 f"«{end}», e o verificador ({arquivo}) não apontou a Justiça Federal. Ele só mede o "
+                 f"ente federal em polo (CF, art. 109, I): crime federal (art. 109, IV) e mandado de "
+                 f"segurança contra ato de autoridade federal (art. 109, VIII) ficam fora dele. "
+                 f"Confira o juízo.")]
+    if justica == "indeterminada" and dados.get("a_confirmar"):
+        pend = dados["a_confirmar"]
+        pend = [pend] if isinstance(pend, str) else (pend if isinstance(pend, list) else [])
+        return [("AVISO",
+                 f"L42 COMPETÊNCIA A CONFIRMAR ({arquivo}): "
+                 + " ".join(str(m) for m in pend if isinstance(m, str))[:400]
+                 + " Pergunte ao advogado e rode o verificador de novo.")]
+    if (justica == "estadual" and ramo == "estadual" and not dados.get("excecao") and not delegada):
+
+
+        partes = [p for p in (dados.get("partes") or []) if isinstance(p, dict)]
+        if not any(p.get("esfera") in ("federal", "a_confirmar") for p in partes):
+            entes = l42_entes_na_capa(capa)
+            if entes:
+                return [("AVISO",
+                         f"L42 ENTE FEDERAL NA CAPA QUE O VERIFICADOR NÃO RECEBEU: a capa nomeia "
+                         f"{', '.join(entes)}, mas o verificador de competência ({arquivo}) não "
+                         f"recebeu parte federal e apontou a Justiça Estadual. Confira se o pedido "
+                         f"dele trouxe todas as partes e rode-o de novo.")]
+    return []
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+L43_VIGENCIA = "2026-09-03"
+L43_SCHEMA = "dsr.admissibilidade.entrada.v1"
+L43_ARQUIVO = "ADMISSIBILIDADE.json"
+
+
+L43_RESP = {"recurso especial", "resp", "recurso especial repetitivo"}
+L43_OUTROS_ESPECIAIS = {"agravo em recurso especial", "aresp"}
+_L43_NAO_LEEM = ("agravo interno", "embargos", "contrarrazoes", "contraminuta", "resposta")
+_L43_TITULO_MAX = 160
+
+
+_L43_TITULO_RX = re.compile(
+    r"\bRELEVANCIA\b(?:\s+DAS?\s+QUEST(?:AO|OES)\s+(?:DE\s+DIREITO\s+|JURIDICAS?\s+)?FEDERA(?:L|IS)\b"
+    r"|\s*\(?\s*(?:CPC\s*,?\s*)?ART(?:IGO)?\.?\s*1\.?035\s*-?\s*A\b)")
+_L43_ROMANO = r"(VI|IV|V|I{1,3})(?![IVXLC\w])"
+_L43_PAR3 = r"(?:§|par[aá]grafo)\s*3\s*\.?\s*[ºo°]?"
+_L43_DISPOSITIVO_RX = (
+    re.compile(r"(?i:art(?:igo)?\.?\s*105\s*,?\s*" + _L43_PAR3
+               + r"\s*,?\s*(?:inc(?:iso|\.)\s*)?)" + _L43_ROMANO),
+    re.compile(r"(?i:inc(?:iso|\.)\s*)" + _L43_ROMANO
+               + r"(?i:\s+do\s+" + _L43_PAR3 + r"\s+do\s+art(?:igo)?\.?\s*105)"))
+_L43_CAPA_RESP_RX = re.compile(r"\bRECURSO\s+ESPECIAL\b")
+_L43_CAPA_OUTRO_RX = re.compile(r"\bCONTRARRAZ|\bAGRAVO\b|\bCONTRAMINUTA\b")
+
+
+_L43_CAPA_OUTRA_PECA_RX = re.compile(
+    r"\bCONTRARRAZ|\bCONTRAMINUTA\b|\bAGRAVO\s+(?:INTERNO|EM\s+RECURSO\s+ESPECIAL)\b"
+    r"|\bRESPOSTA\s+AO\s+RECURSO\b")
+_L43_INTERPOE_RESP_RX = re.compile(r"\bINTERP\w*\s+(?:O\s+PRESENTE\s+|ESTE\s+)?RECURSO\s+ESPECIAL\b")
+
+
+def _l43_norm_recurso(s):
+    t = _l42_norm(str(s or "")).casefold()
+    return " ".join(re.sub(r"[_\-]+", " ", t).split())
+
+
+def _l43_data(pub):
+    """date de `AAAA-MM-DD` estrito, ou None."""
+    if not re.fullmatch(r"[0-9]{4}-[0-9]{2}-[0-9]{2}", pub):
+        return None
+    try:
+        import datetime as _dt43
+        return _dt43.date.fromisoformat(pub)
+    except ValueError:
+        return None
+
+
+def _l43_titulo_seguinte(texto):
+    """Parágrafo que abre outro tópico: curto, sem ponto final, em caixa alta ou numerado."""
+    t = " ".join(str(texto or "").split())
+    if not t or len(t) > 120 or t.endswith((".", ";", ":", ",")):
+        return False
+    letras = [c for c in t if c.isalpha() and c not in "ºª"]
+    if len(letras) >= 3 and not any(c.islower() for c in letras):
+        return True
+    return bool(re.match(r"^(?:[IVXLC]+|\d+(?:\.\d+)*)\s*[-–—.)]\s+\S", t))
+
+
+def l43_titulo_relevancia(texto):
+    'O parágrafo é o título do tópico de relevância: curto e com «relevância da questão (de'
+
+    t = " ".join(str(texto or "").split())
+    if not t:
+        return False
+    letras = [c for c in t if c.isalpha() and c not in "ºª"]
+    caixa_alta = len(letras) >= 3 and not any(c.islower() for c in letras)
+
+
+    if not caixa_alta and (len(t) > _L43_TITULO_MAX or t.endswith((".", ";"))):
+        return False
+    return bool(_L43_TITULO_RX.search(_l42_norm(t[:_L43_TITULO_MAX])))
+
+
+def _l43_ler(caminho):
+    with open(caminho, encoding="utf-8") as f:
+        dados = json.load(f)
+    if not isinstance(dados, dict) or dados.get("schema_version") != L43_SCHEMA:
+        raise ValueError(f"não é a entrada do checklist de admissibilidade (`schema_version` "
+                         f"{L43_SCHEMA}, com `recurso` e `acordao_publicado_em`)")
+    return dados
+
+
+def admissibilidade_do_caso(caminho_docx, session_id=None):
+    '(dados, arquivo, avisos, achou_algum) do ADMISSIBILIDADE.json da peça, com a mesma'
+
+    candidatos = artefatos_do_caso(caminho_docx, L43_ARQUIVO, session_id)
+    lidos, avisos = {}, []
+    for c in candidatos:
+        try:
+            lidos[c] = _l43_ler(c)
+        except Exception as e:
+            avisos.append(f"L43 {L43_ARQUIVO} ilegível e ignorado ({c}): {e}")
+    chaves = {json.dumps([d.get("recurso"), d.get("acordao_publicado_em"),
+                          (d.get("criterios") or {}).get("relevancia_questao_federal")],
+                         sort_keys=True, ensure_ascii=False) for d in lidos.values()}
+    if len(chaves) > 1:
+        avisos.append(f"L43 os {L43_ARQUIVO} da pasta do caso e ao lado do .docx divergem ("
+                      + " × ".join(lidos) + "): nenhum é usado. Deixe um só, o da entrada que "
+                      "o checklist de admissibilidade avaliou")
+        return None, None, avisos, True
+    if not lidos:
+        return None, None, avisos, bool(candidatos)
+    arquivo, dados = next(iter(lidos.items()))
+    return dados, arquivo, avisos, True
+
+
+def l43_incisos_citados(texto):
+    'Incisos do art. 105, § 3º, da CF citados no texto («art. 105, § 3º, III», «inciso III do'
+
+    achados = set()
+    for rx in _L43_DISPOSITIVO_RX:
+        achados.update(m.group(1).upper() for m in rx.finditer(str(texto or "")))
+    return achados
+
+
+def l43_achados(paragrafos, dados, arquivo):
+    '[(nível, mensagem)] do L43. `paragrafos`: os textos da peça, em ordem; `dados`: a entrada'
+
+    recurso = _l43_norm_recurso(dados.get("recurso"))
+    if recurso not in L43_RESP:
+        palavras = set(re.split(r"[^a-z0-9]+", recurso))
+        if (recurso and recurso not in L43_OUTROS_ESPECIAIS and not recurso.startswith(_L43_NAO_LEEM)
+                and palavras & {"especial", "resp", "aresp"}):
+            return [("AVISO",
+                     f"L43 NÃO MEDIDO: o checklist de admissibilidade ({arquivo}) declara o recurso "
+                     f"{dados.get('recurso')!r}, fora do vocabulário (o checklist o recusa). Use "
+                     f"«recurso especial» ou «agravo em recurso especial» e rode de novo.")]
+        return []
+    pub = str(dados.get("acordao_publicado_em") or "").strip()
+    if pub and _l43_data(pub) is None:
+        return [("ERRO",
+                 f"L43 DATA DO ACÓRDÃO ILEGÍVEL: o checklist de admissibilidade ({arquivo}) traz "
+                 f"`acordao_publicado_em` {pub!r}, fora de AAAA-MM-DD ou inexistente, e o checklist "
+                 f"recusa essa forma. Sem a data o linter não sabe se o tópico de relevância é "
+                 f"exigido (acórdãos publicados a partir de {L43_VIGENCIA[8:]}/{L43_VIGENCIA[5:7]}/"
+                 f"{L43_VIGENCIA[:4]}); corrija a data e rode de novo.")]
+    if not pub:
+        return [("AVISO",
+                 f"L43 NÃO MEDIDO: o checklist de admissibilidade ({arquivo}) é de recurso "
+                 f"especial e não traz `acordao_publicado_em` (AAAA-MM-DD). Sem a data do acórdão "
+                 f"recorrido o linter não sabe se o tópico de relevância é exigido (acórdãos "
+                 f"publicados a partir de {L43_VIGENCIA[8:]}/{L43_VIGENCIA[5:7]}/"
+                 f"{L43_VIGENCIA[:4]}); preencha-a e rode de novo.")]
+    if pub < L43_VIGENCIA:
+        return []
+    item = (dados.get("criterios") or {}).get("relevancia_questao_federal")
+    item = item if isinstance(item, dict) else {}
+    textos = [str(t) for t in paragrafos]
+    idx = next((i for i, t in enumerate(textos) if l43_titulo_relevancia(t)), None)
+    data = f"{pub[8:]}/{pub[5:7]}/{pub[:4]}"
+    if idx is None:
+        msg = (f"L43 RECURSO ESPECIAL SEM O TÓPICO DE RELEVÂNCIA: o acórdão recorrido foi "
+               f"publicado em {data}, já sob a Lei 15.484/2026, e a peça não tem título de "
+               f"tópico «Da relevância da questão de direito federal» (CPC, art. 1.035-A, § 2º). "
+               f"Desatendida a forma, o recurso será inadmitido (§ 3º), e a presunção do art. "
+               f"105, § 3º, da CF não dispensa o tópico: ela é o conteúdo dele (notícia oficial do "
+               f"STJ de 30/08/2026). Acrescente o tópico depois do cabimento e antes do mérito "
+               f"(roteiro em dissero-peticao, references/topico-relevancia-resp.md).")
+        if item.get("estado") == "satisfeito":
+            msg += (f" O checklist de admissibilidade ({arquivo}) declara o tópico "
+                    f"(`satisfeito`): corrija a peça ou o checklist, que não podem divergir.")
+        return [("ERRO", msg)]
+    pres = item.get("presuncao")
+    inciso = str(pres.get("inciso") or "").strip().upper() if isinstance(pres, dict) else ""
+    if inciso in ("I", "II", "III", "IV", "V", "VI"):
+
+
+        fim = next((j for j in range(idx + 1, len(textos))
+                    if _l43_titulo_seguinte(textos[j]) and not l43_titulo_relevancia(textos[j])),
+                   len(textos))
+        citados = l43_incisos_citados("\n".join(textos[idx:fim]))
+        if inciso not in citados:
+            outros = (f" (o tópico cita o inciso {', '.join(sorted(citados))})"
+                      if citados else "")
+            return [("ERRO",
+                     f"L43 PRESUNÇÃO DECLARADA E AUSENTE DO TÓPICO: o checklist de "
+                     f"admissibilidade ({arquivo}) declara a relevância presumida pelo art. 105, "
+                     f"§ 3º, {inciso}, da CF, e o tópico «{' '.join(textos[idx].split())[:90]}» não "
+                     f"cita esse dispositivo{outros}. A presunção é o conteúdo do tópico: diga a "
+                     f"hipótese (CF, art. 105, § 3º, {inciso}) e o fato do caso que a demonstra, ou "
+                     f"corrija o inciso no checklist.")]
+    return []
+
+
+def l43_capa_de_resp(capa):
+    """A capa fala em recurso especial (e não em contrarrazões, contraminuta ou agravo)."""
+    t = _l42_norm(" ".join(str(c) for c in capa))
+    return bool(_L43_CAPA_RESP_RX.search(t)) and not _L43_CAPA_OUTRO_RX.search(t)
+
+
+def l43_capa_de_outra_peca(capa):
+    'A capa é de contrarrazões, contraminuta, resposta, agravo interno ou agravo em recurso'
+
+
+    t = _l42_norm(" ".join(str(c) for c in capa))
+    return bool(_L43_CAPA_OUTRA_PECA_RX.search(t)) and not _L43_INTERPOE_RESP_RX.search(t)
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+_L44_IDS = {"ordem_de_julgamento_a_ia", "nota_oculta_a_ia", "condicional_ia",
+            "condicional_leitura_maquina", "dirigido_a_ia"}
+
+
+_L44_ASPAS_RX = re.compile(r'"[^"\n]{3,}"|“[^”\n]{3,}”|«[^»\n]{3,}»|‘[^’\n]{3,}’'
+                           r"|(?<!\w)'[^'\n]{3,}'(?!\w)")
+_L44_ESTILO_CITACAO_RX = re.compile(r"cita|quote", re.I)
+_L44_RECUO_CITACAO = 1134
+
+
+def _l44_paragrafo_de_citacao(p):
+    'Parágrafo de citação recuada (recuo esquerdo de 2 cm ou mais, fora de lista) ou com'
+
+
+    try:
+        ppr = p.find(W + "pPr")
+        if ppr is None or e_item_de_lista(p):
+            return False
+        st = ppr.find(W + "pStyle")
+        if st is not None and _L44_ESTILO_CITACAO_RX.search(st.get(W + "val") or ""):
+            return True
+        ind = ppr.find(W + "ind")
+        if ind is None:
+            return False
+        recuo = ind.get(W + "left") or ind.get(W + "start") or "0"
+        return int(float(recuo)) >= _L44_RECUO_CITACAO
+    except (AttributeError, ValueError, TypeError):
+        return False
+_L44_DETECTOR = []
+
+
+def _l44_carregar_detector():
+    'O módulo `detectar_injecao`, ao lado do linter ou na pasta de scripts da ingestão, ou'
+
+    aqui = os.path.dirname(os.path.abspath(__file__))
+    for pasta in (aqui, os.path.join(aqui, os.pardir, os.pardir, "dissero-ingestao", "scripts")):
+        alvo = os.path.join(pasta, "detectar_injecao.py")
+        if not os.path.isfile(alvo):
+            continue
+        try:
+            import importlib.util as _ilu
+            spec = _ilu.spec_from_file_location("_dsr_lint_detectar_injecao", alvo)
+            mod = _ilu.module_from_spec(spec)
+            spec.loader.exec_module(mod)
+            if hasattr(mod, "varrer"):
+                return mod
+        except Exception:
+            continue
+    return None
+
+
+def _l44_detector():
+    if not _L44_DETECTOR:
+        _L44_DETECTOR.append(_l44_carregar_detector())
+    return _L44_DETECTOR[0]
+
+
+def _l44_da_familia(detector, texto, so_alta=False):
+    return [a for a in detector.varrer(texto)
+            if a.get("id") in _L44_IDS and (not so_alta or a.get("severidade") == "alta")]
+
+
+def l44_achados(paragrafos, detector):
+    '[(nível, mensagem)] do L44. `paragrafos`: [(texto, em_tabela)]; `detector`: o módulo'
+
+
+    try:
+        if not _l44_da_familia(detector, "\n".join(str(t) for t, _ in paragrafos)):
+            return []
+    except Exception as e:
+        return [("AVISO", f"L44 NÃO MEDIDO: o detector de trecho dirigido a IA falhou ({e}).")]
+    out = []
+    for texto, em_tbl in paragrafos:
+        t = " ".join(str(texto).split())
+        if not t:
+            continue
+        familia = _l44_da_familia(detector, t)
+        if not familia:
+            continue
+        trecho = (t[:160] + "…") if len(t) > 160 else t
+        alta = any(a.get("severidade") == "alta" for a in familia)
+        if alta and not em_tbl and _l44_da_familia(detector, _L44_ASPAS_RX.sub(" ", t), True):
+            out.append(("ERRO",
+                        f"L44 TRECHO DIRIGIDO A FERRAMENTA DE IA: «{trecho}». Frase que se dirige "
+                        f"à IA e manda decidir sai na peça e responde quem protocola: pode "
+                        f"configurar ato atentatório à dignidade da justiça ou litigância de má-fé "
+                        f"(CPC, arts. 77 e 80; enquadramento a conferir). No REsp 2.256.731/PB "
+                        f"(Sexta Turma, DJEN de 11/09/2026), o STJ decidiu que a inserção oculta de "
+                        f"comando destinado a manipular IA caracteriza ato atentatório à dignidade "
+                        f"da justiça e mandou oficiar à OAB e ao MPF; noutro processo, aplicou "
+                        f"multa por litigância de má-fé (notícia oficial de 03/09/2026; acórdão "
+                        f"não lido). Tire a "
+                        f"frase e confira de onde veio (modelo, documento do cliente). Se a peça transcreve o comando para discuti-lo, ponha-o "
+                        f"entre aspas ou em caixa de citação."))
+        elif alta:
+            out.append(("AVISO",
+                        f"L44 TRECHO DIRIGIDO A IA EM TRANSCRIÇÃO (entre aspas, em caixa ou em citação recuada): "
+                        f"«{trecho}». Se a peça cita o comando para discuti-lo, está certo; se ele "
+                        f"veio de modelo ou de documento do cliente, tire-o, porque quem protocola "
+                        f"responde por ele."))
+        else:
+            out.append(("AVISO",
+                        f"L44 TRECHO QUE SE DIRIGE A IA: «{trecho}». Não manda decidir, mas não é "
+                        f"linguagem de peça: confira de onde veio e tire-o, salvo se for citação."))
+    if not out:
+        out.append(("AVISO",
+                    "L44 TRECHO DIRIGIDO A IA ENTRE PARÁGRAFOS: o detector acusou, no texto "
+                    "inteiro, recado à IA que nenhum parágrafo sozinho contém (o vocativo num, a "
+                    "ordem no seguinte). Leia a peça procurando frase endereçada a ferramenta de "
+                    "IA e tire-a."))
+    return out
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+L45_MARCO = "2026-09-16"
+_L45_S463_RX = re.compile(r"(?i:s[uú]mula)\s*(?i:n\s*[º°o.]?\s*)?463\s*,?\s*(?i:(?:item|inciso)\s+)?"
+                          r"I(?![IVX\w])")
+_L45_40_RX = re.compile(r"(?:40\s*%|quarenta\s+por\s+cento)[^.;]{0,120}?(?:teto|limite\s+m[aá]ximo)",
+                        re.I)
+_L45_ADC80_RX = re.compile(r"\bADC\s*(?:n\s*[º°o.]?\s*)?80\b")
+_L45_RESSALVA_RX = re.compile(r"inconstitucion|n[aã]o\s+se\s+aplica|ex\s+nunc|modula|afastad",
+                              re.I)
+_L45_RELATOR_RX = re.compile(r"\bRel(?:\.|ator)\s*(?:Min(?:\.|istro)\s*)?Gilmar\s+Mendes", re.I)
+_L45_REDATOR_RX = re.compile(r"p/\s*(?:o\s+)?ac[oó]rd[aã]o|para\s+o\s+ac[oó]rd[aã]o|\bRed(?:\.|ator)",
+                             re.I)
+
+
+def _l45_br(data):
+    return f"{data[8:]}/{data[5:7]}/{data[:4]}"
+
+
+def l45_achados(paragrafos, ajuizamento=None, inaugural=False):
+    '[(nível, mensagem)] do L45, todos AVISO. `ajuizamento`: AAAA-MM-DD ou None; `inaugural`:'
+
+    out, sem_data = [], []
+    marco = _l45_br(L45_MARCO)
+    if ajuizamento:
+        depois, origem = ajuizamento >= L45_MARCO, f"ajuizada em {_l45_br(ajuizamento)}"
+    elif inaugural:
+        depois, origem = True, ("peça inaugural, sem número de processo na capa nem em "
+                                "--processo: a ação se ajuíza agora")
+    else:
+        depois, origem = None, ""
+    for texto in paragrafos:
+        t = " ".join(str(texto).split())
+        if not t:
+            continue
+        trecho = (t[:140] + "…") if len(t) > 140 else t
+        regime_antigo = bool(_L45_S463_RX.search(t) or _L45_40_RX.search(t))
+        adc80 = bool(_L45_ADC80_RX.search(t))
+        ressalva = bool(_L45_RESSALVA_RX.search(t))
+        if adc80 and _L45_RELATOR_RX.search(t) and not _L45_REDATOR_RX.search(t):
+            out.append(("AVISO",
+                        f"L45 ADC 80 COM O RELATOR NO LUGAR DO REDATOR: «{trecho}». O voto condutor "
+                        f"é do Ministro Gilmar Mendes, Redator para o acórdão; o Relator, Ministro "
+                        f"Edson Fachin, ficou vencido (decisão de julgamento de 03/09/2026, portal "
+                        f"do STF). Cite «Red. p/ acórdão Min. Gilmar Mendes»."))
+        if ressalva or not (regime_antigo or adc80):
+            continue
+        if depois is None:
+            sem_data.append(trecho)
+        elif depois and regime_antigo:
+            out.append(("AVISO",
+                        f"L45 GRATUIDADE PELO REGIME ANTERIOR À ADC 80 EM AÇÃO AJUIZADA A PARTIR "
+                        f"DE {marco} ({origem}): «{trecho}». O STF declarou inconstitucionais a "
+                        f"expressão dos 40% do teto do RGPS do art. 790, § 3º, da CLT (item i) e a "
+                        f"Súmula 463, I, do TST (item vii), para os processos ajuizados a partir da "
+                        f"publicação da ata de julgamento, em {marco} (item x; acórdão ainda não "
+                        f"publicado). Confira o regime pela data de ajuizamento."))
+        elif not depois and adc80:
+            out.append(("AVISO",
+                        f"L45 ADC 80 INVOCADA EM PROCESSO AJUIZADO ANTES DE {marco} ({origem}): "
+                        f"«{trecho}». A decisão tem efeitos ex nunc, só para os processos ajuizados "
+                        f"a partir da publicação da ata de julgamento, em {marco} (item x). Neste "
+                        f"processo vale o regime anterior; confira a data de ajuizamento."))
+    if sem_data:
+        out.append(("AVISO",
+                    f"L45 DATA DE AJUIZAMENTO NÃO INFORMADA: a peça é de processo em curso e trata "
+                    f"da gratuidade pela Súmula 463, I, pelos 40% do teto ou pela ADC 80 "
+                    f"(«{sem_data[0]}»). O regime depende da data de ajuizamento: a ADC 80 só "
+                    f"alcança os processos ajuizados a partir de {marco} (item x). Passe "
+                    f"--ajuizamento AAAA-MM-DD."))
+    return out
+
+
 def main(argv):
     if not argv or argv[0] in ("-h", "--help"):
         print(__doc__); return 2
@@ -1480,7 +3051,7 @@ def main(argv):
     definir_tema(perfil)
     caminho = argv[0]
     fragmento = "--fragmento" in argv[1:]
-    prec_path = jnt_path = conf_arg = grau_arg = sessao = None
+    prec_path = jnt_path = conf_arg = grau_arg = sessao = comp_arg = adm_arg = ajuiz_arg = None
     processos_arg = []
     for i, a in enumerate(argv):
         if a == "--precedentes" and i + 1 < len(argv):
@@ -1495,14 +3066,40 @@ def main(argv):
             processos_arg.append(argv[i + 1].strip())
         if a == "--session-id" and i + 1 < len(argv):
             sessao = argv[i + 1].strip()
+        if a == "--competencia" and i + 1 < len(argv):
+            comp_arg = argv[i + 1]
+        if a == "--admissibilidade" and i + 1 < len(argv):
+            adm_arg = argv[i + 1]
+        if a == "--ajuizamento" and i + 1 < len(argv):
+            ajuiz_arg = argv[i + 1].strip()
+    if "--competencia" in argv and (comp_arg is None or comp_arg.startswith("--")):
+        print("REPROVADO: --competencia exige o caminho do COMPETENCIA.json gravado pelo "
+              "verificador de competência")
+        return 1
+    if "--admissibilidade" in argv and (adm_arg is None or adm_arg.startswith("--")):
+        print("REPROVADO: --admissibilidade exige o caminho da entrada do checklist de "
+              "admissibilidade (dsr.admissibilidade.entrada.v1)")
+        return 1
+    if "--ajuizamento" in argv:
+        _aj_ok = bool(ajuiz_arg) and re.fullmatch(r"\d{4}-\d{2}-\d{2}", ajuiz_arg) is not None
+        if _aj_ok:
+            try:
+                import datetime as _dt
+                _dt.date.fromisoformat(ajuiz_arg)
+            except ValueError:
+                _aj_ok = False
+        if not _aj_ok:
+            print(f"REPROVADO: --ajuizamento exige a data de ajuizamento da ação em AAAA-MM-DD "
+                  f"(recebido: {ajuiz_arg!r})")
+            return 1
     if grau_arg and grau_arg not in grau_jurisdicao.GRAUS:
         print(f"REPROVADO: --grau '{grau_arg}' inválido — use um de "
               f"{', '.join(grau_jurisdicao.GRAUS)}")
         return 1
     try:
-        caminho, prec_path, jnt_path, conf_arg = (
+        caminho, prec_path, jnt_path, conf_arg, comp_arg, adm_arg = (
             no_caso(caminho, sessao), no_caso(prec_path, sessao), no_caso(jnt_path, sessao),
-            no_caso(conf_arg, sessao))
+            no_caso(conf_arg, sessao), no_caso(comp_arg, sessao), no_caso(adm_arg, sessao))
     except CaminhoRecusado as e:
         print(f"REPROVADO: {e}")
         return 1
@@ -1705,6 +3302,60 @@ def main(argv):
 
     for _trecho in l35_trechos_do_mapa([txt for txt, em_tbl, _p, _rs in textos if not em_tbl]):
         erros.append(l35_mensagem(_trecho))
+
+
+
+    for txt, em_tbl, _p, rs in textos:
+        if em_tbl or ("R$" not in txt and "%" not in txt):
+            continue
+        _masc = "".join((" " * len(t)) if it else t for t, _b, _hl, it, _u in rs)
+        for _tr, _num, _lido, _perc in l36_achados(txt, _masc):
+            erros.append(l36_mensagem(_tr, _num, _lido, _perc))
+        for _tr, _num, _lido, _perc in l36_avisos(txt, _masc):
+            avisos.append(l36_mensagem(_tr, _num, _lido, _perc, qualificado=True))
+
+
+
+    _nos_pedidos = _no_banner = False
+    for txt, em_tbl, _p, rs in textos:
+        if l41_titulo_de_pedidos(txt):
+            _nos_pedidos, _no_banner = True, em_tbl
+            continue
+
+        _no_banner = _no_banner and em_tbl
+        if _nos_pedidos and not _no_banner and l41_titulo_de_secao(txt):
+            _nos_pedidos = False
+            continue
+        if not _nos_pedidos or em_tbl or "R$" not in txt:
+            continue
+        _masc = "".join((" " * len(t)) if it else t for t, _b, _hl, it, _u in rs)
+        _vals = l41_achados(txt, _masc)
+        if _vals:
+            avisos.append(l41_mensagem(_vals, txt))
+
+
+
+
+    _vistos_l37_38 = set()
+    for txt, _em, _p, _rs in textos:
+        for _tr, _cl, _tb, _esp in l37_achados(txt):
+            _msg = l37_mensagem(_tr, _cl, _tb, _esp)
+            if _msg not in _vistos_l37_38:
+                _vistos_l37_38.add(_msg)
+                avisos.append(_msg)
+        for _rot, _n, _ch in l38_achados(txt):
+            _msg = l38_mensagem(_rot, TETOS_PRECEDENTE[_ch]["teto"],
+                                TETOS_PRECEDENTE[_ch]["conferido_em"])
+            if _msg not in _vistos_l37_38:
+                _vistos_l37_38.add(_msg)
+                avisos.append(_msg)
+    _oj_regionais = []
+    for txt, _em, _p, _rs in textos:
+        for _rot in l38_oj_regionais(txt):
+            if _rot not in _oj_regionais:
+                _oj_regionais.append(_rot)
+    if _oj_regionais:
+        avisos.append(l38_mensagem_oj_regional(_oj_regionais))
 
 
     ordem, vistos = [], set()
@@ -2565,12 +4216,20 @@ def main(argv):
                     + _teor_frase)
 
         if prec_nums is not None:
+
+            _allowed_nums = {n for n, sts in prec_status.items() if "allowed" in sts}
             for rot, cit in st_citadas.items():
                 casam = [r for r in st_registros if _casa_sumula_tema(cit, r)]
                 if not casam:
                     erros.append(f"CRUZAMENTO: {rot} citada na peça AUSENTE da Relação de "
                                  f"Precedentes — súmula e tema precisam do registro verificado à "
                                  f"parte, como o julgado")
+                    _viz = l39_vizinhos(cit[1], {
+                        r[1] for r in st_registros
+                        if r[5] == "allowed" and r[0] == cit[0] and r[2] == cit[2]
+                        and (not cit[3] or not r[3] or cit[3] == r[3])})
+                    if _viz:
+                        avisos.append(l39_mensagem(rot, _viz))
                 elif all(r[5] == "prohibited" for r in casam):
                     erros.append(f"CRUZAMENTO VETADO: {rot} está VETADA na Relação de Precedentes "
                                  f"(use_status=prohibited): a conferência na fonte oficial a negou. "
@@ -2598,6 +4257,9 @@ def main(argv):
                         erros.append(f"CRUZAMENTO: julgado citado na peça AUSENTE da Relação de "
                                      f"Precedentes (nº {n}) — todo precedente da peça precisa do "
                                      f"registro verificado à parte")
+                        _viz = l39_vizinhos(n, _allowed_nums, minimo=4)
+                        if _viz:
+                            avisos.append(l39_mensagem(f"nº {n}", _viz))
                     elif all(s == "prohibited" for s in prec_status.get(n, [])):
 
 
@@ -2676,6 +4338,34 @@ def main(argv):
                         f"escrito: erro do original NÃO se corrige em silêncio, e resumo do "
                         f"julgado não ocupa o lugar da transcrição (se for síntese SUA, tire "
                         f"das aspas e diga que é síntese). «{cite(linha)}»")
+
+
+
+
+
+
+    if prec_path and prec_nums is not None:
+        _ementas = {n: str(a.get("syllabus_literal") or "") for n, a in prec_por_num.items()
+                    if isinstance(a, dict) and str(a.get("syllabus_literal") or "").strip()}
+        _caixa_nums, _na_caixa, _vistos_l40 = [], False, set()
+        for txt, em_tbl, _p, _rs in (textos if _ementas else []):
+            t = txt.strip()
+            if not t:
+                continue
+            if em_tbl:
+                if t.upper().startswith("JURISPRUD"):
+                    _na_caixa, _caixa_nums = True, []
+                elif _na_caixa:
+                    _caixa_nums += [n for n in NUM_PROC_RX.findall(_num_norm(t)) if n in _ementas]
+                continue
+            _alvo = [n for n in NUM_PROC_RX.findall(_num_norm(t)) if n in _ementas] + _caixa_nums
+            _caixa_nums, _na_caixa = [], False
+            for n in dict.fromkeys(_alvo):
+                _tese = " ".join(l40_frases_da_tese(t, [n]))
+                for _cat, _forte, _fraco in l40_achados(_tese, _ementas[n]):
+                    if (n, _cat, _forte) not in _vistos_l40:
+                        _vistos_l40.add((n, _cat, _forte))
+                        avisos.append(l40_mensagem(_cat, _forte, _fraco, n))
 
 
 
@@ -3108,6 +4798,100 @@ def main(argv):
                 if not any(b for _, b, _, _, _ in rs):
                     erros.append(f"F2 parte/qualificação SEM negrito na capa: «{cite(t)}»")
 
+        if nao_vazios:
+            _comp_dados = _comp_arquivo = None
+            if comp_arg:
+                try:
+                    _comp_dados, _comp_arquivo = _l42_ler(comp_arg), comp_arg
+                except Exception as _e:
+                    erros.append(f"L42 COMPETENCIA ilegível em --competencia ({comp_arg}): {_e}. "
+                                 f"Rode o verificador de competência de novo e passe o arquivo "
+                                 f"que ele gravou.")
+            else:
+                _comp_dados, _comp_arquivo, _comp_avisos = competencia_do_caso(caminho, sessao)
+                avisos.extend(_comp_avisos)
+            if _competencia is None and _comp_dados is None:
+                avisos.append("L42 NÃO MEDIDO: competencia.py indisponível ao lado do linter")
+            elif not (comp_arg and _comp_dados is None):
+
+
+
+                _fim_capa = inicio_corpo if inicio_corpo_achado else len(textos)
+                _capa = [t for t, _em, _p, _rs in textos[:_fim_capa]
+                         if t.strip() and not _em and not tem_faixa_minuta(t)]
+                _end, _n_end = l42_enderecamento(_capa)
+                _procs = l42_processos_em_curso(
+                    [t for t, _em, _p, _rs in textos[:_fim_capa]][:(None if inicio_corpo_achado
+                                                                   else _L42_CAPA_MAX + 6)],
+                    processos_arg)
+                _capa = _capa[_n_end:]
+                if not inicio_corpo_achado:
+                    _capa = _capa[:_L42_CAPA_MAX]
+                for _nivel, _msg in l42_achados(_end, _capa, _comp_dados, _comp_arquivo,
+                                                processos=_procs, explicito=bool(comp_arg)):
+                    (erros if _nivel == "ERRO" else avisos).append(_msg)
+    elif comp_arg:
+        avisos.append("L42 não roda com --fragmento (é regra de capa): --competencia ignorado")
+
+
+
+    if not fragmento:
+        _adm_dados = _adm_arquivo = None
+        _adm_achou = False
+        if adm_arg:
+            _adm_achou = True
+            try:
+                _adm_dados, _adm_arquivo = _l43_ler(adm_arg), adm_arg
+            except Exception as _e:
+                erros.append(f"L43 ADMISSIBILIDADE ilegível em --admissibilidade ({adm_arg}): "
+                             f"{_e}. Passe a entrada que o checklist de admissibilidade avaliou.")
+        else:
+            _adm_dados, _adm_arquivo, _adm_avisos, _adm_achou = admissibilidade_do_caso(
+                caminho, sessao)
+            avisos.extend(_adm_avisos)
+        _fim_capa43 = inicio_corpo if inicio_corpo_achado else min(len(textos), _L42_CAPA_MAX)
+        _capa43 = [t for t, _em, _p, _rs in textos[:_fim_capa43] if not tem_faixa_minuta(t)]
+        _ach43 = (l43_achados([t for t, _em, _p, _rs in textos], _adm_dados, _adm_arquivo)
+                  if _adm_dados is not None else [])
+        if _ach43 and l43_capa_de_outra_peca(_capa43):
+            avisos.append(
+                f"L43 NÃO MEDIDO: o checklist de admissibilidade ({_adm_arquivo}) é de recurso "
+                f"especial, e a capa desta peça é de outra (contrarrazões, agravo ou resposta). O "
+                f"tópico de relevância é do recurso especial, não desta peça; se o checklist é do "
+                f"recurso adversário ou do de origem, deixe-o fora da pasta da peça.")
+        elif _adm_dados is not None:
+            for _nivel, _msg in _ach43:
+                (erros if _nivel == "ERRO" else avisos).append(_msg)
+        elif not _adm_achou:
+            if l43_capa_de_resp(_capa43):
+                avisos.append(
+                    f"L43 NÃO MEDIDO: a capa fala em recurso especial e não há a entrada do "
+                    f"checklist de admissibilidade ({L43_ARQUIVO} ao lado da peça ou na pasta do "
+                    f"caso, ou --admissibilidade). Sem ela o linter não sabe a data do acórdão "
+                    f"recorrido e não confere o tópico de relevância (CPC, art. 1.035-A).")
+    elif adm_arg:
+        avisos.append("L43 não roda com --fragmento (o tópico pode estar noutro capítulo): "
+                      "--admissibilidade ignorado")
+
+
+    _det = _l44_detector()
+    if _det is None:
+        avisos.append("L44 NÃO MEDIDO: o detector de trecho dirigido a IA (detectar_injecao.py, "
+                      "da ingestão) não está ao lado do linter nem na pasta da ingestão")
+    else:
+        for _nivel, _msg in l44_achados([(t, em or _l44_paragrafo_de_citacao(_p))
+                                         for t, em, _p, _rs in textos], _det):
+            (erros if _nivel == "ERRO" else avisos).append(_msg)
+
+
+    _inaugural45 = False
+    if not ajuiz_arg and not fragmento:
+        _fim_capa45 = inicio_corpo if inicio_corpo_achado else min(len(textos), _L42_CAPA_MAX + 6)
+        _inaugural45 = not l42_processos_em_curso(
+            [t for t, _em, _p, _rs in textos[:_fim_capa45]], processos_arg)
+    for _nivel, _msg in l45_achados([t for t, _em, _p, _rs in textos], ajuiz_arg, _inaugural45):
+        avisos.append(_msg)
+
 
 
 
@@ -3309,14 +5093,14 @@ def main(argv):
         return 1
     if pendencias:
         print(f"\n== MINUTA == ({len(pendencias)} julgado(s)/marcação(ões) a atestar; "
-              f"ESTRUTURA LIMPA — L1–L35"
+              f"ESTRUTURA LIMPA — L1–L45"
               + ("" if fragmento else " + F1/F2") + sufixo_cruz + ")")
         for p in pendencias:
             print(f"PENDENTE: {p}")
         print("A forma está correta; falta conferir na fonte oficial o que está PENDENTE. "
               "Minuta NÃO se protocola: só o APROVADO (exit 0) libera.")
         return 3
-    print("== APROVADO == (L1–L35" + ("" if fragmento else " + F1/F2") + " limpos"
+    print("== APROVADO == (L1–L45" + ("" if fragmento else " + F1/F2") + " limpos"
           + sufixo_cruz + ")")
     return 0
 

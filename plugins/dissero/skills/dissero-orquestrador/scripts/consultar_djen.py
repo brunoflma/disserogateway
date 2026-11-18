@@ -131,7 +131,27 @@
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 import argparse
+import hashlib
 import http.client
 import json
 import os
@@ -981,7 +1001,8 @@ def _prazo_no_ramo(texto, ramo):
                 "fundamento": None, "contagem": None, "contagem_origem": None,
                 "fundamento_contagem": None, "outros_prazos_no_texto": [], "prazo_em_horas": [],
                 "alerta": None, "motivo": None, "leituras": [], "divergencias": [],
-                "ramo_a_confirmar": None, "contagem_a_confirmar": None,
+                "ramo_a_confirmar": None, "contagem_a_confirmar": None, "recurso_a_confirmar": None,
+                "outros_recursos": [], "prazo_supletivo_a_confirmar": None,
                 "aviso": AVISO_PRAZO_A_CONFIRMAR}
 
     tabela_atos, complemento = (_LEI_DO_ATO_POR_RAMO[ramo][0], _LEI_DO_ATO_POR_RAMO[ramo][3]) \
@@ -1035,6 +1056,176 @@ def _prazo_no_ramo(texto, ramo):
     return sugestao
 
 
+
+
+
+
+
+
+
+
+
+
+_ATOS_DA_DECISAO_FINAL = {
+    "Sentença": {"civel": "embargos de declaracao; apelacao", "falimentar": "embargos de declaracao; apelacao",
+                 "juizado": "embargos de declaracao; recurso inominado",
+                 "trabalhista": "embargos de declaracao; recurso ordinario",
+                 "penal": "embargos de declaracao; apelacao", "infancia": "embargos de declaracao; apelacao",
+                 "possiveis": "embargos de declaracao; apelacao"},
+    "Acórdão": {"civel": "embargos de declaracao; recurso especial ou extraordinario",
+                "falimentar": "embargos de declaracao; recurso especial ou extraordinario",
+                "juizado": "embargos de declaracao", "trabalhista": "embargos de declaracao; recurso de revista",
+                "penal": "embargos de declaracao", "infancia": "embargos de declaracao",
+                "possiveis": "embargos de declaracao; recurso especial ou extraordinario"},
+}
+
+_RECURSO_A_CONFERIR = {
+    "penal": "==[PRAZO A CONFERIR — recurso especial ou extraordinário contra acórdão no processo penal]==",
+    "juizado": "==[PRAZO A CONFERIR — recurso extraordinário contra acórdão de turma recursal]==",
+    "infancia": "==[PRAZO A CONFERIR — recurso especial ou extraordinário contra acórdão na infância e juventude]==",
+}
+RECURSO_A_CONFIRMAR = (
+    "%s publicada sem ato pedido no texto: ela abre prazo de embargos de declaração e do recurso de "
+    "mérito. O vencimento estimado é o dos embargos de declaração (%d dias, %s), o mais curto%s. "
+    "Confirme com o advogado se a parte foi vencida, o recurso cabível e os capítulos a impugnar, "
+    "antes de rodar o motor.")
+RECURSO_COM_PRAZO_PROPRIO = (
+    "%s publicada com prazo próprio (%s). Ela também abre prazo de embargos de declaração (%d dias, %s)%s. "
+    "Na triagem, o vencimento estimado é o mais curto entre o prazo próprio e o dos embargos; os outros "
+    "saem em referências. Confirme com o advogado se a parte foi vencida, o recurso cabível e os capítulos "
+    "a impugnar, antes de rodar o motor.")
+RECURSO_SEM_ESTIMATIVA = (
+    "%s publicada sem ato pedido no texto: ela abre prazo de embargos de declaração e de recurso, mas "
+    "a triagem não estima os dias neste ramo. O advogado informa os prazos, e eles passam pelo "
+    "calcular_prazo.py.")
+RECURSO_SEM_ESTIMATIVA_COM_PRAZO = (
+    "%s publicada com prazo próprio: ela também abre prazo de embargos de declaração e de recurso, que a "
+    "triagem não estima neste ramo. O advogado informa esses prazos, e eles passam pelo calcular_prazo.py.")
+NOTA_RECURSO_JULGADO = (" O texto menciona %s (%d dias), lido como o recurso julgado e não como ato pedido; "
+                        "se for ato pedido, o advogado confirma.")
+
+
+
+
+
+RESSALVA_PENAL = (
+    " No processo penal, a intimação da sentença segue o CPP, art. 392: ao réu pessoalmente, se preso (I); "
+    "ao réu pessoalmente ou ao defensor constituído, no caso do inciso II; ao defensor constituído, no do "
+    "inciso III; por edital, nos incisos IV a VI, e então o prazo de apelação corre depois do prazo do "
+    "edital (§ 2º). A disponibilização no DJEN "
+    "intima o defensor, e o prazo do réu pode contar de outra data: confirme com o advogado a data de cada "
+    "intimação. ==[REGRA A CONFERIR — termo do prazo de recurso quando réu e defensor são intimados em "
+    "datas diferentes]==")
+
+
+_INICIO_DE_RECURSO = ("agravo", "apelacao", "recurso", "embargos de declaracao")
+
+
+def _e_recurso(ato):
+    return _dobrar(ato).startswith(_INICIO_DE_RECURSO)
+
+
+def _atos_da_decisao(atos, ramo, possiveis):
+    """Embargos e recurso de mérito do ramo (ou de cada ramo possível), sem repetir o mesmo prazo."""
+    lido, todos = _dobrar(atos), []
+    for r in (possiveis or (ramo,)):
+        if possiveis:
+            tabela, contagem, _, complemento = _LEI_DO_ATO_POR_RAMO[r]
+        else:
+            tabela, complemento = _LEI_DO_ATO_POR_RAMO[r][0::3] if r == "falimentar" else (r, "")
+            contagem = _CONTAGEM_DO_RAMO[r][0]
+        for a in _atos_pedidos(lido, tabela):
+            igual = next((t for t in todos if (t["ato"], t["dias"], t["contagem"]) == (a["ato"], a["dias"], contagem)), None)
+            if igual:
+                igual["ramos"].append(r)
+                continue
+            todos.append({"ato": a["ato"], "dias": a["dias"], "contagem": contagem,
+                          "fundamento": a["fundamento"] + complemento, "ramos": [r], "origem": "especie_do_ato"})
+    return todos
+
+
+def recurso_da_decisao_final(sugestao, especie, ramo, possiveis=()):
+    'Sentença ou acórdão no fluxo: embargos de declaração e recurso de mérito do ramo, a confirmar.'
+
+
+
+
+    if especie not in _ATOS_DA_DECISAO_FINAL:
+        return sugestao
+    dias, origem = sugestao.get("dias"), sugestao.get("origem")
+    proprio = bool(dias) and (origem != "tipo_de_ato" or not _e_recurso(sugestao.get("ato")))
+    julgado = bool(dias) and not proprio
+    chave = "possiveis" if possiveis else ramo
+    atos = _ATOS_DA_DECISAO_FINAL[especie].get(chave)
+    nome = especie
+    penal = RESSALVA_PENAL if especie == "Sentença" and not possiveis and ramo == "penal" else ""
+    nova = prazo_a_confirmar(atos, ramo, possiveis) if atos else {}
+    if not nova.get("dias"):
+        sugestao["recurso_a_confirmar"] = (RECURSO_SEM_ESTIMATIVA_COM_PRAZO if proprio
+                                           else RECURSO_SEM_ESTIMATIVA) % nome + penal
+        return sugestao
+    todos = _atos_da_decisao(atos, ramo, possiveis)
+    merito = [o for o in todos if o["ato"] != "embargos de declaração"]
+    conferir = "" if merito else _RECURSO_A_CONFERIR.get(ramo, "")
+    if proprio:
+        descricao = ("%s, %d dias" % (sugestao["ato"], dias) if origem == "tipo_de_ato"
+                     else "%d dias escritos no texto" % dias)
+        resto = ("; e do recurso de mérito (%s)" % "; ".join("%s, %d dias" % (o["ato"], o["dias"]) for o in merito)
+                 if merito else (". O recurso de mérito não é estimado aqui: " + conferir if conferir else ""))
+        sugestao.update(outros_recursos=todos,
+                        recurso_a_confirmar=RECURSO_COM_PRAZO_PROPRIO % (nome, descricao, nova["dias"],
+                                                                         nova["fundamento"], resto) + penal)
+        return sugestao
+    resto = ("; o prazo de %s segue em referências" % " e o de ".join(sorted({o["ato"] for o in merito}))
+             if merito else (" O recurso de mérito não é estimado aqui: " + conferir if conferir else ""))
+    nota = NOTA_RECURSO_JULGADO % (sugestao.get("ato") or "um recurso", dias) if julgado else ""
+    nova.update(origem="especie_do_ato", outros_recursos=merito,
+                prazo_em_horas=sugestao.get("prazo_em_horas") or [], alerta=sugestao.get("alerta"),
+                outros_prazos_no_texto=["%d horas" % h for h in sugestao.get("prazo_em_horas") or []],
+                recurso_a_confirmar=RECURSO_A_CONFIRMAR % (nome, nova["dias"], nova["fundamento"], resto)
+                + nota + penal)
+    return nova
+
+
+
+
+
+
+DIAS_SUPLETIVOS = 5
+_FUNDAMENTO_SUPLETIVO = {
+    "civel": "CPC, art. 218, § 3º",
+    "falimentar": "CPC, art. 218, § 3º; Lei 11.101/2005, art. 189",
+    "trabalhista": "CPC, art. 218, § 3º, aplicado de forma supletiva (CPC, art. 15)",
+    "juizado": "CPC, art. 218, § 3º, aplicado de forma supletiva (CPC, art. 1.046, § 2º)",
+    "infancia": "CPC, art. 218, § 3º, aplicado de forma supletiva (CPC, art. 1.046, § 2º)",
+}
+MOTIVO_SUPLETIVO = (
+    "prazo supletivo a confirmar: se a comunicação pede ato da parte, os %d dias do CPC, art. 218, § 3º, "
+    "venceriam em %s (%s); se é só ciência, pauta ou designação, não há prazo. O vencimento fica em "
+    "referências, e o nível não passa de ATENCAO.")
+PRAZO_SUPLETIVO_A_CONFIRMAR = (
+    "A comunicação não diz o prazo e não pede ato com prazo na lei. Se ela pede ato da parte, o prazo "
+    "é de 5 dias (%s), sem preceito legal nem prazo do juiz; se é só ciência, não há prazo. Confirme "
+    "com o advogado antes de rodar o motor.")
+
+
+def prazo_supletivo(sugestao, ramo, possiveis=()):
+    """Ato sem prazo na lei nem no texto: 5 dias do CPC, art. 218, § 3º, como pergunta ao advogado."""
+
+    if sugestao.get("dias") or sugestao.get("prazo_em_horas") or possiveis:
+        return sugestao
+    if ramo in _FUNDAMENTO_SUPLETIVO:
+        fundamento = _FUNDAMENTO_SUPLETIVO[ramo]
+        contagem, base = _CONTAGEM_DO_RAMO[ramo]
+    else:
+        return sugestao
+    sugestao.update(origem="supletivo_legal", dias=DIAS_SUPLETIVOS, ato=None, fundamento=fundamento,
+                    contagem=contagem, contagem_origem="lei",
+                    fundamento_contagem=base, motivo=None, leituras=[],
+                    prazo_supletivo_a_confirmar=PRAZO_SUPLETIVO_A_CONFIRMAR % fundamento)
+    return sugestao
+
+
 def comando_para_o_motor(disponibilizacao, sugestao, feriados=()):
     """Linha do calcular_prazo.py com a sugestão, ou None quando falta dia ou contagem."""
     if not disponibilizacao or not sugestao.get("dias") or not sugestao.get("contagem"):
@@ -1076,6 +1267,12 @@ def ler_comunicacao(bruto, com_texto=False, com_partes=False, feriados=()):
     no_fluxo, motivo = via_disponibilizacao(bruto.get("tipoComunicacao"), bruto.get("meio"),
                                             cancelada, disponibilizacao)
     sugestao = prazo_a_confirmar("%s\n%s" % (bruto.get("tipoDocumento") or "", teor), ramo, possiveis)
+    if no_fluxo:
+
+
+        sugestao = recurso_da_decisao_final(sugestao, especie, ramo, possiveis)
+        if especie not in _ATOS_DA_DECISAO_FINAL:
+            sugestao = prazo_supletivo(sugestao, ramo, possiveis)
     for leitura in sugestao["leituras"]:
         leitura["comando"] = comando_para_o_motor(disponibilizacao, leitura, feriados) if no_fluxo else None
     codigo_certidao = str(bruto.get("hash") or "").strip()
@@ -1091,6 +1288,7 @@ def ler_comunicacao(bruto, com_texto=False, com_partes=False, feriados=()):
         "tipo_comunicacao": bruto.get("tipoComunicacao"),
         "numero_comunicacao": bruto.get("numeroComunicacao"),
         "hash": codigo_certidao or None,
+        "hash_teor": hash_do_teor(teor),
         "tipo_documento": bruto.get("tipoDocumento"),
         "cancelada": cancelada,
         "motivo_cancelamento": bruto.get("motivo_cancelamento"),
@@ -1117,6 +1315,61 @@ def ler_comunicacao(bruto, com_texto=False, com_partes=False, feriados=()):
                      if isinstance(v, dict)]
         saida["advogados"] = _so_campos(cadastros, ("numero_oab", "uf_oab", "nome"))
     return saida
+
+
+def hash_do_teor(teor):
+    """SHA-256 curto do teor visível, sem diferença de caixa nem de espaços; None para teor vazio."""
+    normal = " ".join(str(teor or "").split()).casefold()
+    return hashlib.sha256(normal.encode("utf-8")).hexdigest()[:16] if normal else None
+
+
+def _chave_de_repeticao(c):
+    'Mesma intimação repetida (o DJEN publica uma por destinatário): mesmo processo, mesma data,'
+
+    if not c.get("hash_teor"):
+        return None
+    processo = re.sub(r"\D", "", str(c.get("processo") or ""))
+    return (processo, c.get("data_disponibilizacao"), _dobrar(c.get("tipo_comunicacao")).strip(),
+            bool(c.get("cancelada")), c["hash_teor"])
+
+
+def _id_ordenavel(c):
+    return str(c.get("id") or "").rjust(20, "0")
+
+
+def marcar_repetidas(comunicacoes):
+    'Marca `repetida_de` (o menor id do grupo) nas repetidas e devolve quantas foram marcadas. A'
+
+    primeira, marcadas = {}, 0
+    for c in sorted(comunicacoes, key=_id_ordenavel):
+        chave = _chave_de_repeticao(c)
+        if chave is None:
+            continue
+        if chave in primeira:
+            c["repetida_de"] = primeira[chave]
+            marcadas += 1
+        else:
+            primeira[chave] = c.get("id")
+    return marcadas
+
+
+def unir_repetidas(comunicacoes):
+    """(únicas, unidas): uma comunicação por grupo de repetição, a de menor id, com `ids_unidos`."""
+    grupos, ordem = {}, []
+    for c in sorted(comunicacoes, key=_id_ordenavel):
+        chave = _chave_de_repeticao(c)
+        if chave is not None and chave in grupos:
+            grupos[chave]["ids_unidos"].append(c.get("id"))
+            continue
+        copia = dict(c, ids_unidos=[])
+        if chave is not None:
+            grupos[chave] = copia
+        ordem.append(copia)
+    posicao = {}
+    for i, c in enumerate(comunicacoes):
+        posicao.setdefault(str(c.get("id")), i)
+    ordem.sort(key=lambda c: posicao.get(str(c.get("id")), 0))
+    return ordem, sum(len(c["ids_unidos"]) for c in ordem)
 
 
 def _so_campos(registros, campos):
@@ -1228,14 +1481,20 @@ def consultar(processo=None, oab=None, uf_oab=None, nome_advogado=None, tribunal
 
     comunicacoes = sorted((ler_comunicacao(b, com_texto, com_partes, feriados) for b in por_chave.values()),
                           key=_ordem_de_saida, reverse=True)
+    repetidas = marcar_repetidas(comunicacoes)
     acao, aviso = desfecho(comunicacoes)
     resultado = {
         "schema": SCHEMA, "ok": True, "fonte": API, "consulta": consulta,
         "janelas": [list(p) for p in periodos if p[0]], "variantes_nome": [n for n in nomes if n],
         "consultas": feitas, "total_na_fonte": total_fonte, "retornadas": len(comunicacoes),
         "truncado": truncado, "limite_da_fonte": no_teto, "incompleto": bool(falhas),
-        "falhas": falhas, "acao": acao, "aviso": aviso, "comunicacoes": comunicacoes,
+        "falhas": falhas, "acao": acao, "aviso": aviso, "repetidas": repetidas, "comunicacoes": comunicacoes,
     }
+    if repetidas:
+        resultado["aviso_repetidas"] = (
+            "%d comunicação(ões) repetem outra da lista (mesmo processo, mesma data e mesmo teor; o "
+            "DJEN publica uma por destinatário) e estão marcadas em `repetida_de`. É a mesma intimação: "
+            "a triagem as une numa linha só." % repetidas)
     if falhas:
         resultado["aviso_incompleto"] = (
             "LISTA INCOMPLETA: %d de %d consultas não vieram inteiras (veja `falhas`). O que falta "
@@ -1291,8 +1550,10 @@ def triar(comunicacoes, hoje=None, feriados=(), perfil=None, uf=None, arquivo_co
     """Fila de urgência das comunicações já lidas por `ler_comunicacao` (ver docstring)."""
     referencia = _data(hoje, "--hoje") or date.today()
     calendario, extras = calendario_do_motor(feriados, perfil, uf)
+    comunicacoes, repetidas_unidas = unir_repetidas(comunicacoes)
     try:
-        registros = controle_djen.registros_dos_ids([c.get("id") for c in comunicacoes], arquivo_controle)
+        registros = controle_djen.registros_dos_ids(
+            [i for c in comunicacoes for i in [c.get("id")] + c["ids_unidos"]], arquivo_controle)
         falha_controle = None
     except controle_djen.RecusaControle as recusa:
         registros, falha_controle = {}, recusa.mensagem
@@ -1307,12 +1568,21 @@ def triar(comunicacoes, hoje=None, feriados=(), perfil=None, uf=None, arquivo_co
                  "vencimento_estimado": None, "estimado": False, "dias_uteis_restantes": None,
                  "fontes_do_vencimento": None, "referencias": [],
                  "divergencias": (sugestao.get("divergencias") or []) if no_fluxo else [],
-                 "escalar_ao_advogado": (sugestao.get("ramo_a_confirmar") or sugestao.get("contagem_a_confirmar"))
+                 "escalar_ao_advogado": " ".join(filter(None, (
+                     sugestao.get(k) for k in ("recurso_a_confirmar", "prazo_supletivo_a_confirmar",
+                                               "ramo_a_confirmar", "contagem_a_confirmar")))) or None
                  if no_fluxo else None,
                  "prazo_em_horas": sugestao.get("prazo_em_horas") or [], "motivo": None,
-                 "comando_prazo_sugerido": c.get("comando_prazo_sugerido")}
+                 "comando_prazo_sugerido": c.get("comando_prazo_sugerido"), "ids_unidos": c["ids_unidos"],
+                 "prioridade_minima": None, "prioridade_maxima": None}
+        final = no_fluxo and bool(sugestao.get("recurso_a_confirmar"))
+
+        linha.update(_supletivo=no_fluxo and sugestao.get("origem") == "supletivo_legal", _final=final,
+                     _contagem=bool(no_fluxo and sugestao.get("contagem_a_confirmar")))
         if not no_fluxo:
             linha.update(nivel="SEM_PRAZO", motivo=c.get("motivo_fora_do_fluxo"))
+        elif final and not sugestao.get("dias"):
+            linha.update(nivel="ATENCAO", motivo=sugestao["recurso_a_confirmar"], prioridade_minima="ATENCAO")
         elif not sugestao.get("dias"):
             linha.update(nivel="SEM_PRAZO", motivo="sem sugestão de dias (%s): o advogado informa os "
                          "dias e o prazo passa pelo calcular_prazo.py" % (sugestao.get("motivo") or "-"))
@@ -1320,33 +1590,65 @@ def triar(comunicacoes, hoje=None, feriados=(), perfil=None, uf=None, arquivo_co
             linha.update(nivel="SEM_PRAZO", motivo=sugestao.get("motivo") or "contagem a definir")
         else:
             leituras = sugestao.get("leituras") or [
-                {"dias": sugestao["dias"], "contagem": sugestao["contagem"], "fontes": None,
+                {"dias": sugestao["dias"], "contagem": sugestao["contagem"],
+                 "fontes": ([{"origem": sugestao.get("origem"), "ramos": [c.get("ramo")], "ato": sugestao.get("ato"),
+                              "fundamento": sugestao.get("fundamento")}] if sugestao.get("outros_recursos") else None),
                  "comando": c.get("comando_prazo_sugerido")}]
+
+
+            leituras = list(leituras) + [
+                {"dias": o["dias"], "contagem": o["contagem"],
+                 "fontes": [{"origem": o.get("origem", "especie_do_ato"), "ramos": o["ramos"], "ato": o["ato"],
+                             "fundamento": o["fundamento"]}],
+                 "comando": comando_para_o_motor(c["data_disponibilizacao"], o, extras)}
+                for o in sugestao.get("outros_recursos") or []]
 
             calculadas = sorted(((calcular_prazo.calcular_vencimento(c["data_disponibilizacao"], l["dias"],
                                                                      l["contagem"], calendario)["vencimento"], i, l)
                                  for i, l in enumerate(leituras)), key=lambda trio: trio[:2])
             vencimento, _, escolhida = calculadas[0]
             restantes = calcular_prazo.dias_uteis_restantes(referencia, vencimento, calendario)
-            linha.update(nivel=_nivel(restantes), estimado=True, dias_uteis_restantes=restantes,
-                         vencimento_estimado=vencimento.isoformat(), dias=escolhida["dias"],
-                         contagem=escolhida["contagem"], fontes_do_vencimento=escolhida["fontes"],
-                         comando_prazo_sugerido=escolhida.get("comando"))
-            linha["referencias"] = [
+            referencias = [
                 {"dias": l["dias"], "contagem": l["contagem"], "vencimento": v.isoformat(),
                  "dias_uteis_restantes": calcular_prazo.dias_uteis_restantes(referencia, v, calendario),
                  "fontes": l["fontes"], "comando": l.get("comando")}
-                for v, _, l in calculadas[1:]]
+                for v, _, l in calculadas]
+            if linha["_supletivo"]:
+
+
+                nivel = _nivel(restantes)
+                linha.update(nivel="NORMAL" if nivel == "NORMAL" else "ATENCAO", prioridade_maxima="ATENCAO",
+                             referencias=referencias,
+                             motivo=MOTIVO_SUPLETIVO % (escolhida["dias"], vencimento.strftime("%d/%m/%Y"),
+                                                        "já passou" if restantes < 0 else "ainda não passou"))
+            else:
+                linha.update(nivel=_nivel(restantes), estimado=True, dias_uteis_restantes=restantes,
+                             vencimento_estimado=vencimento.isoformat(), dias=escolhida["dias"],
+                             contagem=escolhida["contagem"], fontes_do_vencimento=escolhida["fontes"],
+                             comando_prazo_sugerido=escolhida.get("comando"), referencias=referencias[1:])
+            if final and linha["nivel"] == "NORMAL":
+
+                linha.update(nivel="ATENCAO", prioridade_minima="ATENCAO")
         if linha["prazo_em_horas"] and no_fluxo:
 
 
             linha["motivo"] = sugestao.get("alerta")
             if linha["nivel"] != "VENCIDO":
                 linha["nivel"] = "URGENTE"
-        registro = registros.get(str(c.get("id")))
-        linha["status_trabalho"] = registro.get("status") if registro else "pendente"
-        linha["delegado_para"] = registro.get("delegado_para") if registro else None
-        if linha["status_trabalho"] in controle_djen.ENCERRADAS:
+
+
+        ids = [c.get("id")] + c["ids_unidos"]
+        estados = {str(i): (registros[str(i)].get("status") if str(i) in registros else "pendente") for i in ids}
+        encerradas = [i for i in estados if estados[i] in controle_djen.ENCERRADAS]
+        aberto = next((i for i in estados if i not in encerradas), None)
+        registro = registros.get(aberto) if aberto else next((registros[i] for i in estados if i in registros), None)
+        linha["status_trabalho"] = estados[aberto] if aberto else registro.get("status")
+        linha["delegado_para"] = (registro or {}).get("delegado_para") or next(
+            (registros[i].get("delegado_para") for i in estados if i in registros and registros[i].get("delegado_para")), None)
+        if c["ids_unidos"]:
+            linha["status_por_id"] = estados
+        linha["_em_parte"] = bool(encerradas) and aberto is not None
+        if aberto is None:
             linha["nivel_original"] = linha["nivel"]
             linha["nivel"] = "TRATADO"
         linhas.append(linha)
@@ -1371,9 +1673,27 @@ def triar(comunicacoes, hoje=None, feriados=(), perfil=None, uf=None, arquivo_co
     if contagem["SEM_PRAZO"]:
         aviso += (" %d comunicação(ões) SEM_PRAZO: leia o motivo de cada uma; a que pede ato do "
                   "escritório precisa dos dias informados pelo advogado." % contagem["SEM_PRAZO"])
-    a_escalar = [linha for linha in linhas if linha["escalar_ao_advogado"] and linha["nivel"] != "TRATADO"]
+    abertas = [linha for linha in linhas if linha["nivel"] != "TRATADO"]
+    finais = sum(1 for linha in abertas if linha["_final"])
+    if finais:
+        aviso += (" %d sentença ou acórdão sem ato pedido no texto: vencimento estimado pelos embargos de "
+                  "declaração e o recurso de mérito em referencias; nunca abaixo de ATENCAO. Confirme com o "
+                  "advogado o recurso cabível (escalar_ao_advogado)." % finais)
+    supletivas = sum(1 for linha in abertas if linha["_supletivo"])
+    if supletivas:
+        aviso += (" %d comunicação(ões) sem prazo na lei nem no texto, com o prazo supletivo de 5 dias (CPC, "
+                  "art. 218, § 3º) só em referências e nível até ATENCAO: confirme com o advogado se há ato a "
+                  "praticar." % supletivas)
+    if repetidas_unidas:
+        aviso += (" %d comunicação(ões) repetidas (mesmo processo, data e teor) foram unidas à primeira; "
+                  "os ids estão em ids_unidos." % repetidas_unidas)
+    em_parte = sum(1 for linha in abertas if linha["_em_parte"])
+    if em_parte:
+        aviso += (" %d linha(s) unida(s) tratada(s) só em parte: há cópia encerrada no controle e cópia "
+                  "pendente, que pode ser de outro cliente com ato a praticar (status_por_id)." % em_parte)
+    a_escalar = [linha for linha in abertas if linha["escalar_ao_advogado"]]
     escaladas = [linha for linha in a_escalar if linha["ramo"] == "indeterminado"]
-    contagem_a_confirmar = len(a_escalar) - len(escaladas)
+    contagem_a_confirmar = sum(1 for linha in a_escalar if linha["_contagem"] and linha["ramo"] != "indeterminado")
     if contagem_a_confirmar:
         aviso += (" %d comunicação(ões) de falência ou recuperação com o prazo do CPC por ato em dias "
                   "corridos, a contagem mais curta: confirme a contagem com o advogado "
@@ -1392,9 +1712,12 @@ def triar(comunicacoes, hoje=None, feriados=(), perfil=None, uf=None, arquivo_co
                   % (len(escaladas) - com_estimativa))
     if escaladas:
         aviso += " Pergunte ao advogado a origem de cada processo (escalar_ao_advogado)."
+    for linha in linhas:
+        for marca in ("_supletivo", "_final", "_contagem", "_em_parte"):
+            linha.pop(marca)
     saida = {"ok": True, "hoje": referencia.isoformat(), "contagem": contagem,
              "por_tribunal": por_tribunal, "feriados_considerados": sorted(d.isoformat() for d in extras),
-             "aviso": aviso, "itens": linhas}
+             "repetidas_unidas": repetidas_unidas, "aviso": aviso, "itens": linhas}
     if falha_controle:
         saida["aviso_controle"] = ("Controle de trabalho não lido (%s). A fila saiu sem marcar o que já "
                                    "foi tratado." % falha_controle)
