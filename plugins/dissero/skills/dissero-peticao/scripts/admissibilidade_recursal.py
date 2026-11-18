@@ -26,9 +26,15 @@
 
 
 
+
+
+
+
+
 from __future__ import annotations
 
 import argparse
+import datetime as dt
 import json
 import os
 import sys
@@ -64,16 +70,84 @@ MEMORIA_PREPARO_STATUS = "MINUTA_PARA_REVISAO"
 
 
 
+
+
+
+
+
+
+
+
+
 VIGENCIA_LEI_15484 = "2026-09-03"
 CRITERIO_RELEVANCIA = "relevancia_questao_federal"
-RECURSOS_ESPECIAIS = {"recurso_especial", "recurso especial", "resp", "recurso especial repetitivo",
-                      "agravo_em_recurso_especial", "agravo em recurso especial", "aresp"}
+
+
+RECURSOS_ESPECIAIS = {"recurso especial", "resp", "recurso especial repetitivo",
+                      "agravo em recurso especial", "aresp"}
+AGRAVOS_EM_RESP = {"agravo em recurso especial", "aresp"}
+
+
+
+INCISOS_PRESUNCAO = ("I", "II", "III", "IV", "V", "VI")
+
+
+def _conferir_presuncao(item, estado):
+    """Erros do campo `presuncao`. Lista vazia = ausente ou bem formado."""
+    if "presuncao" not in item:
+        return []
+    pres = item.get("presuncao")
+    if not isinstance(pres, dict):
+        return [f"{CRITERIO_RELEVANCIA}: presuncao deve ser objeto {{inciso, fundamento}}"]
+    erros = []
+    if pres.get("inciso") not in INCISOS_PRESUNCAO:
+        erros.append(f"{CRITERIO_RELEVANCIA}: presuncao.inciso deve ser um de "
+                     f"{', '.join(INCISOS_PRESUNCAO)} (CF, art. 105, § 3º)")
+    if not str(pres.get("fundamento") or "").strip():
+        erros.append(f"{CRITERIO_RELEVANCIA}: presuncao.fundamento obrigatório (o fato do caso que "
+                     "faz incidir a hipótese de presunção)")
+    if estado == "nao_aplicavel":
+        erros.append(f"{CRITERIO_RELEVANCIA}: presuncao declarada com `nao_aplicavel`: presunção é o "
+                     "conteúdo do tópico, e não dispensa dele")
+    return erros
 
 
 def _norm(s):
     import unicodedata
     s = str(s or "").strip().lower()
     return "".join(c for c in unicodedata.normalize("NFKD", s) if not unicodedata.combining(c))
+
+
+def _norm_recurso(s):
+    """Nome do recurso normalizado: sem acento, `_` e `-` viram espaço, espaços colapsados."""
+    import re
+    return re.sub(r"\s+", " ", re.sub(r"[_\-]+", " ", _norm(s))).strip()
+
+
+
+_NAO_LEEM_RELEVANCIA = ("agravo interno", "embargos", "contrarrazoes", "contraminuta", "resposta")
+
+
+def _especial_fora_do_vocabulario(nome_norm):
+    'True quando o nome fala em recurso especial mas não está no vocabulário fechado: o'
+
+    import re
+    if not nome_norm or nome_norm in RECURSOS_ESPECIAIS or nome_norm.startswith(_NAO_LEEM_RELEVANCIA):
+        return False
+    palavras = set(re.split(r"[^a-z0-9]+", nome_norm))
+    return bool(palavras & {"especial", "resp", "aresp"})
+
+
+def _data_iso(valor):
+    """date de `AAAA-MM-DD` estrito; None se o texto tiver outra forma ou data inexistente."""
+    import re
+    texto = str(valor or "").strip()
+    if not re.fullmatch(r"\d{4}-\d{2}-\d{2}", texto):
+        return None
+    try:
+        return dt.date.fromisoformat(texto)
+    except ValueError:
+        return None
 
 
 def _conferir_memoria_preparo(item, recurso_declarado=None):
@@ -188,8 +262,17 @@ def avaliar(dados, hoje=None, registro_capacidades=None):
         elif "memoria" in item:
             erros.append(f"{nome}: `memoria` só é lida no critério `preparo`")
         resultado[nome] = ficha
-    recurso_norm = _norm(dados.get("recurso"))
+    recurso_norm = _norm_recurso(dados.get("recurso"))
     item_rel = criterios.get(CRITERIO_RELEVANCIA)
+    pub = str(dados.get("acordao_publicado_em") or "").strip()
+    data_pub = _data_iso(pub) if pub else None
+    if pub and data_pub is None:
+        erros.append(f"acordao_publicado_em: AAAA-MM-DD (recebido {pub!r}); data em outra forma "
+                     "não se compara com a vigência da Lei 15.484")
+    if _especial_fora_do_vocabulario(recurso_norm):
+        erros.append(f"recurso: {dados.get('recurso')!r} fala em recurso especial fora do vocabulário; "
+                     "use 'recurso especial' ou 'agravo em recurso especial' (no agravo do art. 1.042 "
+                     "contra REsp e RE, um checklist por recurso)")
     if recurso_norm in RECURSOS_ESPECIAIS:
         if not isinstance(item_rel, dict):
             erros.append(f"{CRITERIO_RELEVANCIA}: critério ausente — recurso especial exige o tópico de "
@@ -206,17 +289,49 @@ def avaliar(dados, hoje=None, registro_capacidades=None):
             if estado == "satisfeito" and not any(str(x).strip() for x in evid):
                 erros.append(f"{CRITERIO_RELEVANCIA}: satisfeito sem evidência (onde está o tópico)")
             obs = str(item_rel.get("observacao") or "").strip()
-            pub = str(dados.get("acordao_publicado_em") or "").strip()
+            sob_a_lei = data_pub is not None and data_pub >= dt.date.fromisoformat(VIGENCIA_LEI_15484)
+            erros.extend(_conferir_presuncao(item_rel, estado))
             if estado == "nao_aplicavel" and not obs:
                 erros.append(f"{CRITERIO_RELEVANCIA}: `nao_aplicavel` exige `observacao` dizendo POR QUE "
-                             f"(acórdão publicado antes de {VIGENCIA_LEI_15484}; presunção do art. 105, "
-                             f"§ 3º, da CF — e qual; recurso que não discute questão federal)")
-            if estado == "nao_aplicavel" and pub and pub >= VIGENCIA_LEI_15484 and "105" not in obs:
+                             f"(acórdão publicado antes de {VIGENCIA_LEI_15484})")
+            if estado == "nao_aplicavel" and not pub:
+                erros.append(f"{CRITERIO_RELEVANCIA}: `nao_aplicavel` exige `acordao_publicado_em`: a "
+                             f"única dispensa do tópico é o acórdão publicado antes de {VIGENCIA_LEI_15484}")
+            if estado == "nao_aplicavel" and sob_a_lei:
+                no_dia = data_pub == dt.date.fromisoformat(VIGENCIA_LEI_15484)
+                exigencia = ("o tópico é exigido por cautela da casa (a Lei 15.484, art. 4º, e a ER "
+                             "55/2026, art. 5º, falam em acórdão publicado após a vigência)"
+                             if no_dia else "o tópico é obrigatório")
                 erros.append(f"{CRITERIO_RELEVANCIA}: acórdão publicado em {pub}, já sob a Lei 15.484 — "
-                             f"dispensa só pela presunção do art. 105, § 3º, da CF, dita na observação")
-            resultado[CRITERIO_RELEVANCIA] = {"estado": estado, "evidencias": evid, "observacao": item_rel.get("observacao"),
-                                              "vigencia_lei_15484": VIGENCIA_LEI_15484,
-                                              "acordao_publicado_em": pub or None}
+                             f"{exigencia} e a presunção não dispensa o tópico (CPC 1.035-A, "
+                             f"§§ 2º a 4º). Hipótese do art. 105, § 3º, da CF: estado `satisfeito`, "
+                             f"`evidencias` com o lugar do tópico e `presuncao` com inciso e fundamento")
+            aresp = recurso_norm in AGRAVOS_EM_RESP
+            if aresp and not pub:
+                erros.append(f"{CRITERIO_RELEVANCIA}: no agravo em recurso especial declare "
+                             "`acordao_publicado_em` (data do acórdão atacado pelo recurso especial de "
+                             "origem, não a da decisão de inadmissão); sem ela o tópico da origem não é "
+                             "conferido")
+            origem = item_rel.get("topico_no_resp_origem")
+            if "topico_no_resp_origem" in item_rel and not aresp:
+                erros.append(f"{CRITERIO_RELEVANCIA}: `topico_no_resp_origem` só se lê no agravo em "
+                             "recurso especial")
+            elif aresp and sob_a_lei and estado != "nao_aplicavel":
+                if origem not in (True, False):
+                    erros.append(f"{CRITERIO_RELEVANCIA}: no agravo em recurso especial o critério é o "
+                                 "tópico do recurso especial de origem; declare `topico_no_resp_origem` "
+                                 "(true/false)")
+                elif origem is False and estado == "satisfeito":
+                    erros.append(f"{CRITERIO_RELEVANCIA}: `satisfeito` com o recurso especial de origem "
+                                 "sem o tópico (CPC 1.035-A, § 3º); o estado é `nao_satisfeito`")
+            ficha_rel = {"estado": estado, "evidencias": evid, "observacao": item_rel.get("observacao"),
+                         "vigencia_lei_15484": VIGENCIA_LEI_15484,
+                         "acordao_publicado_em": pub or None}
+            if isinstance(item_rel.get("presuncao"), dict):
+                ficha_rel["presuncao"] = item_rel["presuncao"]
+            if aresp and origem in (True, False):
+                ficha_rel["topico_no_resp_origem"] = origem
+            resultado[CRITERIO_RELEVANCIA] = ficha_rel
     elif isinstance(item_rel, dict):
         erros.append(f"{CRITERIO_RELEVANCIA}: só se lê em recurso especial (recurso declarado: "
                      f"{dados.get('recurso')!r})")

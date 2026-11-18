@@ -1,4 +1,4 @@
-# Dissero 3.3.6
+# Dissero 3.4.0
 
 Elaboração jurídica no Claude, da leitura dos autos à peça com a sua voz.
 

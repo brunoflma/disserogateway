@@ -31,6 +31,10 @@
 
 
 
+
+
+
+
 import sys, os, json, argparse
 
 try:
@@ -57,6 +61,12 @@ def carregar_cenarios(caminho):
         if "complementares" in cfg and (not isinstance(cfg["complementares"], list)
                                         or not all(isinstance(x, str) for x in cfg["complementares"])):
             raise ValueError(f"cenário {k}: 'complementares' deve ser lista de strings.")
+        ctx = cfg.get("contexto", [])
+        if not isinstance(ctx, list) or not all(isinstance(x, str) for x in ctx):
+            raise ValueError(f"cenário {k}: 'contexto' deve ser lista de strings.")
+        repetidos = sorted(set(ctx) & (set(cfg["estrela"]) | set(cfg.get("complementares", []))))
+        if repetidos:
+            raise ValueError(f"cenário {k}: 'contexto' repete campo ⭐ ou complementar: {repetidos}")
         calc = cfg.get("calculaveis", [])
         if not isinstance(calc, list) or not all(isinstance(x, str) for x in calc):
             raise ValueError(f"cenário {k}: 'calculaveis' deve ser lista de strings.")
@@ -161,6 +171,7 @@ def medir(cfg, respondidos):
     pct = (n_resp / len(relevantes)) if relevantes else 0.0
     estrela_ausentes = [k for k in estrela if k not in resp]
     complementares_ausentes = [k for k in compl if k not in resp]
+    contexto_ausentes = [k for k in cfg.get("contexto", []) if k not in resp]
     if estrela_ausentes:
         nivel = "FRACO"
     elif pct >= 0.75:
@@ -171,7 +182,8 @@ def medir(cfg, respondidos):
         nivel = "FRACO"
     return {"nivel": nivel, "percentual": round(pct, 3), "total_relevantes": len(relevantes),
             "respondidos_relevantes": n_resp, "estrela_total": len(estrela),
-            "estrela_ausentes": estrela_ausentes, "complementares_ausentes": complementares_ausentes}
+            "estrela_ausentes": estrela_ausentes, "complementares_ausentes": complementares_ausentes,
+            "contexto_ausentes": contexto_ausentes}
 
 
 def pode_executar(nivel, risco_alto, ressalva, m=None):
@@ -273,6 +285,9 @@ def main():
     por = bloqueios_por_parte(cfg, respondidos, mapa)
     if pode and por:
         motivo += (". Pode começar; estas partes esperam o campo: " + explicar_bloqueios(por))
+    if pode and m.get("contexto_ausentes"):
+        motivo += (". Contexto ainda não respondido (sem peso no nível; pergunte se couber): "
+                   + ", ".join(m["contexto_ausentes"]))
 
     calc_ausentes = [c for c in m.get("estrela_ausentes") or []
                      if c in set(cfg.get("calculaveis", []))]

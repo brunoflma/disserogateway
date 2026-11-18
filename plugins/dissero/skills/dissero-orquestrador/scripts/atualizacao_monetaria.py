@@ -9,6 +9,27 @@
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 from __future__ import annotations
 
 import argparse
@@ -396,7 +417,11 @@ def _validate_request(request: Any, *, hoje: dt.date) -> list[str]:
     return errors
 
 
-def _load_authorization(path: Any, regime_hash: str, *, agora: dt.datetime) -> dict[str, Any]:
+def _load_authorization(path: Any, regime_hash: str, *, agora: dt.datetime,
+                        escopo: str = "calculo_experimental") -> dict[str, Any]:
+    'Autorização do advogado presa a um hash. No regime revisado, o hash é o do regime; na'
+
+
     authorization, _hash, _ = _load_file(path, outside_git=True)
     allowed = {
         "schema_version", "authorized_by_lawyer", "scope", "regime_sha256",
@@ -410,8 +435,8 @@ def _load_authorization(path: Any, regime_hash: str, *, agora: dt.datetime) -> d
         errors.append(f"schema_version da autorização deve ser {AUTH_VERSION}")
     if authorization.get("authorized_by_lawyer") is not True:
         errors.append("authorized_by_lawyer=true é obrigatório")
-    if authorization.get("scope") != "calculo_experimental":
-        errors.append("scope da autorização inválido")
+    if authorization.get("scope") != escopo:
+        errors.append(f"scope da autorização inválido (esperado: {escopo})")
     declared_hash = authorization.get("regime_sha256")
     if not isinstance(declared_hash, str) or not _SHA256.fullmatch(declared_hash):
         errors.append("regime_sha256 da autorização inválido")
@@ -570,6 +595,7 @@ def calcular(
         raise AtualizacaoError("pedido_invalido", "segmentos do pedido devem corresponder à ordem do regime")
 
     memory_segments: list[dict[str, Any]] = []
+    avisos_mes_corrente: list[str] = []
     factor_total = Decimal(1)
     all_periods: set[dt.date] = set()
     with localcontext() as context:
@@ -579,6 +605,14 @@ def calcular(
             snapshot, snapshot_hash, _ = _load_file(request_segment["snapshot_path"])
             if snapshot_hash.casefold() != str(request_segment["snapshot_sha256"]).casefold():
                 raise AtualizacaoError("hash_divergente", f"{segment_id}: snapshot_sha256 diverge")
+
+
+            nao_fechado = bcb_sgs_adapter.mes_nao_fechado(snapshot, request_segment["periods"])
+            if nao_fechado:
+                raise AtualizacaoError("mes_nao_fechado", f"{segment_id}: {nao_fechado}")
+            corrente = bcb_sgs_adapter.aviso_mes_corrente(snapshot, request_segment["periods"])
+            if corrente:
+                avisos_mes_corrente.append(f"{segment_id}: {corrente}")
             snapshot_errors = bcb_sgs_adapter.validar_snapshot(snapshot, hoje=today)
             if snapshot_errors:
                 raise AtualizacaoError("snapshot_invalido", [f"{segment_id}: {error}" for error in snapshot_errors])
@@ -706,7 +740,7 @@ def calcular(
         "factor_total": _fmt(factor_total),
         "conditional_updated_value": format(updated, f".{rounding['scale']}f"),
         "conditional_difference": format(difference, f".{rounding['scale']}f"),
-        "warnings": _avisos(memory_segments),
+        "warnings": _avisos(memory_segments) + avisos_mes_corrente,
     }
 
 
@@ -739,6 +773,325 @@ def _avisos(segments: list[dict[str, Any]]) -> list[str]:
     return avisos
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+CAPACIDADE_LEI_9430 = "tributo_federal_lei_9430"
+PEDIDO_LEI_9430_VERSION = "dsr.atualizacao_monetaria.lei9430.pedido.v1"
+MEMORIA_LEI_9430_VERSION = "dsr.memoria_atualizacao.lei9430.v1"
+FONTE_LEI_9430 = "https://www.planalto.gov.br/ccivil_03/leis/l9430.htm"
+ESCOPO_LEI_9430 = "calculo_lei_9430"
+SERIE_SELIC_ACUMULADA_MES = 4390
+INICIO_DO_REGIME_9430 = dt.date(1997, 1, 1)
+MULTA_POR_DIA = Decimal("0.33")
+TETO_DA_MULTA = Decimal("20")
+JUROS_NO_MES_DO_PAGAMENTO = Decimal("1")
+CENTAVO = Decimal("0.01")
+
+
+
+
+
+TRECHOS_LEI_9430_ART_61 = (
+    "cujos fatos geradores ocorrerem a partir de 1o de janeiro de 1997",
+    "trinta e tres centesimos por cento, por dia de atraso",
+    "calculada a partir do primeiro dia subsequente ao do vencimento do prazo",
+    "limitado a vinte por cento",
+    "primeiro dia do mes subsequente ao vencimento do prazo ate o mes anterior ao do pagamento",
+    "um por cento no mes de pagamento",
+)
+TRECHOS_LEI_9430_ART_5 = ("acumulada mensalmente",)
+TRECHOS_LEI_9430 = TRECHOS_LEI_9430_ART_61 + TRECHOS_LEI_9430_ART_5
+
+
+CONFERENCIA_LEI_9430 = {
+    "url": FONTE_LEI_9430,
+    "conferido_em": "2026-11-16",
+    "sha256_da_captura": "3196b769bc152bb88560d6f3f572440cb502c2200501ab496cb3951929a014d6",
+    "bytes_da_captura": 565058,
+    "dispositivos": ("art. 61, caput", "art. 61, § 1º", "art. 61, § 2º", "art. 61, § 3º",
+                     "art. 5º, § 3º"),
+}
+
+_ART_61 = (re.compile(r"\bArt\. 61\b"), re.compile(r"\bArt\. 62\b"))
+_ART_5 = (re.compile(r"\bArt\. 5o?\b"), re.compile(r"\bArt\. 6o?\b"))
+_PEDIDO_9430_KEYS = {
+    "schema_version", "principal", "currency", "fato_gerador", "vencimento",
+    "inicio_contagem_multa", "pagamento", "legal_source_path", "authorization_path",
+    "selic_snapshot_path", "selic_snapshot_sha256",
+}
+
+
+def centavos(valor: Decimal) -> Decimal:
+    """Ao centavo, meia unidade para cima, no fim da parcela."""
+    return valor.quantize(CENTAVO, rounding=ROUND_HALF_UP)
+
+
+def _texto_normalizado(raw: bytes) -> str:
+    'Texto vigente da captura, sem tag, sem acento e com espaços colapsados; o texto tachado'
+
+    import html
+    import unicodedata
+    try:
+        texto = raw.decode("utf-8")
+    except UnicodeDecodeError:
+        texto = raw.decode("cp1252", errors="replace")
+    texto = re.sub(r"<(strike|del|s)\b[^>]*>.*?</\1\s*>", " ", texto, flags=re.I | re.S)
+    texto = html.unescape(re.sub(r"<[^>]+>", " ", texto))
+    texto = "".join(c for c in unicodedata.normalize("NFKD", texto)
+                    if not unicodedata.combining(c))
+    return re.sub(r"\s+", " ", texto)
+
+
+def _dispositivo(texto: str, marcas: tuple[re.Pattern[str], re.Pattern[str]]) -> str:
+    """Recorte do texto entre o cabeçalho do artigo e o do seguinte; vazio se faltar um deles."""
+    inicio = marcas[0].search(texto)
+    if inicio is None:
+        return ""
+    fim = marcas[1].search(texto, inicio.end())
+    if fim is None:
+        return ""
+    return texto[inicio.start():fim.start()].casefold()
+
+
+def _meses_entre(primeiro: dt.date, ultimo: dt.date) -> list[dt.date]:
+    meses: list[dt.date] = []
+    atual = primeiro
+    while atual <= ultimo:
+        meses.append(atual)
+        atual = _next_month(atual)
+    return meses
+
+
+def calcular_lei_9430(
+    pedido: Any,
+    *,
+    hoje: dt.date | None = None,
+    agora: dt.datetime | None = None,
+    experimental_authorized: bool = False,
+    registro_capacidades: Any = None,
+) -> dict[str, Any]:
+    'Acréscimos moratórios do art. 61 da Lei 9.430/1996: multa de mora e juros pela Selic.'
+
+
+
+
+    if experimental_authorized is not True:
+        raise AtualizacaoError(
+            "capacidade_desabilitada",
+            "atualização monetária experimental exige autorização explícita nesta execução")
+    if agora is None:
+        now = (dt.datetime.combine(hoje, dt.time(12, 0), tzinfo=dt.timezone.utc)
+               if hoje is not None else dt.datetime.now(dt.timezone.utc))
+    elif not isinstance(agora, dt.datetime) or agora.utcoffset() is None:
+        raise AtualizacaoError("autorizacao_invalida", "agora deve ser datetime com fuso horário")
+    else:
+        now = agora.astimezone(dt.timezone.utc)
+    today = hoje or now.date()
+    try:
+        ficha_capacidade.exigir(CAPACIDADE_LEI_9430, hoje=today, registro=registro_capacidades)
+    except ficha_capacidade.FichaRecusada as exc:
+        raise AtualizacaoError(exc.codigo, exc.mensagem) from None
+
+    if not isinstance(pedido, Mapping):
+        raise AtualizacaoError("pedido_invalido", "pedido deve ser objeto")
+    erros: list[str] = []
+    extras = sorted(set(map(str, pedido)) - _PEDIDO_9430_KEYS)
+    if extras:
+        erros.append("campos de pedido não permitidos: " + ", ".join(extras))
+    if pedido.get("schema_version") != PEDIDO_LEI_9430_VERSION:
+        erros.append(f"schema_version deve ser {PEDIDO_LEI_9430_VERSION}")
+    if pedido.get("currency") != "BRL":
+        erros.append("currency deve ser BRL")
+    datas = {nome: _date(pedido.get(nome)) for nome in
+             ("fato_gerador", "vencimento", "inicio_contagem_multa", "pagamento")}
+    erros.extend(f"{nome} deve ser data AAAA-MM-DD" for nome, valor in datas.items() if valor is None)
+    for campo in ("legal_source_path", "authorization_path"):
+        if not isinstance(pedido.get(campo), str) or not pedido[campo].strip():
+            erros.append(f"{campo} obrigatório")
+    if erros:
+        raise AtualizacaoError("pedido_invalido", erros)
+    principal = _decimal(pedido.get("principal"), "principal", positive=True)
+    if principal != principal.quantize(CENTAVO):
+        raise AtualizacaoError("principal_fora_do_centavo",
+                               "o valor principal do débito deve vir em reais e centavos")
+    fato, venc, inicio, pagto = (datas["fato_gerador"], datas["vencimento"],
+                                 datas["inicio_contagem_multa"], datas["pagamento"])
+    if not (fato and venc and inicio and pagto):
+        raise AtualizacaoError("pedido_invalido", ["datas do regime incompletas"])
+    if fato < INICIO_DO_REGIME_9430:
+        raise AtualizacaoError(
+            "fato_gerador_anterior_a_1997",
+            "o art. 61 da Lei 9.430/1996 vale para fato gerador a partir de 01/01/1997")
+    if pagto <= venc:
+        raise AtualizacaoError("sem_atraso", "pagamento até o vencimento não tem acréscimo moratório")
+    if not venc < inicio <= pagto:
+        raise AtualizacaoError(
+            "inicio_contagem_invalido",
+            "o primeiro dia da contagem da multa tem de cair depois do vencimento e até o pagamento")
+
+    legal_path = _regular_file(pedido["legal_source_path"], outside_git=True)
+    if legal_path is None:
+        raise AtualizacaoError("fonte_juridica_invalida", "captura da fonte jurídica ausente ou insegura")
+    legal_raw = Path(legal_path).read_bytes()
+    legal_hash = hashlib.sha256(legal_raw).hexdigest()
+    texto = _texto_normalizado(legal_raw)
+    art_61, art_5 = _dispositivo(texto, _ART_61), _dispositivo(texto, _ART_5)
+    faltam = ([f"art. 61: {t}" for t in TRECHOS_LEI_9430_ART_61 if t not in art_61]
+              + [f"art. 5º: {t}" for t in TRECHOS_LEI_9430_ART_5 if t not in art_5])
+    if faltam:
+        raise AtualizacaoError(
+            "fonte_juridica_divergente",
+            "a captura da fonte não traz o texto do art. 61 (e do art. 5º, § 3º) que este cálculo "
+            "executa; confira se a lei mudou: " + "; ".join(faltam))
+    authorization = _load_authorization(pedido["authorization_path"], legal_hash, agora=now,
+                                        escopo=ESCOPO_LEI_9430)
+
+    venc_mes = dt.date(venc.year, venc.month, 1)
+    pagto_mes = dt.date(pagto.year, pagto.month, 1)
+    meses = _meses_entre(_next_month(venc_mes), dt.date(
+        pagto_mes.year - (pagto_mes.month == 1), 12 if pagto_mes.month == 1 else pagto_mes.month - 1, 1))
+    pontos_selic: list[dict[str, str]] = []
+    snapshot_hash = None
+    soma = Decimal(0)
+    with localcontext() as contexto:
+        contexto.prec = 50
+        if meses:
+            caminho = pedido.get("selic_snapshot_path")
+            esperado = pedido.get("selic_snapshot_sha256")
+            if not isinstance(caminho, str) or not isinstance(esperado, str) or not _SHA256.fullmatch(esperado):
+                raise AtualizacaoError(
+                    "pedido_invalido",
+                    "há meses de Selic entre o vencimento e o pagamento: informe "
+                    "selic_snapshot_path e selic_snapshot_sha256 da série 4390")
+            snapshot, snapshot_hash, _ = _load_file(caminho)
+            if snapshot_hash.casefold() != esperado.casefold():
+                raise AtualizacaoError("hash_divergente", "selic_snapshot_sha256 diverge do arquivo")
+            if snapshot.get("series_id") != SERIE_SELIC_ACUMULADA_MES:
+                raise AtualizacaoError(
+                    "serie_divergente",
+                    "os juros do art. 61 usam a Selic acumulada no mês (série 4390 do SGS)")
+            isos = [m.isoformat() for m in meses]
+            nao_fechado = bcb_sgs_adapter.mes_nao_fechado(snapshot, isos)
+            if nao_fechado:
+                raise AtualizacaoError("mes_nao_fechado", nao_fechado)
+            erros_snap = bcb_sgs_adapter.validar_snapshot(snapshot, hoje=today)
+            if erros_snap:
+                raise AtualizacaoError("snapshot_invalido", erros_snap)
+            mapa = {p.get("period"): p.get("value") for p in snapshot.get("points", [])
+                    if isinstance(p, Mapping)}
+            ausentes = [m for m in isos if m not in mapa]
+            if ausentes:
+                raise AtualizacaoError("cobertura_incompleta",
+                                       "meses de Selic ausentes do snapshot: " + ", ".join(ausentes))
+            for iso in isos:
+                valor = Decimal(str(mapa[iso]))
+                soma += valor
+                pontos_selic.append({"period": iso, "value": _fmt(valor)})
+        juros_pct = soma + (JUROS_NO_MES_DO_PAGAMENTO if pagto_mes > venc_mes else Decimal(0))
+        dias = (pagto - inicio).days + 1
+        multa_apurada = MULTA_POR_DIA * dias
+        multa_pct = min(multa_apurada, TETO_DA_MULTA)
+        multa = centavos(principal * multa_pct / 100)
+        juros = centavos(principal * juros_pct / 100)
+        total = principal + multa + juros
+
+    avisos = [
+        "MINUTA PARA REVISÃO: acréscimos moratórios do art. 61 da Lei 9.430/1996, para débito "
+        "federal administrado pela Receita Federal; não afirma valor devido.",
+        f"Multa de mora contada de {inicio:%d/%m/%Y} a {pagto:%d/%m/%Y} ({dias} dias), dia inicial "
+        "informado no pedido. A lei fala em primeiro dia subsequente ao vencimento; a orientação "
+        "da Receita Federal conta do primeiro dia útil seguinte. Confira o dia inicial e o próprio "
+        "vencimento, que o cálculo não ajusta por feriado.",
+        "Juros pela soma das taxas mensais da Selic do mês seguinte ao vencimento até o mês "
+        "anterior ao pagamento, mais 1% no mês do pagamento, sem capitalização.",
+        "Arredondamento: cada parcela ao centavo, com a metade do centavo para cima, só ao fim "
+        "da conta dela; o total soma as parcelas já arredondadas.",
+    ]
+    if pagto_mes == venc_mes:
+        avisos.append("Pagamento no próprio mês do vencimento: sem juros de mora, como orienta a "
+                      "Receita Federal; só a multa de mora.")
+    if pagto > today:
+        avisos.append(f"Pagamento em {pagto:%d/%m/%Y}, depois de hoje ({today:%d/%m/%Y}): o "
+                      "cálculo é simulação. Os dias de multa e o 1% do mês do pagamento valem só "
+                      "se o pagamento sair nessa data; refaça a conta na data real.")
+    if (inicio - venc).days > 4:
+        avisos.append(f"O dia inicial da multa fica {(inicio - venc).days} dias depois do "
+                      "vencimento: confira se não há erro na data.")
+    pendencias = [
+        "==[MULTA DE OFÍCIO A CONFERIR]== Se houve lançamento de ofício, a multa de ofício e os "
+        "juros sobre ela não entram neste cálculo.",
+        "==[ENCARGO LEGAL A CONFERIR]== Inscrito o débito em dívida ativa, o encargo legal não "
+        "entra neste cálculo.",
+        "==[REGIME ESPECIAL A CONFERIR]== Parcelamento, denúncia espontânea, transação ou decisão "
+        "judicial podem alterar os acréscimos.",
+    ]
+    return {
+        "schema_version": MEMORIA_LEI_9430_VERSION,
+        "status": "MINUTA_PARA_REVISAO",
+        "engine_version": ENGINE_VERSION,
+        "regime": {
+            "nome": "Acréscimos moratórios de débito federal (Lei 9.430/1996, art. 61)",
+            "fonte_oficial": FONTE_LEI_9430,
+            "conferida_em": "2026-11-16",
+            "legal_source_sha256": legal_hash,
+            "authorization": {
+                "authorized_by_lawyer": True,
+                "authorized_by": authorization["authorized_by"],
+                "scope": authorization["scope"],
+                "expires_at": authorization["expires_at"],
+            },
+        },
+        "principal": format(principal, ".2f"),
+        "currency": "BRL",
+        "fato_gerador": fato.isoformat(),
+        "vencimento": venc.isoformat(),
+        "pagamento": pagto.isoformat(),
+        "multa_de_mora": {
+            "inicio_contagem": inicio.isoformat(),
+            "dias_de_atraso": dias,
+            "percentual_por_dia": _fmt(MULTA_POR_DIA),
+            "percentual_apurado": _fmt(multa_apurada),
+            "percentual_aplicado": _fmt(multa_pct),
+            "teto_aplicado": multa_apurada > TETO_DA_MULTA,
+            "valor": format(multa, ".2f"),
+        },
+        "juros_de_mora": {
+            "serie_selic": SERIE_SELIC_ACUMULADA_MES,
+            "selic_snapshot_sha256": snapshot_hash,
+            "meses_selic": pontos_selic,
+            "soma_selic": _fmt(soma),
+            "mes_do_pagamento": _fmt(juros_pct - soma),
+            "percentual": _fmt(juros_pct),
+            "valor": format(juros, ".2f"),
+        },
+        "total": format(total, ".2f"),
+        "arredondamento": {"escala": 2, "modo": "ROUND_HALF_UP", "momento": "fim_de_cada_parcela"},
+        "avisos": avisos,
+        "pendencias": pendencias,
+    }
+
+
 def _load_request(value: str) -> Mapping[str, Any] | None:
     try:
         if value == "-":
@@ -760,6 +1113,9 @@ def main(argv: list[str] | None = None) -> int:
     validate.add_argument("--request", required=True, help="regime JSON fora de Git; use - para stdin")
     calculate = sub.add_parser("calculate")
     calculate.add_argument("--request", required=True, help="pedido JSON fora de Git; use - para stdin")
+    lei_9430 = sub.add_parser("calculate-lei-9430",
+                              help="acréscimos moratórios do art. 61 da Lei 9.430/1996 (ficha própria)")
+    lei_9430.add_argument("--request", required=True, help="pedido JSON fora de Git; use - para stdin")
     args = parser.parse_args(argv)
     payload = _load_request(args.request)
     if payload is None:
@@ -771,7 +1127,8 @@ def main(argv: list[str] | None = None) -> int:
         return 0 if not errors else 2
     authorized = os.environ.get("DSR_ATUALIZACAO_MONETARIA_EXPERIMENTAL") == "1"
     try:
-        memory = calcular(payload, experimental_authorized=authorized)
+        rota = calcular_lei_9430 if args.command == "calculate-lei-9430" else calcular
+        memory = rota(payload, experimental_authorized=authorized)
         print(json.dumps({"ok": True, "memory": memory}, ensure_ascii=False, allow_nan=False))
         return 0
     except AtualizacaoError as exc:

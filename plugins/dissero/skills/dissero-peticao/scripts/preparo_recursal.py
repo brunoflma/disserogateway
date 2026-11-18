@@ -58,6 +58,20 @@
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 from __future__ import annotations
 
 import argparse
@@ -71,7 +85,7 @@ from pathlib import Path
 from typing import Any, Mapping
 from urllib.parse import urlparse
 
-ENGINE_VERSION = "dsr.preparo_recursal.engine.v1"
+ENGINE_VERSION = "dsr.preparo_recursal.engine.v2"
 TABLE_VERSION = "dsr.tabela_preparo_recursal.v1"
 REQUEST_VERSION = "dsr.preparo_recursal.pedido.v1"
 AUTH_VERSION = "dsr.preparo_recursal.autorizacao.v1"
@@ -88,6 +102,8 @@ HORA_FUSO = re.compile(r"(?P<hora>[0-9]{2}:[0-9]{2}(?P<seg>:[0-9]{2})?)"
                        r"(?P<fuso>[+-][0-9]{2})(?::?(?P<min>[0-9]{2}))?\Z")
 DECIMAL_CANONICO = re.compile(r"(?:0|[1-9][0-9]*)(?:\.[0-9]+)?")
 OFFICIAL_SUFFIXES = (".gov.br", ".jus.br", ".leg.br", ".mp.br", ".def.br")
+
+CENTAVO = Decimal(1).scaleb(-2)
 ROUNDING = {"ROUND_HALF_UP": ROUND_HALF_UP, "ROUND_HALF_EVEN": ROUND_HALF_EVEN, "ROUND_DOWN": ROUND_DOWN}
 
 
@@ -219,6 +235,12 @@ def _fmt(value: Decimal) -> str:
     if "." in text:
         text = text.rstrip("0").rstrip(".")
     return "0" if text in {"", "-0", "-"} else text
+
+
+def _no_centavo(texto: Any) -> bool:
+    """Texto ja validado como decimal canonico: True quando nao tem fracao de centavo."""
+    valor = Decimal(texto)
+    return valor == valor.quantize(CENTAVO)
 
 
 def _unknown(value: Mapping[str, Any], allowed: set[str], prefix: str) -> list[str]:
@@ -595,6 +617,18 @@ def calcular(request: Any, *, hoje: dt.date | None = None, agora: dt.datetime | 
                                    (["base exigida pela tabela e nao informada: %s" % b for b in ausentes]
                                     + ["base informada sem rubrica correspondente: %s" % b for b in sobrando]))
 
+
+
+
+    bases_monetarias = sorted({r["base_ref"] for r in aplicaveis if r["modo"] == "percentual_sobre_base"})
+    fora = ["bases.%s (%s) tem fracao de centavo" % (b, request["bases"][b]) for b in bases_monetarias
+            if not _no_centavo(request["bases"][b])]
+    fora += ["recolhimento da rubrica %s (%s) tem fracao de centavo" % (i["rubrica_id"], i["valor"])
+             for i in request["recolhimentos"] if not _no_centavo(i["valor"])]
+    if fora:
+        raise PreparoRecursalError("valor_fora_do_centavo",
+                                   fora + ["informe o valor ao centavo, como consta da conta ou da guia"])
+
     ids_aplicaveis = {r["rubrica_id"] for r in aplicaveis}
     ids_afastados = {a["rubrica_id"] for a in afastadas}
 
@@ -628,25 +662,39 @@ def calcular(request: Any, *, hoje: dt.date | None = None, agora: dt.datetime | 
     por_rubrica = table["politica_arredondamento"] == "por_rubrica"
     detalhes = []
     total_devido = Decimal(0)
+    total_exato = Decimal(0)
     total_recolhido = Decimal(0)
     zeradas = []
+    zeradas_pelo_arredondamento = []
+
+
+
+
+
     with localcontext() as context:
         context.prec = PRECISAO_DECIMAL
         for rubrica in aplicaveis:
-            valor, detalhe = _valor_rubrica(rubrica, request["bases"])
-            if por_rubrica:
-                valor = valor.quantize(quantum, rounding=modo_arredondamento)
-            if valor <= 0:
+            exato, detalhe = _valor_rubrica(rubrica, request["bases"])
+            valor = exato.quantize(quantum, rounding=modo_arredondamento)
+            if (valor if por_rubrica else exato) <= 0:
                 zeradas.append(rubrica["rubrica_id"])
+            elif valor <= 0:
+                zeradas_pelo_arredondamento.append(rubrica["rubrica_id"])
             recolhido = recolhido_por_rubrica.get(rubrica["rubrica_id"], Decimal(0))
+            if not por_rubrica:
+                detalhe["valor_devido_exato"] = _fmt(exato)
             detalhe["valor_devido"] = _fmt(valor)
             detalhe["valor_recolhido_informado"] = _fmt(recolhido)
             detalhe["diferenca"] = _fmt(valor - recolhido)
             detalhes.append(detalhe)
             total_devido += valor
+            total_exato += exato
             total_recolhido += recolhido
+        ajuste = Decimal(0)
         if not por_rubrica:
-            total_devido = total_devido.quantize(quantum, rounding=modo_arredondamento)
+            soma_das_linhas = total_devido
+            total_devido = total_exato.quantize(quantum, rounding=modo_arredondamento)
+            ajuste = total_devido - soma_das_linhas
         diferenca = total_devido - total_recolhido
     if zeradas:
         raise PreparoRecursalError("zero_nao_e_aritmetica",
@@ -670,7 +718,7 @@ def calcular(request: Any, *, hoje: dt.date | None = None, agora: dt.datetime | 
             "total_recolhido_informado": _fmt(total_recolhido),
             "diferenca": _fmt(diferenca),
             "politica_arredondamento": table["politica_arredondamento"],
-        },
+        } | ({} if por_rubrica else {"ajuste_arredondamento_total": _fmt(ajuste)}),
         "pedido": {
             "jurisdicao": request["jurisdicao"],
             "recurso": request["recurso"],
@@ -696,7 +744,13 @@ def calcular(request: Any, *, hoje: dt.date | None = None, agora: dt.datetime | 
             "vem da condicao que o advogado declarou no pedido, nao de leitura do motor; se a "
             "condicao estiver errada, o total esta menor do que o devido."
             % ", ".join("%s (%s=false)" % (a["rubrica_id"], a["condicao"]) for a in afastadas)
-        ] if afastadas else []) + [
+        ] if afastadas else []) + ([
+            "RUBRICA ZERADA SO NA LINHA IMPRESSA - %s: o valor exato e positivo e menor que a "
+            "unidade de arredondamento da tabela (%s, escala %s); a tabela arredonda so o total, "
+            "entao o valor exato entra no total e aparece ao lado da linha. Zero ali e "
+            "arredondamento, nao dispensa."
+            % (", ".join(zeradas_pelo_arredondamento), rounding["mode"], rounding["scale"])
+        ] if zeradas_pelo_arredondamento else []) + [
             "MINUTA_PARA_REVISAO: calculo condicional para conferencia do advogado, nunca para protocolo direto.",
             "O motor apenas soma rubricas declaradas na tabela oficial externa; nao escolhe tribunal, "
             "rubrica, aliquota nem valor de deposito recursal.",

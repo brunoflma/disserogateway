@@ -27,8 +27,18 @@
 
 
 
+
+
+
+
+
+
+
+
+
 import argparse, sys
 from datetime import date, timedelta
+from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
 
 try:
     sys.stdout.reconfigure(encoding="utf-8")
@@ -59,7 +69,27 @@ MOTIVOS = {
     "falecimento":        {"aviso": 0.0,  "ferias_prop": True,  "decimo_prop": True,
                            "multa": 0.0,  "saque": "dependentes", "seguro": False},
 }
-FGTS_ALIQUOTA = 0.08
+FGTS_ALIQUOTA = Decimal("0.08")
+CENTAVO = Decimal("0.01")
+
+
+def centavos(valor):
+    """Ao centavo, meia unidade para cima, no fim da parcela."""
+    return Decimal(valor).quantize(CENTAVO, rounding=ROUND_HALF_UP)
+
+
+def _reais(texto):
+    """Valor em reais lido como Decimal, sem passar por float (0,1 em float não é 0,1)."""
+    try:
+        valor = Decimal(str(texto).strip().replace(",", "."))
+    except InvalidOperation:
+        raise argparse.ArgumentTypeError(f"valor em reais inválido: '{texto}'")
+    if not valor.is_finite():
+        raise argparse.ArgumentTypeError(f"valor em reais inválido: '{texto}'")
+    if valor != valor.quantize(CENTAVO):
+        raise argparse.ArgumentTypeError(
+            f"valor_fora_do_centavo: '{texto}' tem fração de centavo; informe reais e centavos")
+    return valor
 
 
 def _data(s, rotulo):
@@ -138,14 +168,14 @@ def main():
     ap.add_argument("--admissao", required=True)
     ap.add_argument("--demissao", required=True)
     ap.add_argument("--motivo", required=True, choices=sorted(MOTIVOS))
-    ap.add_argument("--salario", type=float, required=True, help="salário BASE mensal")
-    ap.add_argument("--media-variaveis", dest="media", type=float, default=0.0,
+    ap.add_argument("--salario", type=_reais, required=True, help="salário BASE mensal")
+    ap.add_argument("--media-variaveis", dest="media", type=_reais, default=Decimal(0),
                     help="média de HE/comissões dos últimos 12 meses (integra a base)")
     ap.add_argument("--aviso", choices=("indenizado", "trabalhado", "dispensado"),
                     default="indenizado",
                     help="indenizado projeta tempo (CLT, art. 487, § 1º); trabalhado já está no "
                          "saldo; dispensado não projeta nem indeniza")
-    ap.add_argument("--saldo-fgts", dest="saldo_fgts", type=float, default=0.0)
+    ap.add_argument("--saldo-fgts", dest="saldo_fgts", type=_reais, default=Decimal(0))
     ap.add_argument("--ferias-vencidas", dest="ferias_vencidas", type=int, default=0,
                     help="períodos aquisitivos COMPLETOS não gozados")
     ap.add_argument("--dias-saldo", dest="dias_saldo", type=int,
@@ -173,7 +203,7 @@ def main():
     dias_av = aviso_dias(adm, dem)
     fracao = regra["aviso"]
     projeta = False
-    valor_aviso = 0.0
+    valor_aviso = Decimal(0)
     if fracao is None:
         linhas.append(f"Aviso prévio: devido PELO EMPREGADO ({dias_av} dias seriam do "
                       f"empregador na dispensa) — nada a pagar; se não cumprido, o empregador "
@@ -192,7 +222,7 @@ def main():
             avisos.append("aviso dispensado sem indenização é hipótese restrita; confira se não "
                           "se trata de aviso INDENIZADO (que projeta tempo — CLT, art. 487, § 1º)")
         else:
-            valor_aviso = base * dias_pagos / 30
+            valor_aviso = centavos(base * dias_av * Decimal(str(fracao)) / 30)
             projeta = True
             comp = (f"Lei 12.506/2011: 30 + {anos}×3, teto +60" if dias_av > 30
                     else "Lei 12.506/2011: 30 dias")
@@ -209,22 +239,22 @@ def main():
     dias_saldo = a.dias_saldo if a.dias_saldo is not None else dem.day
     if dias_saldo < 0 or dias_saldo > 31:
         sys.exit("ERRO: --dias-saldo deve estar entre 0 e 31.")
-    saldo = base * dias_saldo / 30
+    saldo = centavos(base * dias_saldo / 30)
     linhas.append(f"Saldo de salário ({dias_saldo} dias ÷ 30): {brl(saldo)}")
 
 
-    ferias_venc = 0.0
+    ferias_venc = Decimal(0)
     if a.ferias_vencidas:
-        ferias_venc = base * a.ferias_vencidas * (4 / 3)
+        ferias_venc = centavos(base * a.ferias_vencidas * 4 / 3)
         linhas.append(f"Férias VENCIDAS + 1/3 ({a.ferias_vencidas} período(s)): "
                       f"{brl(ferias_venc)}")
 
 
-    ferias_prop = 0.0
+    ferias_prop = Decimal(0)
     if regra["ferias_prop"]:
         ini_aq = ultimo_aniversario(adm, dem)
         n_fp, det_fp = avos(ini_aq, fim_projetado)
-        ferias_prop = base * n_fp / 12 * (4 / 3)
+        ferias_prop = centavos(base * n_fp * 4 / 36)
         linhas.append(f"Férias PROPORCIONAIS + 1/3: {n_fp}/12 — período aquisitivo desde "
                       f"{ini_aq:%d/%m/%Y} = {brl(ferias_prop)}")
         linhas.append(f"    avos de férias: {', '.join(det_fp)}")
@@ -233,11 +263,11 @@ def main():
                       "Súmula 171-TST; as VENCIDAS subsistem)")
 
 
-    decimo = 0.0
+    decimo = Decimal(0)
     if regra["decimo_prop"]:
         ini_13 = max(adm, date(dem.year, 1, 1))
         n_13, det_13 = avos(ini_13, fim_projetado)
-        decimo = base * n_13 / 12
+        decimo = centavos(base * n_13 / 12)
         linhas.append(f"13º PROPORCIONAL: {n_13}/12 — ano civil desde {ini_13:%d/%m/%Y} = "
                       f"{brl(decimo)}")
         linhas.append(f"    avos de 13º: {', '.join(det_13)}")
@@ -248,11 +278,11 @@ def main():
     linhas.append(f"BRUTO (antes de INSS/IRRF): {brl(bruto)}")
 
 
-    dep_aviso = valor_aviso * FGTS_ALIQUOTA
-    dep_13 = decimo * FGTS_ALIQUOTA
-    dep_saldo = saldo * FGTS_ALIQUOTA
+    dep_aviso = centavos(valor_aviso * FGTS_ALIQUOTA)
+    dep_13 = centavos(decimo * FGTS_ALIQUOTA)
+    dep_saldo = centavos(saldo * FGTS_ALIQUOTA)
     dep_rescis = dep_aviso + dep_13 + dep_saldo
-    multa = (a.saldo_fgts + dep_rescis) * regra["multa"]
+    multa = centavos((a.saldo_fgts + dep_rescis) * Decimal(str(regra["multa"])))
     linhas.append(f"FGTS — saldo informado na conta vinculada: {brl(a.saldo_fgts)}")
     linhas.append(f"FGTS — depósitos rescisórios 8% (saldo {brl(dep_saldo)} + aviso "
                   f"{brl(dep_aviso)} + 13º {brl(dep_13)}): {brl(dep_rescis)}")
@@ -304,6 +334,9 @@ def main():
                       "rescisórios — junte o extrato da conta vinculada")
     avisos.append("prazo de pagamento: 10 dias corridos da rescisão (CLT 477, §6º); atraso gera "
                   "multa de um salário (CLT 477, §8º) — calcule o prazo pelo calcular_prazo.py")
+    linhas.append("Arredondamento: cada verba ao centavo, com a metade do centavo para cima, só ao "
+                  "fim da conta dela; bruto, depósitos, base da multa e GRRF somam as parcelas já "
+                  "arredondadas.")
     avisos.append("avos contados por mês com 15 dias ou mais; não se aplicam suspensões do "
                   "contrato (afastamento previdenciário, estabilidade) — se houve, o cálculo "
                   "precisa de ajuste manual")

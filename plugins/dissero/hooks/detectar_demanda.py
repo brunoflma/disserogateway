@@ -177,6 +177,10 @@ M_C3 = ("[Dissero · detecção] Cenário sugerido: 3 — Análise de decisão [
         "analise-autos: abre pelo RESULTADO, pedido por pedido, e pela ratio decidendi; "
         "viabilidade e redação seguem na dissero-peticao. Modelo ideal: Opus "
         "(análise/viabilidade) → Sonnet só se redigir.")
+M_C32 = ("[Dissero · detecção] Cenário sugerido: 32 — Citações da peça adversária [RISCO]. "
+         "Acione dissero-orquestrador → dissero-pesquisa-juridica, método das citações adversárias: "
+         "um veredicto por citação, e \"inexistente\" só depois do protocolo de busca escrito. "
+         "Modelo ideal: Opus (confronto de teor) / Sonnet (compilação do quadro).")
 M_C4 = ("[Dissero · detecção] Cenário sugerido: 4 — Pesquisa de jurisprudência [RISCO]. Acione "
         "dissero-orquestrador; classificação CONFIRMADO/PARCIAL/NÃO CONFIRMADO obrigatória. "
         "Modelo ideal: Opus (confronto de tese) / Sonnet (compilação).")
@@ -352,6 +356,28 @@ RX_JUNTADA = _rx(
 
 RX_C4_EXPLICITA = re.compile(_vo(V_PESQUISAR, O_JURIS))
 
+
+
+
+
+
+
+
+
+_O_CITADO = r"(?:jurisprudenc|precedent|sumula|julgad|acordao|ementa)"
+_PECA_ADVERSA = (r"(?:contestac|inicial|apelac|replica|contrarrazo|recurso|agravo|embargos|"
+                 r"memoriais|manifestac|parte contraria|outra parte|parte adversa|adversari)")
+_EXISTE_PERGUNTA = (r"(?:exist(?:e|em)\s*(?:\?|$|mesmo|de verdade|realmente)|"
+                    r"nao\s+exist(?:e|em|iu|iram)\b|inventad|inexistent|falsificad)")
+RX_C32 = _rx(
+    r"\b%s\w*[^.?!]{0,40}\b%s" % (_O_CITADO, _EXISTE_PERGUNTA),
+    r"\bse\s+(?:\w+\s+){0,3}%s\w*[^.?!]{0,40}\bexist(?:e|em)\b" % _O_CITADO,
+    r"\binvent\w*\s+(?:\w+\s+){0,2}%s" % _O_CITADO,
+    r"\b(?:confer|confir|verific|checa|cheque|audit)\w*\s+(?:\w+\s+){0,3}(?:%s|citac)\w*"
+    r"[^.?!]{0,40}\b(?:d[aoe]s?|n[ao]s?|pel[ao]s?|citad[ao]s?)\s+(?:\w+\s+){0,2}%s"
+    % (_O_CITADO, _PECA_ADVERSA),
+)
+
 RX_C1 = _rx(
     _vo(V_PRODUZIR, O_PECA),
 
@@ -498,6 +524,7 @@ RAMOS = (
     (RX_VISUAL, M_VISUAL),
     (RX_C2, M_C2),
     (RX_C8, M_C8),
+    (RX_C32, M_C32),
     (RX_C4_EXPLICITA, M_C4),
     (RX_JUNTADA, M_JUNT),
     (RX_C1, M_C1),

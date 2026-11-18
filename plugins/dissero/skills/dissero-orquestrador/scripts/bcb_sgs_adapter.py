@@ -22,7 +22,7 @@ import os
 import re
 import sys
 import tempfile
-from datetime import date, datetime, timezone
+from datetime import date, datetime, timedelta, timezone
 from decimal import Decimal, InvalidOperation
 from email.utils import parsedate_to_datetime
 from pathlib import Path
@@ -185,6 +185,93 @@ def serie_nao_e_indice_de_correcao(series_id: int,
             f"mercado por modalidade; serve para comparar com a taxa do contrato e não se "
             f"acumula como índice de atualização monetária")
     return None
+
+
+def _mes_br(periodo: str) -> str:
+    return f"{periodo[5:7]}/{periodo[:4]}"
+
+
+
+
+
+_FUSO_BRASILIA = timezone(timedelta(hours=-3))
+
+
+def _mes_corrente_parcial(series_id: Any, catalogo: str | os.PathLike[str] | None) -> bool:
+    """True quando o catálogo marca a série como acumulada até a data da consulta."""
+    try:
+        entrada = _catalogo_series(catalogo).get(str(series_id))
+    except AdapterError:
+        return False
+    return isinstance(entrada, Mapping) and entrada.get("mes_corrente_parcial") is True
+
+
+def _leitura_meses(snapshot: Any, periodos: Any):
+    pedidos = sorted({str(p) for p in periodos})
+    pontos = sorted({str(p["period"]) for p in snapshot["points"]
+                     if isinstance(p, Mapping) and PERIOD_RE.fullmatch(str(p.get("period")))})
+    captura = _parse_timezone_datetime(snapshot.get("retrieved_at")).astimezone(_FUSO_BRASILIA).date()
+    faltas = {str(p) for p in (snapshot.get("coverage") or {}).get("missing_periods") or []}
+    return pedidos, pontos, captura, faltas
+
+
+def mes_nao_fechado(snapshot: Any, periodos: Any,
+                    catalogo: str | os.PathLike[str] | None = None) -> str | None:
+    'Recusa nomeada quando um mês pedido ainda não está fechado na série capturada.'
+
+
+
+
+
+
+
+
+
+
+    try:
+        pedidos, pontos, captura, faltas = _leitura_meses(snapshot, periodos)
+    except (AdapterError, KeyError, TypeError, AttributeError, ValueError):
+        return None
+    serie = snapshot.get("series_id")
+    em_curso = f"{captura.year:04d}-{captura.month:02d}-01"
+    abertos = [p for p in pedidos if p >= em_curso]
+    if abertos and _mes_corrente_parcial(serie, catalogo):
+        fechados = [p for p in pontos if p < em_curso]
+        return (f"mes_nao_fechado: na captura da série {serie} em {captura:%d/%m/%Y}, o mês "
+                f"{', '.join(_mes_br(p) for p in abertos)} ainda estava em curso, e o valor que a "
+                f"série serve para ele é parcial; última competência fechada na série: "
+                + (_mes_br(fechados[-1]) if fechados else "nenhuma no snapshot")
+                + ". Capture a série de novo depois que o mês fechar.")
+    ultimo = pontos[-1] if pontos else None
+    cauda = [p for p in pedidos if p in faltas and (ultimo is None or p > ultimo)]
+    if cauda:
+        return (f"mes_nao_fechado: a série {serie} ainda não publicou "
+                f"{', '.join(_mes_br(p) for p in cauda)}; última competência disponível na "
+                f"série: {_mes_br(ultimo) if ultimo else 'nenhuma no snapshot'}. Aguarde a "
+                f"publicação e capture a série de novo.")
+    return None
+
+
+def aviso_mes_corrente(snapshot: Any, periodos: Any,
+                       catalogo: str | os.PathLike[str] | None = None) -> str | None:
+    'Aviso (não recusa) quando se pede o mês em curso de série que o catálogo NÃO marca como'
+
+
+
+    try:
+        pedidos, pontos, captura, _faltas = _leitura_meses(snapshot, periodos)
+    except (AdapterError, KeyError, TypeError, AttributeError, ValueError):
+        return None
+    serie = snapshot.get("series_id")
+    if _mes_corrente_parcial(serie, catalogo):
+        return None
+    em_curso = f"{captura.year:04d}-{captura.month:02d}-01"
+    servidos = [p for p in pedidos if p >= em_curso and p in pontos]
+    if not servidos:
+        return None
+    return (f"Mês em curso na captura da série {serie} ({captura:%d/%m/%Y}): "
+            f"{', '.join(_mes_br(p) for p in servidos)} entrou com o valor que a série já "
+            "servia. Confira, depois que o mês fechar, se o valor não foi revisto.")
 
 
 def _reject_constant(value: str) -> None:
@@ -998,7 +1085,7 @@ def capturar_snapshot(request: Mapping[str, Any],
     _atomic_write_bytes(raw_path, raw)
     snapshot = _make_snapshot(spec, source_url, raw, headers, normalized["start"], normalized["end"])
     _atomic_write_json(normalized["output_path"], snapshot)
-    return {
+    resultado = {
         "ok": True,
         "mode": "snapshot",
         "state": snapshot["coverage"]["state"],
@@ -1007,6 +1094,15 @@ def capturar_snapshot(request: Mapping[str, Any],
         "expected_periods": snapshot["coverage"]["expected_periods"],
         "received_periods": snapshot["coverage"]["received_periods"],
     }
+
+    pedidos = [_period_text(p) for p in _periods_between(normalized["start"], normalized["end"])]
+    aviso = mes_nao_fechado(snapshot, pedidos)
+    if aviso:
+        resultado["mes_nao_fechado"] = aviso
+    corrente = aviso_mes_corrente(snapshot, pedidos)
+    if corrente:
+        resultado["aviso_mes_corrente"] = corrente
+    return resultado
 
 
 def dry_run(request: Mapping[str, Any]) -> dict[str, Any]:

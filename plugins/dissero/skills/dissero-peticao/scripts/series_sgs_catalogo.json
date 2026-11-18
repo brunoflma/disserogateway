@@ -7,7 +7,9 @@
     "catalogo_dados_abertos": "https://dadosabertos.bcb.gov.br/api/3/action/package_search?q=<codigo> — dataset cujo nome começa pelo próprio código LIGA código a nome. É a única prova documental de identidade que o BCB publica sem sessão.",
     "serie_ao_vivo": "https://api.bcb.gov.br/dados/serie/bcdata.sgs.<codigo>/dados/ultimos/N?formato=json — prova que o código serve dado e revela a FORMA do ponto. Exige User-Agent de navegador: sem ele o WAF devolve HTTP 200 com corpo vazio, que parece série morta.",
     "aritmetica_conferida": "identidade confirmada por relação aritmética entre séries, reproduzida mês a mês.",
-    "par_mensal_anual": "Taxa média de juros: o BCB publica cada modalidade em duas séries, percentual ao mês e percentual ao ano. A anual é a mensal capitalizada em 12 meses, ((1 + am/100)^12 - 1) * 100, dentro do erro do arredondamento a duas casas. A relação confere o PAR, não o nome: o nome vem do dataset do CKAN, que traz `codigo_sgs`, `periodicidade` e `unidade_medida`."
+    "par_mensal_anual": "Taxa média de juros: o BCB publica cada modalidade em duas séries, percentual ao mês e percentual ao ano. A anual é a mensal capitalizada em 12 meses, ((1 + am/100)^12 - 1) * 100, dentro do erro do arredondamento a duas casas. A relação confere o PAR, não o nome: o nome vem do dataset do CKAN, que traz `codigo_sgs`, `periodicidade` e `unidade_medida`.",
+    "produtor_oficial_conferido": "Índice de preços do IBGE: a série do SGS é comparada, mês a mês, com a variação mensal que o próprio IBGE publica no SIDRA (https://apisidra.ibge.gov.br/values/t/<tabela>/n1/all/v/<variavel>/p/all). Igualdade em todos os meses da janela é a relação aritmética da identidade, como na 29543; o IBGE é quem produz o índice, então a prova não depende de catálogo de nomes do BCB.",
+    "calculadora_do_cidadao": "TR: não há produtor fora do BCB, então a prova vem de outra publicação do próprio BCB que NOMEIA a taxa: a Calculadora do Cidadão, aba \"Correção de valor pela TR\" (formulário em https://www3.bcb.gov.br/CALCIDADAO/publico/exibirFormCorrecaoValores.do?method=exibirFormCorrecaoValores&aba=2, cálculo em https://www3.bcb.gov.br/CALCIDADAO/publico/corrigirPelaTR.do?method=corrigirPelaTR). Para cada mês, corrige-se R$ 1.000,00 do dia 1º ao dia 1º do mês seguinte, sem data de pagamento em atraso, e o \"Valor percentual correspondente\" é comparado com o valor da série no mesmo mês. Liga o código ao nome que o produtor dá à taxa; não é confirmação por órgão independente, que não existe para a TR."
   },
   "avisos": [
     "O CKAN de dados abertos é espelho PARCIAL do SGS. Na medição registrada em `medido_em`, ele traz sub-índices do IPCA (10841, 4447) e séries de dívida indexada à TR, mas NÃO o IPCA cheio (433), NÃO a TR e NÃO a taxa legal (29543). Ausência no CKAN não é prova de que a série não existe.",
@@ -22,7 +24,9 @@
       "identidade": "catalogo_dados_abertos",
       "dataset": "4390-taxa-de-juros---selic-acumulada-no-mes",
       "forma_medida": "mensal, percentual ao mês",
-      "catalog_kind": "dados_abertos_ckan"
+      "catalog_kind": "dados_abertos_ckan",
+      "mes_corrente_parcial": true,
+      "mes_corrente_parcial_medido": "16/11/2026, na API do SGS: a série serve o mês em curso com a taxa acumulada só até o dia da consulta (11/2026 = 0,51, ao lado de 10/2026 = 1,07). Ausente nas demais séries: a 29543 e a 7811 servem o mês corrente com valor fixado de antemão (11/2026 = 0,749583 e 0,1196)."
     },
     "1178": {
       "nome_declarado": "Taxa de juros — Selic anualizada base 252",
@@ -61,38 +65,83 @@
     },
     "433": {
       "nome_declarado": "IPCA — variação mensal",
-      "identidade": "pendente_de_atestacao",
+      "identidade": "aritmetica_conferida",
       "forma_medida": "mensal, percentual ao mês",
       "catalog_kind": "sgs_serie_declarada",
-      "nota": "Sem dataset no CKAN: `q=433` devolve apenas `ouvidorias-dos-bancos`, falso positivo. A busca por nome traz sub-índices (10841, 4447), não o índice cheio."
+      "nota": "Sem dataset no CKAN (`q=433` devolve apenas `ouvidorias-dos-bancos`, falso positivo); identidade conferida contra o IBGE em 16/11/2026, ver prova_aritmetica.",
+      "prova_aritmetica": {
+        "relacao": "433[mês] = SIDRA 1737, variável 63 (IPCA - Variação mensal), Brasil, mesmo mês",
+        "fonte_oficial": "https://apisidra.ibge.gov.br/values/t/1737/n1/all/v/63/p/all?formato=json",
+        "serie_comparada": "https://api.bcb.gov.br/dados/serie/bcdata.sgs.433/dados?formato=json&dataInicial=01/01/2024&dataFinal=31/12/2026",
+        "conferido_em": "2026-11-16",
+        "meses_conferidos": 34,
+        "meses_que_batem": 34,
+        "janela": "01/2024 a 10/2026",
+        "maior_divergencia": "0",
+        "leitura": "Os 34 meses batem por igualdade exata das duas casas decimais publicadas. Isso liga o código 433 ao índice do IBGE sem depender do CKAN. A prova NÃO cobre meses anteriores a 01/2024, nem eventual revisão posterior de mês já publicado, e NÃO dispensa a atestação nominal que o adaptador exige no spec (sgs_serie_declarada): ela é o documento contra o qual quem atesta confere."
+      }
     },
     "7478": {
       "nome_declarado": "IPCA-15 — variação mensal",
-      "identidade": "pendente_de_atestacao",
+      "identidade": "aritmetica_conferida",
       "forma_medida": "mensal, percentual ao mês",
       "catalog_kind": "sgs_serie_declarada",
-      "nota": "Sem dataset no CKAN (count=0)."
+      "nota": "Sem dataset no CKAN (count=0); identidade conferida contra o IBGE em 16/11/2026, ver prova_aritmetica.",
+      "prova_aritmetica": {
+        "relacao": "7478[mês] = SIDRA 3065, variável 355 (IPCA15 - Variação mensal), Brasil, mesmo mês",
+        "fonte_oficial": "https://apisidra.ibge.gov.br/values/t/3065/n1/all/v/355/p/all?formato=json",
+        "serie_comparada": "https://api.bcb.gov.br/dados/serie/bcdata.sgs.7478/dados?formato=json&dataInicial=01/01/2024&dataFinal=31/12/2026",
+        "conferido_em": "2026-11-16",
+        "meses_conferidos": 34,
+        "meses_que_batem": 34,
+        "janela": "01/2024 a 10/2026",
+        "maior_divergencia": "0",
+        "leitura": "Os 34 meses batem por igualdade exata das duas casas decimais publicadas. Isso liga o código 7478 ao índice do IBGE sem depender do CKAN. A prova NÃO cobre meses anteriores a 01/2024, nem eventual revisão posterior de mês já publicado, e NÃO dispensa a atestação nominal que o adaptador exige no spec (sgs_serie_declarada): ela é o documento contra o qual quem atesta confere."
+      }
     },
     "188": {
-      "nome_declarado": "INPC — variação mensal (CANDIDATO, não confirmado)",
-      "identidade": "pendente_de_atestacao",
+      "nome_declarado": "INPC — variação mensal",
+      "identidade": "aritmetica_conferida",
       "forma_medida": "mensal, percentual ao mês",
       "catalog_kind": "sgs_serie_declarada",
-      "nota": "CANDIDATO. Serve dado e tem a forma certa, mas NADA nesta medição liga o código 188 ao INPC: não há dataset no CKAN e não há relação aritmética que o identifique, como há para a 29543. Não use sem atestação nominal."
+      "nota": "Era candidato até 16/11/2026: sem dataset no CKAN e sem relação entre séries do BCB. A identidade veio da comparação com o IBGE, ver prova_aritmetica.",
+      "prova_aritmetica": {
+        "relacao": "188[mês] = SIDRA 1736, variável 44 (INPC - Variação mensal), Brasil, mesmo mês",
+        "fonte_oficial": "https://apisidra.ibge.gov.br/values/t/1736/n1/all/v/44/p/all?formato=json",
+        "serie_comparada": "https://api.bcb.gov.br/dados/serie/bcdata.sgs.188/dados?formato=json&dataInicial=01/01/2024&dataFinal=31/12/2026",
+        "conferido_em": "2026-11-16",
+        "meses_conferidos": 34,
+        "meses_que_batem": 34,
+        "janela": "01/2024 a 10/2026",
+        "maior_divergencia": "0",
+        "leitura": "Os 34 meses batem por igualdade exata das duas casas decimais publicadas. Isso liga o código 188 ao índice do IBGE sem depender do CKAN. A prova NÃO cobre meses anteriores a 01/2024, nem eventual revisão posterior de mês já publicado, e NÃO dispensa a atestação nominal que o adaptador exige no spec (sgs_serie_declarada): ela é o documento contra o qual quem atesta confere."
+      }
     },
     "226": {
       "nome_declarado": "TR — Taxa Referencial (CANDIDATO, não confirmado)",
       "identidade": "pendente_de_atestacao",
       "forma_medida": "período com início e FIM (`dataFim`), não ponto mensal",
       "catalog_kind": null,
-      "nota": "INCOMPATÍVEL com o contrato do adaptador como está: o ponto traz `dataFim`, ou seja é taxa de período (02/09 a 02/10), não valor de mês civil. Usá-la exigiria estender o contrato, não só cadastrar o código."
+      "nota": "INCOMPATÍVEL com o contrato do adaptador como está: o ponto traz `dataFim`, ou seja é taxa de período (02/09 a 02/10), não valor de mês civil. Usá-la exigiria estender o contrato, não só cadastrar o código. Em 16/11/2026 a 7811 bateu com ela nos períodos iniciados no dia 1º, o que, sozinho, não liga nenhuma das duas ao nome TR. A 7811 foi conferida depois na calculadora do BCB, só para períodos iniciados no dia 1º; períodos que começam em outro dia, que são a forma desta série, não foram conferidos."
     },
     "7811": {
-      "nome_declarado": "TR mensal (CANDIDATO, não confirmado)",
-      "identidade": "pendente_de_atestacao",
+      "nome_declarado": "TR — Taxa Referencial, mensal (período de um mês iniciado no dia 1º)",
+      "identidade": "aritmetica_conferida",
       "forma_medida": "mensal, percentual ao mês",
       "catalog_kind": "sgs_serie_declarada",
-      "nota": "CANDIDATO com a forma compatível, sem prova de identidade."
+      "nota": "Era candidato até 16/11/2026: nos 35 meses de 01/2024 a 11/2026 o valor da 7811 é igual ao da 226 no período que começa no dia 1º do mês, o que mostrava que as duas são a mesma taxa, mas não qual taxa é, porque uma candidata não prova a outra. A identidade veio da Calculadora do Cidadão do BCB, ver prova_aritmetica.",
+      "prova_aritmetica": {
+        "relacao": "7811[mês] = \"Valor percentual correspondente\" da correção pela TR na Calculadora do Cidadão do BCB, de 1º do mês a 1º do mês seguinte, sem pagamento em atraso",
+        "fonte_oficial": "https://www3.bcb.gov.br/CALCIDADAO/publico/corrigirPelaTR.do?method=corrigirPelaTR",
+        "serie_comparada": "https://api.bcb.gov.br/dados/serie/bcdata.sgs.7811/dados?formato=json&dataInicial=01/01/2024&dataFinal=31/12/2026",
+        "conferido_em": "2026-11-16",
+        "meses_conferidos": 35,
+        "meses_que_batem": 35,
+        "janela": "01/2024 a 11/2026",
+        "maior_divergencia": "0",
+        "leitura": "Os 35 meses batem por igualdade numérica (a série publica quatro casas, a calculadora seis, com zeros à direita: 0,1690 e 0,169000). Controle do encadeamento: a correção de 01/01/2026 a 01/11/2026 na calculadora deu 1,01658540, e o produto dos dez meses da série dá 1,0165853869, que arredonda ao mesmo índice. Isso liga o código 7811 ao nome que o BCB dá à taxa. A prova NÃO cobre meses anteriores a 01/2024, nem período que comece em outro dia que não o 1º (que é a forma da 226), nem eventual revisão posterior de mês já publicado; é publicação do mesmo produtor, não de órgão independente; e NÃO dispensa a atestação nominal que o adaptador exige no spec (sgs_serie_declarada): ela é o documento contra o qual quem atesta confere. Respostas da calculadora nos 35 meses, concatenadas na ordem dos meses: sha256 73e10d0ded8ae0f65b6d5d2646599a017eb4b38137c74bc73e51c3a00bb1584e (a página traz a hora da consulta, então o hash identifica esta captura, não se reproduz)."
+      },
+      "mes_corrente_parcial_medido": "16/11/2026: a 7811 serve 11/2026 = 0,1196, igual à TR do período inteiro de 01/11 a 01/12/2026 na 226 e na calculadora do BCB (0,119600). O valor é fixado no início do período, não acumulado até a consulta; por isso a série fica sem a marca mes_corrente_parcial, e o mês em curso sai só como aviso."
     },
     "25464": {
       "nome_declarado": "Taxa média mensal de juros das operações de crédito com recursos livres - Pessoas físicas - Crédito pessoal não consignado",
@@ -444,5 +493,6 @@
       },
       "nota": "Percentual ao ano não satisfaz `unit: percent_per_month` do adaptador. Serve para comparar com a taxa anual que o contrato declara; a captura para a memória usa a série mensal 25438, da mesma modalidade."
     }
-  }
+  },
+  "atestado_em": "2026-11-16"
 }

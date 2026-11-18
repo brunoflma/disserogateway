@@ -8,6 +8,16 @@
 
 
 
+
+
+
+
+
+
+
+
+
+
 from __future__ import annotations
 
 import argparse
@@ -29,7 +39,7 @@ from ficha_capacidade import FichaRecusada, exigir as exigir_ficha
 
 
 CAPACIDADE = "horas_extras"
-ENGINE_VERSION = "dsr.horas_extras.engine.v1"
+ENGINE_VERSION = "dsr.horas_extras.engine.v2"
 DECISION_VERSION = "dsr.horas_extras.decisao.v1"
 REQUEST_VERSION = "dsr.horas_extras.pedido.v1"
 AUTH_VERSION = "dsr.horas_extras.autorizacao.v1"
@@ -124,6 +134,10 @@ def _official_url(value: Any) -> bool:
     except ValueError:
         return False
     return parsed.scheme == "https" and bool(host) and any(host.endswith(s) for s in OFFICIAL_SUFFIXES) and not parsed.username and not parsed.password and not parsed.fragment
+
+
+def _fora_da_grade(valor: Decimal, grade: Decimal) -> bool:
+    return valor != valor.quantize(grade, rounding=ROUND_DOWN)
 
 
 def _decimal(value: Any, field: str, *, nonnegative: bool = False, positive: bool = False) -> Decimal:
@@ -405,6 +419,11 @@ def calcular(pedido: Any, *, hoje: dt.date | None = None, agora: dt.datetime | N
         raise HorasExtrasError("pedido_invalido", request_errors)
     assert isinstance(pedido, Mapping)
     principal = _decimal(pedido["principal"], "principal", positive=True)
+    centavo = Decimal(1).scaleb(-2)
+    fora = [f"{m['competencia']}.salary_base" for m in pedido["months"] if _fora_da_grade(_decimal(m["salary_base"], "salary_base"), centavo)]
+    fora += [f"{m['competencia']}.components" for m in pedido["months"] if any(_fora_da_grade(_decimal(x, "components"), centavo) for x in m["components"])]
+    if fora:
+        raise HorasExtrasError("valor_fora_do_centavo", [f"{campo} tem fração de centavo; informe o valor ao centavo, como consta da folha ou do contracheque, em vez de deixá-lo ao arredondamento" for campo in fora])
     decision, decision_hash = _load_json(pedido["decision_path"])
     if decision_hash.casefold() != str(pedido["decision_sha256"]).casefold():
         raise HorasExtrasError("hash_divergente", "decision_sha256 diverge do arquivo")
@@ -417,6 +436,23 @@ def calcular(pedido: Any, *, hoje: dt.date | None = None, agora: dt.datetime | N
         raise HorasExtrasError("intervalo_indenizatorio_em_reflexo", reflexos_indenizatorios)
     legal_source_hash = str(decision["legal_source_sha256"])
     by_period = {rule["competencia"]: rule for rule in decision["monthly_rules"]}
+
+
+
+
+
+    rounding = decision["rounding"]
+    quantum = Decimal(1).scaleb(-rounding["scale"])
+    mode = ROUNDING[rounding["mode"]]
+
+
+
+    if _fora_da_grade(principal, Decimal(1).scaleb(-min(rounding["scale"], 2))):
+        raise HorasExtrasError("valor_fora_do_centavo", f"principal fora da escala: informe-o ao centavo e, se a decisão arredonda a {rounding['scale']} casa(s), nessa escala, como consta da conta de origem, em vez de deixá-lo ao arredondamento")
+
+    def linha(valor: Decimal) -> Decimal:
+        return valor.quantize(quantum, rounding=mode)
+
     with localcontext() as context:
         context.prec = 60
         total = Decimal(0)
@@ -428,16 +464,16 @@ def calcular(pedido: Any, *, hoje: dt.date | None = None, agora: dt.datetime | N
                 raise HorasExtrasError("cobertura_ausente", f"não há decisão para {competence}")
             hourly = (_decimal(month["salary_base"], f"{competence}.salary_base") + sum((_decimal(x, f"{competence}.components") for x in month["components"]), Decimal(0))) / _decimal(rule["divisor"], f"{competence}.divisor", positive=True)
             rates = rule["he_rates"]
-            he50 = hourly * (Decimal(month["he_50_minutes"]) / 60) * (Decimal(1) + _decimal(rates["he_50"], f"{competence}.he_50"))
-            he100 = hourly * (Decimal(month["he_100_minutes"]) / 60) * (Decimal(1) + _decimal(rates["he_100"], f"{competence}.he_100"))
+            he50 = linha(hourly * (Decimal(month["he_50_minutes"]) / 60) * (Decimal(1) + _decimal(rates["he_50"], f"{competence}.he_50")))
+            he100 = linha(hourly * (Decimal(month["he_100_minutes"]) / 60) * (Decimal(1) + _decimal(rates["he_100"], f"{competence}.he_100")))
             night_rule = rule["night_rule"]
             night = Decimal(0)
             if night_rule["enabled"] and month["night_minutes"]:
-                night = hourly * (Decimal(month["night_minutes"]) / 60) * _decimal(night_rule["hour_factor"], f"{competence}.night_factor", nonnegative=True) * (Decimal(1) + _decimal(night_rule["additional_rate"], f"{competence}.night_rate", nonnegative=True))
+                night = linha(hourly * (Decimal(month["night_minutes"]) / 60) * _decimal(night_rule["hour_factor"], f"{competence}.night_factor", nonnegative=True) * (Decimal(1) + _decimal(night_rule["additional_rate"], f"{competence}.night_rate", nonnegative=True)))
             interval_rule = rule["interval_rule"]
             interval = Decimal(0)
             if interval_rule["enabled"] and month["interval_minutes"]:
-                interval = hourly * (Decimal(month["interval_minutes"]) / 60) * (Decimal(1) + _decimal(interval_rule["additional_rate"], f"{competence}.interval_rate", nonnegative=True))
+                interval = linha(hourly * (Decimal(month["interval_minutes"]) / 60) * (Decimal(1) + _decimal(interval_rule["additional_rate"], f"{competence}.interval_rate", nonnegative=True)))
             he_total = he50 + he100 + night + interval
 
 
@@ -449,17 +485,15 @@ def calcular(pedido: Any, *, hoje: dt.date | None = None, agora: dt.datetime | N
             if month["rest_days"] and dsr_ligado:
                 if not month["paid_days"]:
                     raise HorasExtrasError("entrada_invalida", f"{competence}.paid_days deve ser positivo")
-                dsr = base_do_dsr * Decimal(month["rest_days"]) / Decimal(month["paid_days"])
+                dsr = linha(base_do_dsr * Decimal(month["rest_days"]) / Decimal(month["paid_days"]))
             values = {"he_50": he50, "he_100": he100, "night": night, "interval": interval, "dsr": dsr}
             for node in rule["reflex_rules"]:
-                values[node["id"]] = sum((values[source] for source in node["sources"]), Decimal(0)) * _decimal(node["rate"], f"{competence}.{node['id']}.rate", nonnegative=True)
+                values[node["id"]] = linha(sum((values[source] for source in node["sources"]), Decimal(0)) * _decimal(node["rate"], f"{competence}.{node['id']}.rate", nonnegative=True))
             month_total = he_total + dsr + sum((values[node["id"]] for node in rule["reflex_rules"]), Decimal(0))
             total += month_total
             memories.append({"competencia": competence, "dsr_compensado_pela_decisao": not dsr_ligado, "natureza_do_intervalo": natureza_do_intervalo, "hourly_rate": _fmt(hourly), "components": {"he_50": _fmt(he50), "he_100": _fmt(he100), "night": _fmt(night), "interval": _fmt(interval), "dsr": _fmt(dsr), "reflexes": {node["id"]: _fmt(values[node["id"]]) for node in rule["reflex_rules"]}}, "month_total": _fmt(month_total), "decision_rule": rule})
-        rounding = decision["rounding"]
-        quantum = Decimal(1).scaleb(-rounding["scale"])
-        amount = total.quantize(quantum, rounding=ROUNDING[rounding["mode"]])
-        principal_amount = principal.quantize(quantum, rounding=ROUNDING[rounding["mode"]])
+        amount = total
+        principal_amount = principal
     return {"schema_version": MEMORY_VERSION, "status": "MINUTA_PARA_REVISAO", "engine_version": ENGINE_VERSION, "principal": _fmt(principal), "conditional_overtime_and_reflexes": _fmt(amount), "conditional_total_with_principal": _fmt(principal_amount + amount), "decision": {"decision_id": decision["decision_id"], "name": decision["name"], "decision_sha256": decision_hash, "legal_source_url": decision["legal_source_url"], "legal_source_sha256": legal_source_hash, "reviewed_by": decision["reviewed_by"]}, "months": memories, "warnings": ["MINUTA_PARA_REVISAO: cálculo condicional para conferência do advogado.", "O motor não escolhe divisor, adicional, regra noturna, natureza do intervalo, DSR ou cadeia de reflexos.", "Base do DSR: o intervalo entra só quando a decisão o declara salarial; declarado indenizatório (CLT, art. 71, § 4º, na redação da Lei 13.467/2017), fica fora. A natureza usada em cada competência está em natureza_do_intervalo.", "Fontes normativas e decisões coletivas devem ser conferidas quanto à vigência antes de qualquer uso."]}
 
 
