@@ -4,7 +4,7 @@
   "_gerado": {
     "por": "build/gerar_fontes_oficiais.py",
     "de": "zetema/src/security/official-sources.ts",
-    "origem_sha256": "3a85adf91fd5719585ef46b045fc9e4e007b2de6ac838b5e31af26285f43ea46",
+    "origem_sha256": "0cdff208d0bfca76e0446d0a09432f47fb761959ac27274fe1dc0ede03c51df2",
     "mapa_capacidade": {
       "search": "busca",
       "document_fetch": "confirmacao_teor",
@@ -597,6 +597,12 @@
       "orgao": "TJPR",
       "capacidades": [
         "busca",
+        "confirmacao_teor"
+      ]
+    },
+    "portaldalegislacao.presidencia.gov.br": {
+      "orgao": "Planalto",
+      "capacidades": [
         "confirmacao_teor"
       ]
     },
@@ -1245,6 +1251,13 @@
       "capacidades": [
         "busca",
         "confirmacao_teor"
+      ]
+    },
+    "www2.camara.leg.br": {
+      "orgao": "Dados Abertos da Câmara dos Deputados",
+      "capacidades": [
+        "confirmacao_teor",
+        "legislacao"
       ]
     },
     "www2.tjal.jus.br": {
