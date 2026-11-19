@@ -219,6 +219,7 @@
 "skills/dissero-pesquisa-juridica/scripts/fontes_oficiais.json",
 "skills/dissero-pesquisa-juridica/scripts/instalacao.json",
 "skills/dissero-pesquisa-juridica/scripts/inventario_conectores.py",
+"skills/dissero-pesquisa-juridica/scripts/localizar_norma.py",
 "skills/dissero-pesquisa-juridica/scripts/normas_leg_br.py",
 "skills/dissero-pesquisa-juridica/scripts/numero_cnj.py",
 "skills/dissero-pesquisa-juridica/scripts/perfil_advogado.py",
