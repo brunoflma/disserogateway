@@ -978,9 +978,31 @@ def _tem_falhas(ac, marca_d) -> bool:
     return bool(ac.contador_marca(marca_d.get("falhas")) or "causa" in marca_d or "avisada_em" in marca_d)
 
 
+def _canal_ja_instalado_ao_lado(settings) -> bool:
+    'A pasta de configuração DESTE settings já recebeu a cópia do canal (`plugins/cache/<loja>/dissero/<v>`)?'
+
+
+
+    try:
+        pasta = Path(settings).parent / "plugins" / "cache" / MERCADO / "dissero"
+        return any(p.is_dir() for p in pasta.iterdir())
+    except Exception:
+        return False
+
+
 def manter_canal(settings=SETTINGS, origem=ORIGEM, raiz=None, trava=None, pasta=None, cofre_ler=None,
                  fonte_sessao=None, agora=None):
     'O que a sessao confere no canal, a cada SessionStart (24/10/2026):'
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -1026,7 +1048,16 @@ def manter_canal(settings=SETTINGS, origem=ORIGEM, raiz=None, trava=None, pasta=
         src = (e or {}).get("source") or {}
         ac = _modulo_ativar(raiz or _raiz_do_plugin())
         bloco = ac.bloco_marketplace(origem)
-        marca_p, marca_d = ac.consolidar_marcas(Path(pasta) if pasta is not None else ESTADO.parent, settings)
+        pasta_marcas = Path(pasta) if pasta is not None else ESTADO.parent
+        marca_p, marca_d = ac.consolidar_marcas(pasta_marcas, settings)
+        if (marca_p is None and e is None and isinstance(d, dict) and _canal_ja_instalado_ao_lado(settings)
+                and ler_token(cofre_ler)):
+
+
+
+
+            if ac.marcar_pendente(pasta_marcas, settings, "declaracao_sumiu", agora):
+                marca_p, marca_d = ac.consolidar_marcas(pasta_marcas, settings)
         feito = None
         if marca_p is not None and e == bloco:
             gravada = max(ac.instante_marca(marca_d.get("desde")), ac.instante_marca(marca_d.get("gravada_em")))
@@ -1599,8 +1630,26 @@ def sincronizar_perfil(origem, token_oauth, http=baixar_perfil_http, destino=PER
         return False
 
 
+
+
+_SEM_JANELA = 0x08000000
+
+
+def _opcoes_sem_janela() -> dict:
+    'As opções a somar a toda chamada de programa de console (`claude`) feita fora do hook, no Windows.'
+
+    return {"creationflags": _SEM_JANELA} if os.name == "nt" else {}
+
+
 def _disparar_destacado(iniciar, flag) -> bool:
     'Roda ESTE MESMO arquivo com `flag` num processo destacado: stdin/stdout/stderr no vazio,'
+
+
+
+
+
+
+
 
 
 
@@ -1610,7 +1659,7 @@ def _disparar_destacado(iniciar, flag) -> bool:
         return False
     kw = {"stdin": subprocess.DEVNULL, "stdout": subprocess.DEVNULL, "stderr": subprocess.DEVNULL}
     if os.name == "nt":
-        kw["creationflags"] = 0x00000008 | 0x00000200
+        kw["creationflags"] = _SEM_JANELA | 0x00000200
     else:
         kw["start_new_session"] = True
     try:
@@ -1833,7 +1882,7 @@ def versao_claude_code(ambiente=None, cache=None, rodar=subprocess.run) -> str |
         if guardada:
             return guardada
         r = rodar([exe, "--version"], capture_output=True, text=True, encoding="utf-8", errors="replace",
-                  timeout=TIMEOUT_VERSAO_S)
+                  timeout=TIMEOUT_VERSAO_S, **_opcoes_sem_janela())
         m = re.search(r"\b(\d+\.\d+\.\d+)\b", (r.stdout or "") + (r.stderr or "")) if r.returncode == 0 else None
         if not m:
             return None
@@ -2089,10 +2138,11 @@ def _pode_instalar(ctx) -> bool:
         ac = _modulo_ativar(ctx["raiz"])
         d = ac.ler_settings(Path(ctx["settings"]))
         e = ((d or {}).get("extraKnownMarketplaces") or {}).get(MERCADO)
-        if e == ac.bloco_marketplace(ctx["origem"]):
-            return True
-        marca_p, _dados = ac.consolidar_marcas(Path(ctx["estado"]).parent, ctx["settings"])
-        return marca_p is None
+
+
+
+
+        return e == ac.bloco_marketplace(ctx["origem"])
     except Exception:
         return False
 
