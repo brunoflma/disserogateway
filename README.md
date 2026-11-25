@@ -31,6 +31,12 @@ A disponibilidade pública desses arquivos não concede uma licença de uso do D
 Se você já possui licença, siga o [guia de configuração](https://dissero.bfldevlabs.studio/setup)
 para instalar o plugin e conectar a conta autorizada pela sua banca.
 
+## Orientação para manutenção web
+
+A revisão das superfícies web usa [Modern Web Guidance](docs/modern-web-guidance.md)
+em modo consultivo, com escopo, compatibilidade e critérios de verificação
+próprios. Isso não instala ferramentas nem altera a distribuição do produto.
+
 ## Conheça o Dissero
 
 Visite o [site do Dissero](https://dissero.bfldevlabs.studio) para conhecer a
