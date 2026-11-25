@@ -158,11 +158,19 @@ def abaixo_do_minimo(versao, minimo=CLAUDE_CODE_MINIMO) -> bool:
     return a is not None and b is not None and a < b
 
 
+def opcoes_sem_janela() -> dict:
+    'As opcoes a somar a toda chamada ao `claude`, no Windows: CREATE_NO_WINDOW. O `claude` e programa de'
+
+
+
+    return {"creationflags": 0x08000000} if os.name == "nt" else {}
+
+
 def versao_do_claude(exe, executar=subprocess.run) -> str | None:
     """A versao do Claude Code em `exe` (`<exe> --version`), ou None se nao se le. NUNCA levanta."""
     try:
         r = executar([str(exe), "--version"], capture_output=True, text=True, encoding="utf-8",
-                     errors="replace", timeout=TIMEOUT_VERSAO_S)
+                     errors="replace", timeout=TIMEOUT_VERSAO_S, **opcoes_sem_janela())
         return versao_na_saida((r.stdout or "") + (r.stderr or "")) if r.returncode == 0 else None
     except Exception:
         return None
@@ -1289,7 +1297,7 @@ def instalar_sequencial(exe, plugin, trava=None, executar=subprocess.run, versao
         if abaixo_do_minimo(v):
             return RC_CLAUDE_ANTIGO, msg_claude_antigo(v)
         kw = {"capture_output": True, "text": True, "encoding": "utf-8", "errors": "replace",
-              "timeout": TIMEOUT_CLAUDE_S}
+              "timeout": TIMEOUT_CLAUDE_S, **opcoes_sem_janela()}
         try:
             r = executar([exe, "plugin", "install", plugin, "--scope", "user"], **kw)
         except Exception as e:
