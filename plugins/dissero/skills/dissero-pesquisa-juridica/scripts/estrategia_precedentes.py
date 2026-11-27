@@ -262,3 +262,209 @@ def avaliar_linguagem(texto, dados, hoje=None):
         pendencias.append("não há precedente aderente para sustentar afirmação categórica")
     erros.extend(validar_v3(dados, hoje=hoje))
     return list(dict.fromkeys(erros)), list(dict.fromkeys(pendencias))
+
+
+
+
+
+
+
+
+
+def _ler_json(caminho):
+    import json
+    with open(caminho, encoding="utf-8") as fh:
+        return json.load(fh)
+
+
+def _gravar_atomico(dados, caminho):
+    import json
+    import os
+    import tempfile
+    pasta = os.path.dirname(os.path.abspath(caminho)) or "."
+    fd, tmp = tempfile.mkstemp(prefix=".estrategia-", suffix=".tmp", dir=pasta)
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8", newline="\n") as fh:
+            json.dump(dados, fh, ensure_ascii=False, indent=2)
+            fh.write("\n")
+        os.replace(tmp, caminho)
+    except BaseException:
+        try:
+            os.remove(tmp)
+        except OSError:
+            pass
+        raise
+
+
+def aplicar_definicao(dados, *, pesquisa_contraria=None, consultas=(), achados_contrarios=(),
+                      concluida_em=None, cobertura=None, revisada_em=None, valida_ate=None,
+                      selecionar=(), desselecionar=(), fundamentacao_analogica=None,
+                      autoridades_substitutas=None, tese_central=None, hoje=None):
+    'Devolve (cópia alterada, erros de entrada). Não valida o contrato: isso é do chamador.'
+
+
+
+    erros = []
+    if not isinstance(dados, dict) or dados.get("schema_version") != VERSAO_V3:
+        versao = dados.get("schema_version") if isinstance(dados, dict) else None
+        dica = " (registro v2: migre para v3 antes)" if versao == VERSAO_V2 else ""
+        return None, ["o registro precisa ser dsr.achados.v3" + dica]
+    novo = copy.deepcopy(dados)
+    achados = novo.get("achados") if isinstance(novo.get("achados"), list) else []
+    por_id = {a.get("id"): a for a in achados if isinstance(a, dict) and isinstance(a.get("id"), str)}
+    estrategia = novo.get("estrategia")
+    if not isinstance(estrategia, dict):
+        return None, ["o registro não tem o objeto de estratégia"]
+    hoje = hoje or _dt.date.today()
+
+    def data(rotulo, valor):
+        if valor is None:
+            return None
+        d = _data_iso(valor)
+        if d is None or len(_texto(valor)) != 10:
+            erros.append(f"{rotulo}: data AAAA-MM-DD obrigatória (recebido {valor!r})")
+            return None
+        return d.isoformat()
+
+    def ids(rotulo, lista):
+        faltam = [x for x in lista if x not in por_id]
+        if faltam:
+            erros.append(f"{rotulo}: IDs ausentes do registro: " + ", ".join(faltam))
+        return [x for x in lista if x in por_id]
+
+    mexe_pesquisa = pesquisa_contraria is not None or consultas or achados_contrarios \
+        or concluida_em is not None
+    if mexe_pesquisa:
+        pesquisa = estrategia.get("pesquisa_contraria")
+        if not isinstance(pesquisa, dict):
+            pesquisa = {"estado": "nao_iniciada", "consultas": [], "achado_ids": [],
+                        "concluida_em": None}
+            estrategia["pesquisa_contraria"] = pesquisa
+        if not isinstance(pesquisa.get("consultas"), list):
+            pesquisa["consultas"] = []
+        if not isinstance(pesquisa.get("achado_ids"), list):
+            pesquisa["achado_ids"] = []
+        if pesquisa_contraria is not None:
+            if pesquisa_contraria not in ESTADOS_PESQUISA:
+                erros.append("pesquisa contrária: estado inválido; use "
+                             + ", ".join(sorted(ESTADOS_PESQUISA)))
+            pesquisa["estado"] = pesquisa_contraria
+        for i, consulta in enumerate(consultas):
+            fonte, termos, quando = (list(consulta) + [None, None, None])[:3]
+            iso = data(f"consulta {i + 1}", quando)
+            if not _texto(fonte) or not _texto(termos):
+                erros.append(f"consulta {i + 1}: fonte e termos são obrigatórios")
+            pesquisa["consultas"].append({"fonte": _texto(fonte), "termos": _texto(termos),
+                                          "executada_em": iso or _texto(quando)})
+        for ident in ids("achado contrário", list(achados_contrarios)):
+            if ident not in pesquisa["achado_ids"]:
+                pesquisa["achado_ids"].append(ident)
+        if concluida_em is not None:
+            pesquisa["concluida_em"] = data("pesquisa concluída em", concluida_em)
+        elif pesquisa.get("estado") in ("concluida_sem_achado", "concluida_com_achado") \
+                and not pesquisa.get("concluida_em"):
+            pesquisa["concluida_em"] = hoje.isoformat()
+    if cobertura is not None:
+        if cobertura not in COBERTURAS:
+            erros.append("cobertura: valor inválido; use " + ", ".join(sorted(COBERTURAS)))
+        estrategia["cobertura_precedente"] = cobertura
+        estrategia["origem_cobertura"] = "comando_definir"
+    if revisada_em is not None:
+        estrategia["cobertura_revisada_em"] = data("cobertura revisada em", revisada_em)
+    if valida_ate is not None:
+        estrategia["cobertura_valida_ate"] = data("cobertura válida até", valida_ate)
+    if fundamentacao_analogica is not None:
+        estrategia["fundamentacao_analogica"] = _texto(fundamentacao_analogica) or None
+    if autoridades_substitutas is not None:
+        estrategia["autoridade_substituta_ids"] = ids("autoridade substituta",
+                                                      list(autoridades_substitutas))
+    if tese_central is not None:
+        estrategia["tese_central"] = _texto(tese_central)
+    em_ambos = sorted(set(selecionar) & set(desselecionar))
+    if em_ambos:
+        erros.append("o mesmo ID não pode ser selecionado e tirado da seleção: " + ", ".join(em_ambos))
+    for ident in ids("selecionar", list(selecionar)):
+        por_id[ident]["selected_for_use"] = True
+    for ident in ids("tirar da seleção", list(desselecionar)):
+        por_id[ident]["selected_for_use"] = False
+    return novo, erros
+
+
+def _cli(argv=None):
+    import argparse
+    import json
+    import os
+    import sys
+    try:
+        sys.stdout.reconfigure(encoding="utf-8")
+    except Exception:
+        pass
+    ap = argparse.ArgumentParser(
+        description="Atualiza a estratégia de precedentes do achados.json com validação: só grava "
+                    "se o documento inteiro continuar no contrato.")
+    sub = ap.add_subparsers(dest="comando", required=True)
+    d = sub.add_parser("definir", help="aplica pesquisa contrária, cobertura e seleção")
+    d.add_argument("--achados", required=True, help="achados.json (dsr.achados.v3)")
+    d.add_argument("-o", "--saida", help="onde gravar (padrão: o próprio --achados)")
+    d.add_argument("--pesquisa-contraria", choices=sorted(ESTADOS_PESQUISA))
+    d.add_argument("--consulta", nargs=3, action="append", default=[],
+                   metavar=("FONTE", "TERMOS", "DATA"),
+                   help="consulta da pesquisa contrária (repetível; DATA AAAA-MM-DD)")
+    d.add_argument("--achado-contrario", action="append", default=[], metavar="ID",
+                   help="ID de julgado contrário localizado (repetível)")
+    d.add_argument("--concluida-em", help="AAAA-MM-DD (padrão: hoje, ao concluir)")
+    d.add_argument("--cobertura", choices=sorted(COBERTURAS))
+    d.add_argument("--revisada-em", help="AAAA-MM-DD da revisão da cobertura")
+    d.add_argument("--valida-ate", help="AAAA-MM-DD até quando a cobertura vale")
+    d.add_argument("--selecionar", action="append", default=[], metavar="ID",
+                   help="leva o julgado à peça (repetível)")
+    d.add_argument("--desselecionar", action="append", default=[], metavar="ID",
+                   help="tira o julgado da peça (repetível)")
+    d.add_argument("--fundamentacao-analogica")
+    d.add_argument("--autoridade-substituta", action="append", default=None, metavar="ID",
+                   help="substitui a lista de autoridades substitutas (repetível)")
+    d.add_argument("--tese-central")
+    d.add_argument("--fontes", help="fontes_oficiais.json (padrão: o do contrato)")
+    a = ap.parse_args(argv)
+
+    def sai(ok, rc, **extra):
+        print(json.dumps({"ok": ok, **extra}, ensure_ascii=False))
+        return rc
+
+    destino = a.saida or a.achados
+    try:
+        dados = _ler_json(a.achados)
+    except Exception as erro:
+        return sai(False, 2, gravado=False, erros=[f"registro ilegível ({erro})"])
+    novo, erros = aplicar_definicao(
+        dados, pesquisa_contraria=a.pesquisa_contraria, consultas=a.consulta,
+        achados_contrarios=a.achado_contrario, concluida_em=a.concluida_em,
+        cobertura=a.cobertura, revisada_em=a.revisada_em, valida_ate=a.valida_ate,
+        selecionar=a.selecionar, desselecionar=a.desselecionar,
+        fundamentacao_analogica=a.fundamentacao_analogica,
+        autoridades_substitutas=a.autoridade_substituta, tese_central=a.tese_central)
+    if erros:
+        return sai(False, 2, gravado=False, erros=erros)
+    sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+    try:
+        import achado_contract
+    except Exception as erro:
+        return sai(False, 1, gravado=False, erros=[f"validador do contrato indisponível ({erro})"])
+    kwargs = {"fontes_path": a.fontes} if a.fontes else {}
+    violacoes = achado_contract.validar_documento(novo, **kwargs)
+    if violacoes:
+        return sai(False, 1, gravado=False, erros=violacoes)
+    try:
+        _gravar_atomico(novo, destino)
+    except OSError as erro:
+        return sai(False, 1, gravado=False, erros=[f"não foi possível gravar ({erro})"])
+    est = novo["estrategia"]
+    return sai(True, 0, gravado=True, saida=destino,
+               pesquisa_contraria=(est.get("pesquisa_contraria") or {}).get("estado"),
+               cobertura=est.get("cobertura_precedente"),
+               selecionados=[x.get("id") for x in novo.get("achados") or []
+                             if isinstance(x, dict) and x.get("selected_for_use") is True])
+
+
+if __name__ == "__main__":
+    raise SystemExit(_cli())

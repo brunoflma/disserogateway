@@ -7,6 +7,14 @@ no SKILL.md; aqui ficam os estados, os campos e os níveis por inteiro.
 ## §1. Estratégia
 
 É o que faz da Relação de Precedentes um memorando de pesquisa, e não uma lista de julgados.
+**A estratégia se grava pelo comando, nunca editando o arquivo à mão** (27/11/2026):
+`estrategia_precedentes.py definir --achados achados.json` com `--pesquisa-contraria`,
+`--consulta FONTE TERMOS DATA`, `--achado-contrario ID`, `--cobertura`, `--revisada-em`,
+`--valida-ate`, `--selecionar`/`--desselecionar ID`, `--fundamentacao-analogica`,
+`--autoridade-substituta` e `--tese-central`; ele valida o registro inteiro e só grava se passar.
+Quando o registro do recibo da conferência devolver `ESTRATEGIA_INCOMPLETA`, o julgado já está
+confirmado e ficou fora da peça: conclua a pesquisa contrária e a cobertura por esse comando, com o
+`--selecionar` que a própria saída traz, e diga ao advogado só o que falta.
 São duas regras:
 
 - **Todo registro v3 leva `estrategia` na raiz**, com `pesquisa_contraria` e
