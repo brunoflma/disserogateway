@@ -31,7 +31,11 @@ Uso: python3 lint_peca.py peca.docx [--fragmento] [--precedentes achados.json]
           [--juntada JUNTADA_TRACKER.json] [--conferencia CONFERENCIA.json]
           [--grau primeiro|segundo|superior] [--processo CNJ]... [--session-id ID]
           [--competencia COMPETENCIA.json] [--admissibilidade ADMISSIBILIDADE.json]
-          [--ajuizamento AAAA-MM-DD]
+          [--ajuizamento AAAA-MM-DD] [--json ARQUIVO|-]
+  --json ARQUIVO|-   grava também o relatório estruturado: cada erro e pendência com
+                «natureza» (texto: a correção é na peça; registro: falta registrar algo fora
+                dela, e a linha diz o quê e como) e o resumo {erros_texto, erros_registro}.
+                `-` imprime o relatório no lugar do texto. Não muda veredito nem exit code.
   --fragmento   capítulo/fragmento sem capa: dispensa as checagens de endereçamento
                 e de qualificação das partes (seções F1/F2) e a de assinatura (L29).
   --grau primeiro|segundo|superior   GRAU DE JURISDIÇÃO da peça, derivado da classe
@@ -85,7 +89,7 @@ operador aprende que "REPROVADO às vezes é normal" e passa a ignorar o gate.
 No conselho, a peça só é submetida com APROVADO, e a cadeira Conformidade roda este script e
 anexa a saída ao voto (regimento: `references/conselho-revisor.md`).
 Stdlib apenas (importa `visual_law_core.py` e os módulos irmãos que ficam ao lado)."""
-import sys, os, re, json, zipfile
+import sys, os, re, json, unicodedata, zipfile
 import xml.etree.ElementTree as ET
 
 
@@ -168,10 +172,55 @@ def _teor_conferido_sem_liberacao(achado):
     return nivel == "verbatim"
 
 
+def _status_efetivo_dos_achados(achados):
+    '(achados, rótulos rebaixados): cada achado `allowed` que o contrato não sustenta passa a'
+
+
+
+
+
+
+
+    if not isinstance(achados, list):
+        return achados, []
+    try:
+        import achado_contract as _ac
+    except Exception:
+        _ac = None
+    fontes = None
+    if _ac is not None:
+        try:
+            fontes = _ac.carregar_json(_ac.FONTES_PADRAO)
+        except Exception:
+            fontes = None
+    saida, rebaixados = [], []
+    for a in achados:
+        if isinstance(a, dict) and a.get("use_status") == "allowed":
+            try:
+                motivos = _ac.motivos_das_regras(a, fontes) if _ac is not None else ["contrato"]
+            except Exception:
+                motivos = ["contrato"]
+            if motivos:
+                a = {**a, "use_status": "pending"}
+                rebaixados.append(str(a.get("reference") or a.get("id") or "precedente")[:80])
+        saida.append(a)
+    return saida, rebaixados
+
+
+
+
+
 _REMEDIO_ENDERECO_L11 = (
-    "registre a atestação com o endereço oficial do documento: `atestar_literal.py achados.json "
-    "--documentos <PDFs> --atestar --url-oficial <id>=https://<endereço no portal do tribunal> "
-    "-o achados.json`")
+    "indique o endereço oficial do julgado no portal do tribunal e, depois, confira-o no Minha "
+    "banca (peça ao Dissero, na conversa, a conferência dos julgados)")
+
+
+
+
+
+_TECNICO_L11 = ("Para o assistente (não repita ao advogado): use_status≠allowed na Relação; "
+                "só o recibo FINAL da conferência no Minha banca libera, também o julgado "
+                "conferido pela máquina, que ali aparece para ratificar.")
 
 
 
@@ -406,6 +455,16 @@ def dispensas_de_estilo(overrides):
 
 
 
+
+
+
+
+
+
+
+
+
+
     o = overrides if isinstance(overrides, dict) else {}
     excluir = set()
     pular_l21 = o.get("permitir_travessao") is True
@@ -442,6 +501,230 @@ def _dispensas_do_ambiente(perfil):
         return dispensas_de_estilo(_pa.estilo_overrides(perfil))
     except Exception:
         return dispensas_de_estilo(None)
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+_DOCS_RX = re.compile(r"\(Doc\.\s*([\d,\s]+)\)")
+
+
+
+
+
+
+
+_QUEM_CONFERE = ("Quem resolve: qualquer pessoa da banca confere, entrando com o próprio login; "
+                 "quem encerra é o titular da banca ou quem abriu a conferência. Como: "
+                 "peça ao Dissero, na conversa, a conferência dos julgados; ela abre na "
+                 "página Minha banca, em Conferência dos julgados, com o endereço oficial de "
+                 "cada um. Ali, quem confere marca cada julgado como «Confere» ou «Não "
+                 "confere», com o motivo, ou o deixa pendente; os que a máquina já conferiu na "
+                 "fonte vêm marcados como «Confere», para ratificar. Enquanto a conferência "
+                 "estiver aberta nada é liberado: quando estiver tudo certo, o titular da banca "
+                 "ou quem abriu a conferência clica Encerrar e liberar, e só esse encerramento "
+                 "libera a peça. Julgado copiado dos autos se confere contra a cópia dos autos. "
+                 "Depois, confira a peça de novo.")
+_LER_DOC = ("Leia o documento pela ingestão do Dissero, para que a leitura fique registrada "
+            "na conferência do caso, e marque-o como curado na juntada; anotação sobre o "
+            "documento feita fora desse registro não conta. Feito o registro, confira a peça "
+            "de novo.")
+
+
+
+_REGRAS_REGISTRO = (
+    (re.compile(r"^CRUZAMENTO-DOC: --juntada ilegível"),
+     "a relação de documentos juntados do caso em formato legível",
+     "A relação de documentos do caso está fora do formato esperado. Refaça-a pela etapa de "
+     "juntada do Dissero e confira a peça de novo."),
+    (re.compile(r"^CRUZAMENTO-DOC: .*AUSENTE do ledger"),
+     "o registro de juntada do documento {docs}",
+     "Inclua o documento na juntada do caso. " + _LER_DOC),
+    (re.compile(r"^CRUZAMENTO-DOC: .*consta no ledger com status"),
+     "a curadoria do documento {docs}: ele está na juntada, mas a leitura dele não foi "
+     "registrada como concluída",
+     _LER_DOC),
+    (re.compile(r"^CRUZAMENTO-DOC: .*curado SEM evidence_ids"),
+     "o vínculo entre o documento {docs} e a leitura registrada dele",
+     _LER_DOC),
+    (re.compile(r"^L13 "),
+     "a relação de documentos juntados do caso, com cada documento citado lido e curado",
+     "Monte a juntada pela etapa de juntada do Dissero, com a leitura de cada documento "
+     "citado registrada, e confira a peça de novo apresentando-a."),
+    (re.compile(r"^L14 conferencia_contract\.py indisponível"),
+     "parte da instalação do Dissero",
+     "A cópia instalada do Dissero está incompleta; atualize-a ou reinstale-a. O problema "
+     "não é da peça."),
+    (re.compile(r"^L14 a peça transcreve prova documental"),
+     "a conferência de ingestão do caso, que registra o que foi lido em cada documento",
+     "Leia os documentos transcritos pela ingestão do Dissero e confira a peça de novo "
+     "apresentando a conferência do caso."),
+    (re.compile(r"^L14 conferência de ingestão ilegível"),
+     "a conferência de ingestão do caso em formato legível",
+     "A conferência do caso está fora do formato esperado. Registre de novo a leitura dos "
+     "documentos pela ingestão do Dissero e confira a peça de novo."),
+    (re.compile(r"^L14 transcrição atribuída a .*sem teor registrado"),
+     "a leitura do documento {docs} registrada na conferência do caso",
+     _LER_DOC + " A transcrição só se confere contra o que foi lido e registrado."),
+    (re.compile(r"^L11 FAIL-CLOSED"),
+     "a Relação de Precedentes do caso",
+     "Gere a Relação de Precedentes a partir da pesquisa do caso e confira a peça de novo "
+     "com ela."),
+    (re.compile(r"^CRUZAMENTO: --precedentes ilegível"),
+     "a Relação de Precedentes do caso em formato legível",
+     "A Relação de Precedentes está fora do formato esperado. Gere-a de novo a partir da "
+     "pesquisa do caso e confira a peça de novo."),
+    (re.compile(r"^CRUZAMENTO: .*AUSENTE da Relação"),
+     "o registro deste precedente na Relação de Precedentes",
+     "Pesquise e confira o precedente pela pesquisa do Dissero, para que ele entre na "
+     "Relação, ou tire-o da peça."),
+    (re.compile(r"^L24 .*guardou só a ementa"),
+     "o inteiro teor do julgado, para conferir a transcrição: a peça transcreve trecho que não "
+     "está na ementa, e a Relação de Precedentes guardou só a ementa",
+     "Quem resolve: qualquer pessoa da banca. Como: traga à conversa com o Dissero o inteiro "
+     "teor do julgado (o PDF baixado do tribunal ou a cópia dos autos), para que a pesquisa o "
+     "guarde na Relação; a conferência do julgado continua sendo feita no Minha banca, em "
+     "Conferência dos julgados. Depois, confira a peça de novo. A transcrição em si não "
+     "precisa mudar; se o trecho for resumo seu, e não transcrição, tire-o das aspas e da "
+     "caixa."),
+    (re.compile(r"^L24 .*NÃO guardou teor"),
+     "o teor do julgado lido na fonte oficial, guardado na Relação de Precedentes",
+     "Extraia de novo a ementa da fonte oficial pela pesquisa do Dissero e confira a peça "
+     "de novo."),
+    (re.compile(r"^L4[23] [A-Z]+ ilegível"),
+     "o registro da verificação (competência ou admissibilidade) em formato legível",
+     "Refaça a verificação pela etapa própria do Dissero e confira a peça de novo."),
+
+    (re.compile(r"^L11 RELAÇÃO TOTAL PENDENTE"),
+     "a conferência, na fonte oficial, dos precedentes da Relação",
+     _QUEM_CONFERE),
+    (re.compile(r"consta na Relação.*(?:SEM conferência|falta endereço oficial)"),
+     "a conferência deste precedente na fonte oficial",
+     _QUEM_CONFERE),
+)
+
+_CODIGO_RX = re.compile(r"^(CRUZAMENTO-DOC|CRUZAMENTO VETADO|CRUZAMENTO|L\d+|F\d)\b")
+
+
+def _palavras_l24(texto_):
+    sem_acento = unicodedata.normalize("NFKD", str(texto_ or "")).encode("ascii", "ignore")
+    return [p for p in re.findall(r"[a-z0-9]+", sem_acento.decode("ascii").lower()) if len(p) >= 4]
+
+
+def l24_trecho_fora_da_ementa(transcricao, ementa):
+    'Verdadeiro quando a transcrição é de OUTRA parte do julgado (o voto), e não uma ementa'
+
+
+
+
+
+
+
+
+
+
+
+
+
+    trans = _palavras_l24(transcricao)
+    if len(trans) < 5:
+        return False
+    base = set(_palavras_l24(ementa))
+    return sum(1 for p in trans if p in base) / len(trans) < 0.5
+
+
+_ORDINAL_RX = re.compile(r"(\d+)\s*\.?\s*[ªº°]")
+_DATA_DMA_RX = re.compile(r"\b(\d{1,2})\s*[/.-]\s*(\d{1,2})\s*[/.-]\s*(\d{4})\b")
+_DATA_AMD_RX = re.compile(r"\b(\d{4})-(\d{1,2})-(\d{1,2})\b")
+_VAZIAS_MOLDURA = frozenset({"de", "do", "da", "dos", "das", "e", "em", "a", "o"})
+
+
+def _tokens_moldura(texto_):
+    s = _ORDINAL_RX.sub(r"\1 ", str(texto_ or ""))
+    s = unicodedata.normalize("NFKD", s).encode("ascii", "ignore").decode("ascii").lower()
+    return re.findall(r"[a-z]+|\d+", s)
+
+
+def _datas_moldura(texto_):
+    s = str(texto_ or "")
+    datas = {(int(d), int(m), int(a)) for d, m, a in _DATA_DMA_RX.findall(s)}
+    datas |= {(int(d), int(m), int(a)) for a, m, d in _DATA_AMD_RX.findall(s)}
+    return datas
+
+
+def l24_moldura_confere(identificacao, achado):
+    'Verdadeiro quando a linha de identificação da caixa confere com o julgado guardado na'
+
+
+
+
+
+
+
+
+
+
+
+    cit = (achado or {}).get("citation") if isinstance(achado, dict) else None
+    cit = cit if isinstance(cit, dict) else {}
+    orgao = str(cit.get("orgao_julgador") or cit.get("court") or "").strip()
+    datas_guardadas = _datas_moldura(cit.get("judgment_date"))
+    if not orgao or not datas_guardadas:
+        return False
+    if not datas_guardadas & _datas_moldura(identificacao):
+        return False
+    linha = set(_tokens_moldura(identificacao))
+    for palavra in _tokens_moldura(orgao):
+        if palavra in _VAZIAS_MOLDURA:
+            continue
+        if palavra.isdigit():
+            if palavra.lstrip("0") not in {t.lstrip("0") for t in linha if t.isdigit()}:
+                return False
+        elif not any(t == palavra or (len(t) >= 3 and not t.isdigit() and palavra.startswith(t))
+                     for t in linha):
+            return False
+    return True
+
+
+def classificar_achado(mensagem):
+    "{'codigo', 'mensagem', 'natureza'} e, no registro, 'o_que_falta' e 'como_resolver'."
+
+    m = str(mensagem or "")
+    cod = _CODIGO_RX.match(m)
+    saida = {"codigo": cod.group(1) if cod else "", "mensagem": m, "natureza": "texto"}
+    for rx, falta, como in _REGRAS_REGISTRO:
+        if rx.search(m):
+            docs = ", ".join(sorted({d.strip() for g in _DOCS_RX.findall(m)
+                                     for d in g.split(",") if d.strip()}))
+            saida.update(natureza="registro",
+                         o_que_falta=falta.format(docs=(f"(Doc. {docs})" if docs else "citado")),
+                         como_resolver=como)
+            break
+    return saida
+
+
+def resumo_de_naturezas(erros):
+    "{'erros_texto': n, 'erros_registro': m} sobre os ERROS (pendências não entram: elas"
+
+    nat = [classificar_achado(e)["natureza"] for e in erros]
+    return {"erros_texto": nat.count("texto"), "erros_registro": nat.count("registro")}
+
+
+def _linha_de_registro(achado):
+    return (f"    FALTA REGISTRAR: {achado['o_que_falta']}. COMO RESOLVER: "
+            f"{achado['como_resolver']}")
 
 
 _disp = dispensas_de_estilo(None)
@@ -3035,6 +3318,43 @@ def l45_achados(paragrafos, ajuizamento=None, inaugural=False):
 
 
 def main(argv):
+    '`--json ARQUIVO` grava, além do relatório de sempre, o relatório estruturado (com a'
+
+
+    argv = list(argv or [])
+    if "--json" not in argv:
+        return _main(argv, None)
+    i = argv.index("--json")
+    destino = argv[i + 1] if i + 1 < len(argv) else ""
+    resto = argv[:i] + argv[i + 2:]
+    if not destino or (destino.startswith("--") and destino != "-"):
+        print("REPROVADO: --json exige o caminho do arquivo de saída (ou - para a saída padrão)")
+        return 1
+    import contextlib
+    import io
+    relatorio, buf = {}, io.StringIO()
+    with contextlib.redirect_stdout(buf):
+        codigo = _main(resto, relatorio)
+    texto = buf.getvalue()
+    if not relatorio:
+
+        motivo = next((l for l in texto.splitlines() if l.strip()), "")
+        relatorio = {"formato": 1, "peca": resto[0] if resto else "", "veredito":
+                     "REPROVADO" if codigo else "APROVADO", "exit_code": codigo,
+                     "erros": [classificar_achado(motivo)] if codigo else [],
+                     "pendencias": [], "avisos": [],
+                     "resumo": resumo_de_naturezas([motivo] if codigo else [])}
+    corpo = json.dumps(relatorio, ensure_ascii=False, indent=2)
+    if destino == "-":
+        print(corpo)
+    else:
+        sys.stdout.write(texto)
+        with open(destino, "w", encoding="utf-8") as fh:
+            fh.write(corpo + "\n")
+    return codigo
+
+
+def _main(argv, relatorio):
     if not argv or argv[0] in ("-h", "--help"):
         print(__doc__); return 2
 
@@ -4029,8 +4349,14 @@ def main(argv):
             continue
         up = t.upper()
         n_nums = len(NUM_PROC_RX.findall(_num_norm(t)))
+
+
+
+
+
         if n_nums > 1:
-            erros.append(f"L9 {n_nums} julgados num só parágrafo — UM julgado por parágrafo: «{cite(t)}»")
+            avisos.append(f"L9 {n_nums} julgados num só parágrafo — UM julgado por parágrafo: "
+                          f"«{cite(t)}». A peça não é reprovada por isso.")
 
 
         if ("CONFIRMADO" in up or "PARCIAL" in up):
@@ -4072,17 +4398,18 @@ def main(argv):
             f"L11 FAIL-CLOSED: peça cita súmula ou tema ({', '.join(list(st_citadas)[:6])}) e a "
             f"Relação de Precedentes NÃO foi apresentada (--precedentes ausente). Súmula e tema "
             f"são precedentes como o julgado: a tese literal e o status vão conferidos na Relação. "
-            f"Gere-a com `python build_precedentes.py achados.json` e relinte com "
+            f"Para o assistente (não repita ao advogado): gere-a com "
+            f"`python build_precedentes.py achados.json` e relinte com "
             f"`--precedentes achados.json`.")
     if julgados_citados and not prec_path:
         erros.append(
             f"L11 FAIL-CLOSED: peça cita {len(julgados_citados)} julgado(s) e a Relação de "
             f"Precedentes NÃO foi apresentada (--precedentes ausente) — artefato OBRIGATÓRIO "
             f"do rito: a peça leva o julgado, a Relação leva a prova (selo, URL e ementa "
-            f"literal, que o L9 proíbe na peça). Gere-a com "
+            f"literal, que o L9 proíbe na peça). 1º julgado: «{cite(julgados_citados[0])}». "
+            f"Para o assistente (não repita ao advogado): gere-a com "
             f"`python build_precedentes.py achados.json -o \"Relação de "
-            f"Precedentes — <caso>.docx\"` e relinte com `--precedentes achados.json`. "
-            f"1º julgado: «{cite(julgados_citados[0])}»")
+            f"Precedentes — <caso>.docx\"` e relinte com `--precedentes achados.json`.")
 
 
 
@@ -4094,7 +4421,13 @@ def main(argv):
                 raise ValueError("o dataset precisa estar em dsr.achados.v2 ou v3; registro em "
                                  "outra versão não tem conversão: refaça a pesquisa e grave em "
                                  "dsr.achados.v3")
-            achados = dados.get("achados", [])
+            achados, _sem_lastro = _status_efetivo_dos_achados(dados.get("achados", []))
+            for _rot in _sem_lastro:
+                pendencias.append(
+                    f"{_rot}: a Relação o marca como conferido, mas a conferência não se "
+                    f"sustenta (falta a confirmação assinada da tela de conferência para o texto "
+                    f"atual, ou o registro foi alterado). Ele conta como ainda a conferir. "
+                    + _QUEM_CONFERE)
             erros_estrategia, pendencias_estrategia = (
                 estrategia_precedentes.avaliar_linguagem(texto_total, dados))
             erros.extend(f"L25 ESTRATÉGIA: {_com_proximo_passo_l25(item)}"
@@ -4166,11 +4499,21 @@ def main(argv):
                               _s.group(1).upper() if _s else None, _ident)]
                 st_registros += [r + (a.get("use_status"), _teor_conferido_sem_liberacao(a))
                                  for r in _regs]
+
+
+
+
+
+
             prec_por_num = {}
             for a in achados:
+                if isinstance(a, dict) and a.get("use_status") != "prohibited":
+                    for _n in set(NUM_PROC_RX.findall(_num_norm(a.get("reference", "")))):
+                        prec_por_num.setdefault(_n, []).append(a)
+            prec_por_num = {_n: ([a for a in _l if a.get("use_status") == "allowed"] or _l)
+                            for _n, _l in prec_por_num.items()}
+            for a in achados:
                 if isinstance(a, dict):
-                    for _n in NUM_PROC_RX.findall(_num_norm(a.get("reference", ""))):
-                        prec_por_num.setdefault(_n, a)
                     numeros = set(NUM_PROC_RX.findall(_num_norm(a.get("reference", ""))))
                     prec_nums |= numeros
                     for numero in numeros:
@@ -4201,18 +4544,19 @@ def main(argv):
                 teor_ok = sum(1 for a in (achados or []) if _teor_conferido_sem_liberacao(a))
                 _teor_frase = (
                     f" Destes, {teor_ok} com o teor já conferido contra o documento do "
-                    f"tribunal — teor conferido; falta endereço oficial/atestação: "
-                    f"{_REMEDIO_ENDERECO_L11}." if teor_ok else "")
+                    f"tribunal — teor conferido; falta endereço oficial e a conferência no "
+                    f"Minha banca: {_REMEDIO_ENDERECO_L11}." if teor_ok else "")
                 pendencias.append(
+
                     f"L11 RELAÇÃO TOTAL PENDENTE: a Relação de Precedentes tem {total_achados} "
-                    f"achado(s) e NENHUM com `use_status=allowed` ({pendentes} pending, "
-                    f"{proibidos} prohibited) — a Relação entregue é uma lista de placeholders, "
-                    f"não uma Relação liberada. A peça fica em MINUTA e NÃO se protocola. "
-                    f"Feche o ciclo de confirmação — mostre ao advogado a lista de conferência "
-                    f"(`python scripts/folha_atestacao.py achados.json -o "
-                    f"CONFERENCIA_PENDENTE.json`) e registre o PDF que ele trouxer "
-                    f"(`atestar_literal.py --documentos --atestar`) ou a resposta dele "
-                    f"(`registrar_confirmacao_manual.py --lista`) — antes de relintar."
+                    f"precedente(s) e NENHUM conferido ({pendentes} a conferir, {proibidos} "
+                    f"vetado(s)) — a Relação ainda não foi conferida. A peça fica em MINUTA e "
+                    f"NÃO se protocola. "
+
+
+
+
+                    + _QUEM_CONFERE
                     + _teor_frase)
 
         if prec_nums is not None:
@@ -4238,14 +4582,15 @@ def main(argv):
                     if any(len(r) > 6 and r[6] for r in casam):
                         pendencias.append(
                             f"{rot} consta na Relação com o teor conferido verbatim contra o "
-                            f"documento oficial — teor conferido; falta endereço oficial/"
-                            f"atestação (use_status≠allowed): pode permanecer na minuta; antes "
-                            f"do protocolo, {_REMEDIO_ENDERECO_L11}, ou ela sai da peça")
+                            f"documento oficial — teor conferido; falta endereço oficial e a "
+                            f"conferência no Minha banca: pode permanecer na minuta; antes do "
+                            f"protocolo, {_REMEDIO_ENDERECO_L11}, ou ela sai da peça. "
+                            f"{_TECNICO_L11}")
                     else:
                         pendencias.append(
                             f"{rot} consta na Relação, ainda SEM conferência na fonte "
-                            f"oficial (use_status≠allowed) — pode permanecer na minuta; "
-                            f"antes do protocolo, ou se confere, ou sai da peça")
+                            f"oficial — pode permanecer na minuta; antes do protocolo, ou se "
+                            f"confere no Minha banca, ou sai da peça. {_TECNICO_L11}")
             for txt, em_tbl, _, _ in textos:
                 t = txt.strip()
                 if not _eh_entrada_julgado(t, em_tbl):
@@ -4275,16 +4620,16 @@ def main(argv):
                         pendencias.append(
                             f"julgado nº {n} consta na Relação com o teor conferido verbatim "
                             f"contra o documento do tribunal — teor conferido; falta endereço "
-                            f"oficial/atestação (use_status≠allowed): pode permanecer na "
+                            f"oficial e a conferência no Minha banca: pode permanecer na "
                             f"minuta; antes do protocolo, {_REMEDIO_ENDERECO_L11}, ou ele sai "
-                            f"da peça")
+                            f"da peça. {_TECNICO_L11}")
                     elif "allowed" not in prec_status.get(n, []):
 
 
                         pendencias.append(
                             f"julgado nº {n} consta na Relação, ainda SEM conferência na fonte "
-                            f"oficial (use_status≠allowed) — pode permanecer na minuta; antes do "
-                            f"protocolo, ou se confere, ou sai da peça")
+                            f"oficial — pode permanecer na minuta; antes do protocolo, ou se "
+                            f"confere no Minha banca, ou sai da peça. {_TECNICO_L11}")
 
 
 
@@ -4310,27 +4655,59 @@ def main(argv):
             if not linhas or not linhas[0].upper().startswith("JURISPRUD"):
                 continue
             atual = None
+            identificacao = ""
             for linha in linhas[1:]:
                 nums = NUM_PROC_RX.findall(_num_norm(linha))
                 if nums:
                     atual = next((n for n in nums if n in prec_por_num), nums[0])
+                    identificacao = linha
                     continue
                 if atual is None or len(linha) < 60:
                     continue
-                achado = prec_por_num.get(atual)
-                if achado is None:
+                candidatos = prec_por_num.get(atual)
+                if not candidatos:
                     continue
-                armazenados = [str(achado.get("syllabus_literal") or ""),
-                               str(achado.get("full_text") or "")]
-                if not any(a.strip() for a in armazenados):
+                teores = [(achado, [str(achado.get("syllabus_literal") or ""),
+                                    str(achado.get("full_text") or "")])
+                          for achado in candidatos]
+                teores = [(achado, arm) for achado, arm in teores if any(x.strip() for x in arm)]
+                if not teores:
                     erros.append(
                         f"L24 a peça transcreve o julgado nº {atual} e a Relação NÃO guardou "
                         f"teor algum dele (`syllabus_literal` e `full_text` vazios) — não se "
                         f"transcreve o que não foi lido. Reextraia a ementa da fonte oficial "
                         f"confirmada antes de citar: «{cite(linha)}»")
                     continue
-                if not conferencia_contract.confere_transcricao(linha.strip('"“” '),
-                                                                armazenados):
+
+
+                if not any(conferencia_contract.confere_transcricao(linha.strip('"“” '), arm)
+                           for _a, arm in teores):
+                    if any(not arm[1].strip()
+                           and l24_trecho_fora_da_ementa(linha, arm[0])
+                           and l24_moldura_confere(identificacao, achado)
+                           for achado, arm in teores):
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+                        erros.append(
+                            f"L24 a peça transcreve do julgado nº {atual} trecho que não está "
+                            f"na ementa, e a Relação guardou só a ementa, sem o inteiro teor — "
+                            f"não há com o que conferir a transcrição. Número, órgão e data "
+                            f"conferem; falta o inteiro teor. Se o trecho for síntese sua, e "
+                            f"não transcrição, tire-o das aspas e da caixa. «{cite(linha)}»")
+                        continue
                     erros.append(
                         f"L24 TRANSCRIÇÃO NÃO CONFERE com o julgado nº {atual} — o texto na "
                         f"peça diverge do teor que a pesquisa leu na fonte oficial. Citação "
@@ -4345,8 +4722,8 @@ def main(argv):
 
 
     if prec_path and prec_nums is not None:
-        _ementas = {n: str(a.get("syllabus_literal") or "") for n, a in prec_por_num.items()
-                    if isinstance(a, dict) and str(a.get("syllabus_literal") or "").strip()}
+        _ementas = {n: str(_l[0].get("syllabus_literal") or "") for n, _l in prec_por_num.items()
+                    if _l and str(_l[0].get("syllabus_literal") or "").strip()}
         _caixa_nums, _na_caixa, _vistos_l40 = [], False, set()
         for txt, em_tbl, _p, _rs in (textos if _ementas else []):
             t = txt.strip()
@@ -5082,21 +5459,50 @@ def main(argv):
     cruzados = [n for n, ativo in (("precedentes", bool(prec_path)), ("juntada", bool(jnt_path)),
                                    ("conferência", bool(citacoes_de_prova))) if ativo]
     sufixo_cruz = (" · cruzado contra " + " e ".join(cruzados)) if cruzados else ""
+
+
+    if relatorio is not None:
+        relatorio.update({
+            "formato": 1, "peca": caminho, "fragmento": bool(fragmento),
+            "veredito": "REPROVADO" if erros else ("MINUTA" if pendencias else "APROVADO"),
+            "exit_code": 1 if erros else (3 if pendencias else 0),
+            "erros": [classificar_achado(e) for e in erros],
+            "pendencias": [classificar_achado(p) for p in pendencias],
+            "avisos": list(avisos),
+            "resumo": resumo_de_naturezas(erros),
+
+
+            "dispensas": {"travessao": bool(_disp.get("pular_l21")),
+                          "regra_dos_tres": "J08" in _disp.get("excluir", set()),
+                          "aspas_curvas": "J21" in _disp.get("excluir", set())},
+        })
+
+    def _imprime(prefixo, achado_txt):
+        print(f"{prefixo}: {achado_txt}")
+        a = classificar_achado(achado_txt)
+        if a["natureza"] == "registro":
+            print(_linha_de_registro(a))
+
     if erros:
         print(f"\n== REPROVADO == ({len(erros)} erro(s) de ESTRUTURA"
               + (f" · {len(pendencias)} pendência(s) de conferência" if pendencias else "")
               + ")")
+        _res = resumo_de_naturezas(erros)
+        if _res["erros_registro"]:
+            print(f"Destes, {_res['erros_registro']} são de REGISTRO e {_res['erros_texto']} de "
+                  f"TEXTO: o de registro não se resolve reescrevendo a peça; o que falta "
+                  f"registrar e como vem logo abaixo de cada um.")
         for e in erros:
-            print(f"ERRO: {e}")
+            _imprime("ERRO", e)
         for p in pendencias:
-            print(f"PENDENTE: {p}")
+            _imprime("PENDENTE", p)
         return 1
     if pendencias:
         print(f"\n== MINUTA == ({len(pendencias)} julgado(s)/marcação(ões) a atestar; "
               f"ESTRUTURA LIMPA — L1–L45"
               + ("" if fragmento else " + F1/F2") + sufixo_cruz + ")")
         for p in pendencias:
-            print(f"PENDENTE: {p}")
+            _imprime("PENDENTE", p)
         print("A forma está correta; falta conferir na fonte oficial o que está PENDENTE. "
               "Minuta NÃO se protocola: só o APROVADO (exit 0) libera.")
         return 3

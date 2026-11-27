@@ -43,10 +43,18 @@
 
 
 
+
+
+
+
+
+
+
 from __future__ import annotations
 
 import argparse
 import json
+import os
 import sys
 from urllib.parse import urlparse
 
@@ -113,6 +121,36 @@ def aviso_host_travado(url, fontes):
             f"registro")
 
 
+def _sem_recibo(achado):
+    'Confirmação humana que o recibo da tela não sustenta (a antiga, da conversa, da folha ou do'
+
+    try:
+        import recibo_conferencia
+    except Exception:
+        return (achado.get("verification") or {}).get("method") == "human"
+    return recibo_conferencia.confirmacao_sem_recibo_valido(achado)
+
+
+def _falta_ratificar(achado):
+    """Teor conferido pela máquina sem a ratificação da tela gravada (D2): pendente."""
+    v = achado.get("verification") or {}
+    return (v.get("method") == "automatic" and v.get("result") == "confirmed"
+            and not isinstance(v.get("ratificacao"), dict))
+
+
+def da_maquina(achado):
+    '(fonte, data) da verificação automática que confirmou o teor na fonte, ou None. Sem a data,'
+
+    v = achado.get("verification") or {}
+    if v.get("method") != "automatic" or v.get("result") != "confirmed":
+        return None
+    fonte = texto(v.get("final_url")) or texto(achado.get("official_url"))
+    em = texto(v.get("checked_at"))
+    if len(fonte) < 3 or len(em) < 10:
+        return None
+    return fonte, em
+
+
 def _pendentes(dados, tudo=False):
     saida = []
     for achado in (dados.get("achados") or []):
@@ -121,7 +159,10 @@ def _pendentes(dados, tudo=False):
         status = achado.get("use_status")
         if status == "prohibited":
             continue
-        if tudo or status == "pending":
+
+
+        if tudo or status == "pending" or (status == "allowed" and (_sem_recibo(achado)
+                                                                    or _falta_ratificar(achado))):
             saida.append(achado)
     return saida
 
@@ -155,9 +196,10 @@ def montar(dados, tudo=False, ator="", fontes=None):
         "erro que a leitura de conferência do julgador encontra — e é o que esta folha existe "
         "para impedir.",
         "",
-        "Conferido, preencha a linha **ATESTO** do julgado. Depois devolva a folha preenchida: "
-        "as conferências marcadas são registradas a partir dela, todas de uma vez, sem "
-        "redigitar nada.",
+        "A confirmação de cada julgado se faz no Minha banca, na tela de conferência: qualquer "
+        "pessoa da banca, entrando com o próprio login, marca se confere e, quando estiver tudo "
+        "certo, clica Encerrar e liberar; o nome dela fica gravado. Esta folha serve para conferir com calma e para apontar o que NÃO confere: "
+        "devolvida, os julgados marcados como não confere saem da peça.",
         "",
         "Julgado que não se confirme na fonte **sai da peça** — não fica assinalado até o "
         "protocolo.",
@@ -207,8 +249,7 @@ def montar(dados, tudo=False, ator="", fontes=None):
         if isinstance(uso, dict) and texto(uso.get("como_usar")):
             linhas += [f"**Para que serve na peça:** {texto(uso['como_usar'])}", ""]
         linhas += [
-            "**ATESTO** que abri o endereço acima e conferi moldura e trecho contra a fonte "
-            "oficial.", "",
+            "**Resultado da conferência** (o que confere se confirma no Minha banca).", "",
             f"- Quem atesta: {ator or '_______________________'}",
             "- Data (AAAA-MM-DD): _______________",
             "- Resultado: ( ) CONFERE  ( ) NÃO CONFERE — sai da peça",
@@ -242,10 +283,17 @@ def moldura_conferida(achado):
 
 
 def _para_conferir(dados):
-    """(itens, fora_da_peca): os pendentes que sustentam a peça; sem nenhum selecionado, todos."""
+    '(itens, fora_da_peca): os pendentes que sustentam a peça; sem nenhum selecionado, todos.'
+
+
     pend = _pendentes(dados)
     sel = [a for a in pend if a.get("selected_for_use")]
     return (sel, len(pend) - len(sel)) if sel else (pend, 0)
+
+
+def _data_br(iso):
+    t = texto(iso)[:10]
+    return f"{t[8:10]}/{t[5:7]}/{t[0:4]}" if len(t) == 10 and t[4] == t[7] == "-" else t
 
 
 def _uma_linha(valor, maximo=TRECHO_CURTO):
@@ -265,7 +313,11 @@ def montar_lista(dados, fontes=None):
         ref = texto(achado.get("reference")) or "(sem rótulo)"
         url = texto(achado.get("official_url"))
         conferida = moldura_conferida(achado)
-        if conferida:
+        maquina = da_maquina(achado)
+        if maquina:
+            moldura = (f"teor conferido pela máquina na fonte em {_data_br(maquina[1])}; falta "
+                       f"ratificar")
+        elif conferida:
             moldura = f"moldura conferida na fonte em {conferida}"
         else:
             campos = [f"{rot.lower()} {texto(citation.get(c))}"
@@ -286,19 +338,79 @@ def montar_lista(dados, fontes=None):
                       "   Trecho: nenhum gravado; copie da tela o trecho que a peça usa.")
         linhas.append("")
         registro.append({"numero": n, "id": texto(achado.get("id")), "referencia": ref,
-                         "official_url": url,
+                         "official_url": url, "origem": "maquina" if maquina else "pessoa",
                          "syllabus_sha256": sha256_texto(achado.get("syllabus_literal"))})
-    linhas.append("Para cada um, baixe o PDF do inteiro teor no endereço e solte aqui: a "
-                  "máquina confere o trecho palavra por palavra. Sem o PDF, responda numa "
-                  "linha, por exemplo: \"conferem 1 e 2; o 3 não confere\". O que não "
-                  "conferir sai da peça.")
+    linhas += MENSAGEM_CONFERENCIA
     if fora:
         linhas.append("")
         linhas.append(f"Outros {fora} julgado(s) pendente(s) não estão na minuta e ficaram fora "
                       f"desta conferência.")
-    return "\n".join(linhas), {"schema_version": "dsr.conferencia_pendente.v1",
-                               "tema": texto(dados.get("tema")), "fora_da_peca": fora,
-                               "itens": registro}
+    n_maquina = sum(1 for a in itens if da_maquina(a))
+    cabeca = [f"Falta: conferir na fonte oficial {len(itens)} julgado(s) que sustentam a "
+              f"minuta. Enquanto a conferência não for encerrada, a peça não é entregue.", ""]
+    if n_maquina:
+        cabeca += [f"{n_maquina} deles a máquina já conferiu na fonte: na tela, vêm marcados como "
+                   f"confere, e basta ratificar (ou desmarcar, se não conferir).", ""]
+    antigos = [a for a in itens if a.get("use_status") == "allowed" and not da_maquina(a)]
+    if antigos:
+        cabeca += [f"{len(antigos)} deles já tinha(m) sido conferido(s) pela conversa, pela folha "
+                   f"ou pelo PDF, que não confirmam mais: só a conferência no Minha banca vale.",
+                   ""]
+    return "\n".join(cabeca + linhas), {"schema_version": "dsr.conferencia_pendente.v1",
+                                        "tema": texto(dados.get("tema")), "fora_da_peca": fora,
+                                        "itens": registro}
+
+
+
+
+
+
+MENSAGEM_CONFERENCIA = [
+    "Quem resolve: confere qualquer pessoa da banca, entrando com o próprio login no Minha banca; "
+    "o nome de quem conferiu fica gravado, e o responsável pela peça continua sendo o advogado que "
+    "a assina. Encerra o titular da banca ou quem abriu a conferência: só eles veem o botão "
+    "Encerrar e liberar.",
+    "",
+    "Como: vou abrir a conferência e mostrar o endereço. Abra a conferência no Minha banca e "
+    "revise: cada julgado é comparado com a fonte oficial e marcado como confere, não confere (sai "
+    "da peça) ou pendente, com o motivo; os que a máquina já conferiu vêm marcados como confere, "
+    "para ratificar. Enquanto a conferência estiver aberta, dá para mudar tudo. Quando estiver "
+    "tudo certo, o titular da banca ou quem abriu a conferência clica Encerrar e liberar: só o "
+    "encerramento libera a peça. Depois me avise, e eu busco o resultado.",
+    "",
+    "Se algum julgado não confere e você já sabe, pode dizer aqui mesmo, por exemplo \"o 3 não "
+    "confere\", que ele sai da peça. A confirmação, porém, só vale feita no Minha banca.",
+]
+
+
+def itens_da_tela(dados):
+    'Itens no formato de entrada da tela de conferência: id, tipo e o CONTEÚDO que a tela'
+
+
+
+
+
+
+
+
+
+    import registrar_confirmacao_manual as rcm
+    itens, _ = _para_conferir(dados)
+    saida = []
+    for achado in itens:
+        tipo_ancora, conteudo, sha, _ = rcm.conteudo_da_tela(achado)
+        item = {"id": texto(achado.get("id")), "tipo": "julgado", **conteudo, "sha256": sha,
+                "origem": "pessoa"}
+        maquina = da_maquina(achado)
+        if maquina and tipo_ancora == "endereco":
+
+
+            item["origem"] = "maquina"
+            item["maquina"] = {"fonte": maquina[0], "em": maquina[1]}
+        if tipo_ancora == "nenhuma" or not conteudo["texto"]:
+            item["so_veto"] = True
+        saida.append(item)
+    return saida
 
 
 def main():
@@ -313,6 +425,9 @@ def main():
     parser.add_argument("--tudo", action="store_true",
                         help="inclui os já liberados (reconferência), não só os pendentes")
     parser.add_argument("--ator", default="", help="pré-preenche quem vai atestar")
+    parser.add_argument("--tela", default="",
+                        help="(lista) onde gravar os itens da tela de conferência (padrão: "
+                             "CONFERENCIA_TELA.json ao lado da lista)")
     parser.add_argument("--fontes", default=FONTES_PADRAO,
                         help="catálogo de fontes oficiais (padrão: o da skill)")
     args = parser.parse_args()
@@ -346,9 +461,30 @@ def main():
         with open(args.saida, "w", encoding="utf-8") as arquivo:
             json.dump(lista, arquivo, ensure_ascii=False, indent=2)
             arquivo.write("\n")
+        tela_path = args.tela or os.path.join(os.path.dirname(os.path.abspath(args.saida)),
+                                              "CONFERENCIA_TELA.json")
+        import registrar_confirmacao_manual as rcm
+        tela = {"schema_version": "dsr.conferencia_tela.v1", "tema": texto(dados.get("tema")),
+                "responsavel": rcm.ator_do_perfil(), "itens": itens_da_tela(dados)}
+        with open(tela_path, "w", encoding="utf-8") as arquivo:
+            json.dump(tela, arquivo, ensure_ascii=False, indent=2)
+            arquivo.write("\n")
         total = len(lista["itens"])
         print(json.dumps({"ok": True, "total": total, "fora_da_peca": lista["fora_da_peca"],
-                          "saida": args.saida, "texto_conversa": conversa,
+                          "saida": args.saida, "tela": tela_path, "texto_conversa": conversa,
+                          "proximo_passo": (
+                              "Mostre `texto_conversa` como está. Depois chame "
+                              "`preparar_conferencia` do conector dissero com os itens de "
+                              f"{os.path.basename(tela_path)} (e o responsável, se houver) e "
+                              "mostre o endereço devolvido. Quando avisarem que clicaram "
+                              "Encerrar e liberar, chame `recibo_da_conferencia`, grave o "
+                              "envelope devolvido (só o do encerramento libera; o da conferência "
+                              "aberta é andamento), sem "
+                              "mexer em nada, num arquivo .json e registre com "
+                              "`registrar_confirmacao_manual.py achados.json --recibo "
+                              "<envelope.json> -o achados.json`. Veto dito na conversa: "
+                              "`--lista` com `--nao-confere` (e `--quem-conferiu` se não foi o "
+                              "advogado); confirmação por ali não é gravada."),
                           "resumo": f"{total} julgado(s) a conferir: mostre `texto_conversa` "
                                     f"ao advogado como está"}, ensure_ascii=False))
         return 0

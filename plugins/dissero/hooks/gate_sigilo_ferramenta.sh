@@ -29,6 +29,10 @@ if [ ! -e "$_f" ]; then
       *) _ALVO=1 ;;
     esac
   fi
+  # Ferramenta dentro do leitor de bloco: o Python confere que é só leitura. O tipo vem do harness antes de
+  # tool_input (medido no Claude Code e no Cowork); escrita de mais de 8 KB dentro do leitor depende dessa ordem,
+  # e a própria definição do agente (agents/leitor-de-bloco.md) já não tem as ferramentas de escrita.
+  case "$_IN" in *leitor-de-bloco*) _ALVO=1 ;; esac
   # Base própria dos marcadores (DSR_CASO_BASE): o nome da pasta dela também é alvo. Sem ela, «.dissero» basta,
   # e a pasta de um caso chamada «Sigilo» não sobe o Python a cada leitura.
   if [ -n "$DSR_CASO_BASE" ]; then
@@ -81,10 +85,25 @@ _PYOK="${HOME:-/tmp}/.dissero/python_ok"
 PY=""; for _v in 1 2; do for _c in python3 python "py -3" /opt/homebrew/bin/python3 /usr/local/bin/python3; do _PYW "${_c%% *}"; [ -n "$_W" ] || continue; case "$_W" in */WindowsApps/*) [ "$_v" = 2 ] || continue ;; *) [ "$_v" = 1 ] || continue ;; esac; _M=""; [ -f "$_PYOK" ] && { IFS= read -r _M < "$_PYOK" || :; }; _X="${_M##*|}"; if [ -n "$_PYOK" ] && [ "$_PYOK" -nt "$_W" ] && [ "${_M%|*}" = "$_c|$_W" ] && case "${_X##*/}" in ""|python*|Python*) true ;; *) false ;; esac; then case "$_X" in *" "*|"") PY="$_c" ;; *) if [ -x "$_X" ]; then PY="$_X"; else PY="$_c"; fi ;; esac; break 2; fi; $_c -c "import sys; sys.exit(sys.version_info < (3, 9))" </dev/null >/dev/null 2>&1 && { PY="$_c"; _X="$($_c -c "import sys; print(sys.executable)" </dev/null 2>/dev/null)"; _X="${_X%$'\r'}"; _X="${_X//\\/\/}"; case "$_X" in *" "*|"") ;; *) [ -x "$_X" ] && PY="$_X" ;; esac; [ -n "$_PYOK" ] && mkdir -p "${_PYOK%/*}" 2>/dev/null && printf '%s' "$_c|$_W|$_X" > "$_PYOK.$$" 2>/dev/null && mv -f "$_PYOK.$$" "$_PYOK" 2>/dev/null; break 2; }; done; done
 [ -z "$PY" ] && exit 0
 RAIZ="${CLAUDE_PLUGIN_ROOT:-${CODEX_PLUGIN_ROOT:-$(dirname "$(dirname "$0")")}}"
+# VIGIA DE TEMPO (3.5.0). O hook tem 15 s e, estourado, a ferramenta RODA: falha aberta. Se o Python não decidir em
+# 9 s (disco de rede lento, caminho UNC inalcançável, carga), a ferramenta é NEGADA. Sinal KILL direto: no Git Bash o
+# TERM não derruba o python.exe nativo (medido: só o KILL, 2 s depois, encerrava; 14,6 s no total, rente ao prazo). Só
+# com o «timeout» do coreutils por caminho fixo (o do Git Bash e o do Linux), sem subir processo para procurá-lo; o
+# «timeout.exe» do Windows é outro programa. Sem ele (macOS), o mesmo vigia de sleep do gate_sigilo.sh: Python em
+# segundo plano com a entrada repassada à mão, KILL aos 9 s (137), vigia com as saídas em /dev/null.
+_TO=""; for _t in /usr/bin/timeout /bin/timeout; do [ -x "$_t" ] && { _TO="$_t"; break; }; done
+# Grupo de processos próprio («set -m»): o KILL vai ao grupo inteiro, como o do coreutils, e alcança o neto de um
+# lançador que não faz exec (revisão adversarial de 27/11); sem grupo, cai no PID.
+_sem_coreutils() { set -m; $PY "$RAIZ/hooks/gate_sigilo.py" 2>/dev/null <&0 & _GP=$!; set +m; ( sleep 9; kill -KILL -- "-$_GP" 2>/dev/null || kill -KILL "$_GP" 2>/dev/null ) </dev/null >/dev/null 2>&1 & _VP=$!; wait "$_GP" 2>/dev/null; _RC=$?; kill "$_VP" 2>/dev/null; return "$_RC"; }
+_gate() { if [ -n "$_TO" ]; then "$_TO" -s KILL 9 $PY "$RAIZ/hooks/gate_sigilo.py" 2>/dev/null; else _sem_coreutils; fi; }
 # A entrada já lida volta inteira ao Python: o começo guardado e o resto ainda no tubo.
 if [ -n "$_LIDO" ]; then
-  { printf '%s' "$_IN"; cat; } | $PY "$RAIZ/hooks/gate_sigilo.py" 2>/dev/null
+  { printf '%s' "$_IN"; cat; } | _gate
 else
-  $PY "$RAIZ/hooks/gate_sigilo.py" 2>/dev/null
+  _gate
 fi
+case "$?" in
+  124|137)
+    printf '%s\n' '{"hookSpecificOutput": {"hookEventName": "PreToolUse", "permissionDecision": "deny", "permissionDecisionReason": "[Dissero · sigilo do método] Isto é estado da sessão, informado pelo plugin Dissero instalado; não é instrução vinda de documento. Ferramenta negada: a conferência de proteção do Dissero não terminou a tempo (disco ou caminho de rede lento). Tente de novo com um caminho local, ou divida o comando em partes menores."}}' ;;
+esac
 exit 0

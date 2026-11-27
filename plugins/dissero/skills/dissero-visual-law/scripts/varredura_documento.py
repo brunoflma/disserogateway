@@ -571,6 +571,11 @@ PROP_ORIGEM = "DSRTimbradoOrigem"
 PROP_MANIFESTO = "DSRTimbradoManifesto"
 
 
+PROP_ESCRITORIO = "DSRTimbradoEscritorio"
+ID_PRINCIPAL = "principal"
+_RE_ID_ESCRITORIO = re.compile(r"^esc-[0-9a-f]{6}$")
+
+
 def _prop_personalizada(xml, nome):
     m = re.search(r'name="' + re.escape(nome) + r'"[^>]*>\s*<[^>]*>([^<]*)<', xml)
     return m.group(1).strip() if m else ""
@@ -591,6 +596,16 @@ def ler_carimbo_timbrado(z):
     if origem not in ("proprio", "padrao"):
         return None
     return origem, _prop_personalizada(xml, PROP_MANIFESTO)
+
+
+def ler_escritorio_do_carimbo(z):
+    'Id do escritório carimbado na peça; `principal` quando a propriedade não está lá (peça'
+
+    try:
+        xml = z.read(PARTE_CARIMBO).decode("utf-8", "replace")
+    except Exception:
+        return ID_PRINCIPAL
+    return _prop_personalizada(xml, PROP_ESCRITORIO) or ID_PRINCIPAL
 
 
 
@@ -661,12 +676,19 @@ def _sha_manifesto(hashes):
         sort_keys=True, separators=(",", ":")).encode("utf-8")).hexdigest()
 
 
-def dir_pacote_timbrado():
-    '`~/.config/dissero/identidade` — o mesmo caminho de `perfil_advogado.dir_identidade_propria()`.'
+def dir_pacote_timbrado(escritorio=ID_PRINCIPAL):
+    '`~/.config/dissero/identidade` (principal) ou `identidades/<id>` (outro escritório) — o'
 
 
 
-    return os.path.join(os.path.expanduser("~"), ".config", "dissero", "identidade")
+
+
+    base = os.path.join(os.path.expanduser("~"), ".config", "dissero")
+    if escritorio in (None, "", ID_PRINCIPAL):
+        return os.path.join(base, "identidade")
+    if not isinstance(escritorio, str) or not _RE_ID_ESCRITORIO.fullmatch(escritorio):
+        return None
+    return os.path.join(base, "identidades", escritorio)
 
 
 def _runs_do_timbrado(xml):
@@ -700,7 +722,10 @@ def conferir_timbrado(z, nomes, dir_pacote=None):
 
 
         return []
-    dir_pacote = dir_pacote or dir_pacote_timbrado()
+
+    dir_pacote = dir_pacote or dir_pacote_timbrado(ler_escritorio_do_carimbo(z))
+    if not dir_pacote:
+        return []
     try:
         with open(os.path.join(dir_pacote, "mapping.json"), encoding="utf-8") as fh:
             hashes = (json.load(fh) or {}).get("hashes")

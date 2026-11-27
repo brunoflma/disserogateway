@@ -235,9 +235,17 @@ def confere_relator(valor, pagina):
 
 
 def resultado(out, outcome, motivo, codigo=1):
-    mapa = {"confirmed": "CONFIRMADO", "blocked": "BLOQUEIO_DE_ACESSO", "partial": "PARCIAL", "not_found": "NAO_CONFIRMADO", "mismatch": "NAO_CONFIRMADO"}
-    uso = "allowed" if outcome == "confirmed" else "pending" if outcome in ("blocked", "partial") else "prohibited"
+    mapa = {"confirmed": "CONFERIDO_PELA_MAQUINA", "blocked": "BLOQUEIO_DE_ACESSO", "partial": "PARCIAL", "not_found": "NAO_CONFIRMADO", "mismatch": "NAO_CONFIRMADO"}
+
+
+
+    uso = "pending" if outcome in ("confirmed", "blocked", "partial") else "prohibited"
     out.update({"outcome": outcome, "method": "automatic", "use_status": uso, "selo": mapa[outcome], "motivo": motivo})
+    if outcome == "confirmed":
+        out["falta_ratificar"] = True
+        out["pendencia"] = ("teor conferido pela máquina, falta ratificar na conferência do Minha "
+                            "banca (o julgado vai à tela marcado como confere; libera só com "
+                            "Encerrar e liberar)")
     print(json.dumps(out, ensure_ascii=False))
     return codigo
 

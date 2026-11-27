@@ -166,6 +166,15 @@ def soma_acrescimos(autorizacao):
                if isinstance(a, dict) and _inteiro(a.get("agentes"), 0) > 0)
 
 
+def soma_leitura_bruta(autorizacao):
+    """Todos os acréscimos marcados como leitura, válidos ou não: nenhum deles é orçamento comum."""
+    lista = autorizacao.get("acrescimos") if isinstance(autorizacao, dict) else None
+    if not isinstance(lista, list):
+        return 0
+    return sum(a["agentes"] for a in lista
+               if isinstance(a, dict) and _inteiro(a.get("agentes"), 0) > 0 and a.get("uso") == "leitura_em_blocos")
+
+
 def teto(autorizacao):
     """Orçamento de subagentes da sessão: max_simultaneos × ondas + soma dos acréscimos."""
     if not autorizacao:
@@ -173,6 +182,92 @@ def teto(autorizacao):
     s = _inteiro(autorizacao.get("max_simultaneos"), PADRAO_SIMULTANEOS)
     o = _inteiro(autorizacao.get("ondas"), PADRAO_ONDAS)
     return s * o + soma_acrescimos(autorizacao), s, o, True
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+TIPO_LEITOR = "dissero:leitor-de-bloco"
+USO_LEITURA = "leitura_em_blocos"
+CONSUMO_LEITURA = "LEITURA_EM_BLOCOS.jsonl"
+
+
+_MARCA_LEITOR = re.compile(r"\A\s*\[Dissero · leitor de bloco (\d+)/(\d+) · ([0-9a-f]{16})\]")
+
+
+def leitura_por_documento(autorizacao):
+    """{documento: agentes autorizados} somando os acréscimos de leitura válidos."""
+    lista = autorizacao.get("acrescimos") if isinstance(autorizacao, dict) else None
+    out = {}
+    if isinstance(lista, list):
+        for a in lista:
+            if (isinstance(a, dict) and a.get("uso") == USO_LEITURA and _full_str(a.get("documento"))
+                    and _inteiro(a.get("agentes"), 0) > 0):
+                doc = a["documento"].strip()
+                out[doc] = out.get(doc, 0) + a["agentes"]
+    return out
+
+
+def ler_consumo(path, session_id):
+    """{documento: leitores já liberados} desta sessão. Arquivo ausente/ilegível → {}."""
+    out = {}
+    if not _full_str(path) or not os.path.exists(path):
+        return out
+    try:
+        with open(path, encoding="utf-8", errors="replace") as fh:
+            for linha in fh:
+                try:
+                    d = json.loads(linha)
+                except Exception:
+                    continue
+                if not isinstance(d, dict) or not _full_str(d.get("documento")):
+                    continue
+                if _full_str(session_id) and _full_str(d.get("session_id")) and d["session_id"].strip() != session_id.strip():
+                    continue
+                out[d["documento"].strip()] = out.get(d["documento"].strip(), 0) + 1
+    except Exception:
+        return {}
+    return out
+
+
+def _leitor(evento):
+    '(documento, k, n) quando o Agent é do tipo do leitor do plugin e o pedido começa pela marca de leitor'
+
+    entrada = evento.get("tool_input") if isinstance(evento.get("tool_input"), dict) else {}
+    tipo = entrada.get("subagent_type")
+    if not (_full_str(tipo) and tipo.strip() == TIPO_LEITOR):
+        return None
+    prompt = entrada.get("prompt")
+    m = _MARCA_LEITOR.match(prompt) if _full_str(prompt) else None
+    if not m:
+        return None
+    return m.group(3).strip(), int(m.group(1)), int(m.group(2))
+
+
+def _registrar_consumo(path, session_id, documento, k):
+    try:
+        with open(path, "a", encoding="utf-8") as fh:
+            fh.write(json.dumps({"session_id": session_id, "documento": documento, "bloco": k},
+                                ensure_ascii=False) + "\n")
+    except Exception:
+        pass
 
 
 _MARCA_SOLTA = re.compile(r"AGENTE DEDICADO do Cap[ií]tulo", re.I)
@@ -256,8 +351,21 @@ def _decidir_teto(evento, ledger_path=None, autorizacao_path=None):
     limite, simult, ondas, tem_aval = teto(autorizacao)
     ja = contar_disparos(ledger, session_id)
 
-    if ja < limite:
+    por_doc = leitura_por_documento(autorizacao) if tem_aval else {}
+    consumo_path = _na_raiz(CONSUMO_LEITURA, cwd, session_id)
+    consumo = ler_consumo(consumo_path, session_id)
+    leitor = _leitor(evento)
+    if leitor and por_doc:
+        doc, k, n = leitor
+        autorizados = por_doc.get(doc, 0)
+        if 1 <= k <= n <= autorizados and consumo.get(doc, 0) < autorizados:
+            _registrar_consumo(consumo_path, session_id, doc, k)
+            return None
+    limite_comum = limite - (soma_leitura_bruta(autorizacao) if tem_aval else 0)
+    ja = max(0, ja - sum(consumo.values()))
+    if ja < limite_comum:
         return None
+    limite = limite_comum
 
     sid = session_id or "<id da sessão>"
 
@@ -269,7 +377,7 @@ def _decidir_teto(evento, ledger_path=None, autorizacao_path=None):
              f"5 a 7 agentes de alto custo e pode esgotar o limite de uso de um plano "
              f"individual: ofereça ao advogado o Conselho light antes do completo.")
     if tem_aval:
-        extra = soma_acrescimos(autorizacao)
+        extra = soma_acrescimos(autorizacao) - soma_leitura_bruta(autorizacao)
         composicao = f"{simult} simultâneos × {ondas} onda(s)"
         if extra:
             composicao += f" + {extra} de acréscimo(s)"

@@ -52,11 +52,116 @@ def derivar_use_status(achado):
     verificacao = achado.get("verification") or {}
     resultado = verificacao.get("result")
     metodo = verificacao.get("method")
-    if resultado == "confirmed" and metodo in ("automatic", "human"):
+    if resultado == "confirmed" and metodo == "human":
         return "allowed"
+
+
+
+    if resultado == "confirmed" and metodo == "automatic":
+        return "allowed" if isinstance(verificacao.get("ratificacao"), dict) else "pending"
     if resultado in ("blocked", "partial"):
         return "pending"
     return "prohibited"
+
+
+
+
+
+
+
+def _motivos_do_recibo(achado):
+    try:
+        import recibo_conferencia
+    except Exception as erro:
+        return [f"verificador do recibo da conferência indisponível ({erro}); reinstale o plugin"]
+    return recibo_conferencia.motivos_do_recibo(achado)
+
+
+MOTIVO_FALTA_RATIFICAR = ("teor conferido pela máquina, falta ratificar na conferência do Minha "
+                          "banca")
+
+
+def falta_ratificar(achado):
+    'True quando a máquina confirmou o teor na fonte e a ratificação da tela não foi gravada (D2):'
+
+    v = (achado or {}).get("verification") or {}
+    return (v.get("method") == "automatic" and v.get("result") == "confirmed"
+            and not isinstance(v.get("ratificacao"), dict))
+
+
+def rebaixar_confirmacoes_sem_recibo(dados):
+    'Leva a pendente toda liberação que o recibo final não sustenta e devolve os ids rebaixados:'
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+    rebaixados = []
+    achados = [a for a in ((dados.get("achados") or []) if isinstance(dados, dict) else [])
+               if isinstance(a, dict)]
+    for achado in achados:
+        if falta_ratificar(achado) and achado.get("use_status") == "allowed":
+            v = achado["verification"]
+            sinais = dict(v.get("signals") or {})
+            sinais["reconferir_na_tela"] = True
+            v["signals"] = sinais
+            achado["use_status"] = "pending"
+            rebaixados.append(texto(achado.get("id")))
+    try:
+        import recibo_conferencia as rc
+    except Exception:
+        return rebaixados
+    try:
+        chave = rc.carregar_chave()
+        instalacao_ok = not (chave["teste"] and os.environ.get(rc.VARIAVEL_CHAVE_TESTE) != "1")
+    except rc.ErroRecibo:
+        instalacao_ok = False
+    for achado in achados:
+        if not rc.confirmacao_sem_recibo_valido(achado):
+            continue
+        v = achado["verification"]
+        ha = v.get("human_attestation") or {}
+        selo = ha.get("recibo") if v.get("method") == "human" else v.get("ratificacao")
+        tem_recibo = isinstance(selo, dict) and isinstance(selo.get("envelope"), dict)
+        if tem_recibo and not instalacao_ok:
+            continue
+        if v.get("method") == "automatic":
+            motivo = rc.motivos_do_recibo(achado)[0][:200]
+            rat = v.pop("ratificacao")
+            sinais = dict(v.get("signals") or {})
+            sinais.pop("ratificado_na_tela", None)
+            sinais["reconferir_na_tela"] = True
+            sinais["ratificacao_anterior"] = {"por": texto(rat.get("por")),
+                                              "em": texto(rat.get("em")), "motivo": motivo}
+            v["signals"] = sinais
+            achado["use_status"] = "pending"
+            rebaixados.append(texto(achado.get("id")))
+            continue
+        sinais = {k: val for k, val in (v.get("signals") or {}).items()
+                  if k not in ("attested_by_lawyer", "conferido_pela_equipe", "conferido_na_tela")}
+        sinais["reconferir_na_tela"] = True
+        sinais["atestacao_anterior"] = {"por": texto(ha.get("actor")), "em": texto(ha.get("date")),
+                                        "motivo": rc.motivos_do_recibo(achado)[0][:200]}
+        achado["verification"] = {"result": "partial", "method": "none",
+                                  "checked_at": v.get("checked_at"),
+                                  "final_url": v.get("final_url"), "signals": sinais,
+                                  "human_attestation": None}
+        achado["use_status"] = "pending"
+        rebaixados.append(texto(achado.get("id")))
+    return rebaixados
 
 
 def validar_regras(achado, fontes):
@@ -85,7 +190,13 @@ def motivos_das_regras(achado, fontes):
         erros.append(f"use_status deve ser derivado como {esperado}")
     if achado.get("selected_for_use") and esperado == "prohibited":
         erros.append("achado proibido não pode ser selecionado para uso")
-    if resultado == "confirmed" and not url:
+    atestacao_doc = (verificacao.get("human_attestation") or {}) if isinstance(verificacao.get("human_attestation"), dict) else {}
+
+
+
+
+    por_documento = (metodo == "human" and not url and isinstance(atestacao_doc.get("documento"), dict))
+    if resultado == "confirmed" and not url and not por_documento:
         erros.append("confirmed exige official_url")
     if resultado == "confirmed" and final_url != url:
         erros.append("confirmed exige final_url idêntica a official_url")
@@ -107,10 +218,38 @@ def motivos_das_regras(achado, fontes):
     if metodo == "none" and resultado == "confirmed":
         erros.append("confirmed não admite método none")
 
+
+
+
+    if verificacao.get("ratificacao") is not None:
+        if metodo != "automatic" or resultado != "confirmed":
+            erros.append("ratificacao_fora_da_verificacao_automatica: a ratificação da tela só "
+                         "cabe no julgado que a máquina confirmou na fonte (method automatic, "
+                         "result confirmed)")
+        elif isinstance(verificacao.get("ratificacao"), dict):
+            erros.extend(_motivos_do_recibo(achado))
+
     atestacao = verificacao.get("human_attestation")
     if metodo == "human":
         if resultado != "confirmed" or not isinstance(atestacao, dict):
             erros.append("confirmação humana exige result=confirmed e human_attestation")
+        elif por_documento:
+            doc = atestacao.get("documento") or {}
+            if atestacao.get("official_url"):
+                erros.append("atestação pelo documento não leva endereço: ou um, ou outro")
+            if not (re.fullmatch(r"[0-9a-f]{64}", texto(doc.get("sha256")))
+                    and re.fullmatch(r"[0-9a-f]{64}", texto(doc.get("sha256_extracao")))
+                    and len(texto(doc.get("origem"))) >= 3):
+                erros.append("atestação pelo documento exige hash do arquivo, hash da extração e a "
+                             "origem dita pelo advogado")
+            procedencias = [r for r in achado.get("procedencia_literal") or [] if isinstance(r, dict)]
+            if not any(r.get("campo") == "syllabus_literal" and r.get("nivel") == "verbatim"
+                       and texto(r.get("sha256_extracao")) == texto(doc.get("sha256_extracao"))
+                       for r in procedencias):
+                erros.append("atestação pelo documento exige o trecho conferido verbatim pela "
+                             "máquina nesse mesmo documento (procedência literal)")
+            if atestacao.get("syllabus_sha256") != sha256_texto(achado.get("syllabus_literal")):
+                erros.append("ementa alterada invalida a confirmação humana")
         else:
             oficial_humano = (not com_catalogo) or (bool(host) and (host in fontes.get("hosts", {}) or any(host.endswith(sufixo) for sufixo in fontes.get("sufixos_oficiais", []))))
             if not oficial_humano:
@@ -122,6 +261,8 @@ def motivos_das_regras(achado, fontes):
                 erros.append("URL alterada invalida a confirmação humana")
             if atestacao.get("syllabus_sha256") != sha256_texto(achado.get("syllabus_literal")):
                 erros.append("ementa alterada invalida a confirmação humana")
+        if resultado == "confirmed" and isinstance(atestacao, dict):
+            erros.extend(_motivos_do_recibo(achado))
     elif atestacao is not None:
         erros.append("human_attestation só é aceita com method=human")
 

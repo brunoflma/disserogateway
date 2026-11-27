@@ -9,6 +9,7 @@ Uso (passo universal, determinístico):
   python transform_docx.py bruto.docx saida.docx --identidade         # peça final (timbrado do perfil)
   python transform_docx.py bruto.docx saida.docx --manter-identidade  # conserva cabeçalho e rodapé
   python transform_docx.py bruto.docx saida.docx --minuta-pendencias  # MINUTA COM PENDÊNCIAS
+  python transform_docx.py bruto.docx saida.docx --identidade --escritorio <id>  # outro escritório
   (`--fragmento` é aceito e é o padrão. Flag desconhecida é recusada, exit 1.)
 
 MINUTA COM PENDÊNCIAS (`--minuta-pendencias`), só por ordem do advogado: a faixa constante
@@ -25,7 +26,8 @@ Proteções invioláveis:
   1. Parágrafos com <w:numPr> não são tocados.
   2. Drawings nunca são removidos (screenshots de prova têm descr="conteúdo gerado").
   3. Validação obrigatória ao final.
-Saída: 0 gerado · 1 uso · 2 OOXML inválido · 3 drawing perdido · 9 minuta de peça com tese
+Saída: 0 gerado · 1 uso · 2 OOXML inválido · 3 drawing perdido · 6 escritório da peça final não
+escolhido, desconhecido ou removido (quem atua por vários: `escritorio_do_caso.py`) · 9 minuta de peça com tese
 jurídica sem a escolha do advogado ou, no método completo, com etapa por fazer (`escolha_do_metodo.py`).
 """
 import html
@@ -56,7 +58,8 @@ except Exception:
 EXIT_FALTA_ESCOLHA_OU_ETAPA = 9
 
 
-FLAGS_CONHECIDAS = ("--identidade", "--manter-identidade", "--fragmento", "--minuta-pendencias")
+FLAGS_CONHECIDAS = ("--identidade", "--manter-identidade", "--fragmento", "--minuta-pendencias",
+                    "--escritorio")
 
 
 def _texto_oculto_na_saida(caminho):
@@ -93,7 +96,65 @@ def _recusar_texto_oculto(out_docx):
     sys.exit(2)
 
 
-def transform(src_docx, out_docx, identidade="fragmento", driver=None, minuta_pendencias=False):
+
+PENDENCIA_ESCRITORIO = ("falta escolher por qual escritório esta peça sai: o documento saiu sem "
+                        "cabeçalho e rodapé")
+PENDENCIA_PADRAO_INCOMPLETO = ("faltam dados do escritório para o papel padrão (nome, endereço e "
+                               "cidade): o documento saiu sem cabeçalho e rodapé")
+
+
+def _perfil_da_peca(escritorio):
+    '`(visão do escritório da peça final, erro de escritório ou None)`. Visão None quando não há'
+
+
+
+    try:
+        import perfil_advogado as _pa
+        if not _pa.carregar():
+            return None, None
+        return _pa.exigir(escritorio=escritorio), None
+    except Exception as erro:
+        if str(erro).startswith("ESCRITÓRIO"):
+            return None, erro
+        return None, None
+
+
+def _perfil_do_fragmento(escritorio):
+    'Perfil do corpo no fragmento e no `--manter-identidade`, sem recusar: o escritório que'
+
+
+    try:
+        import perfil_advogado as _pa
+        import escritorio_do_caso
+        perfil = _pa.carregar()
+        visao, _eid = escritorio_do_caso.visao_sem_recusa(perfil, explicito=escritorio, modulo=_pa)
+    except Exception:
+        return None
+    return None if visao is perfil else visao
+
+
+def transform(src_docx, out_docx, identidade="fragmento", driver=None, minuta_pendencias=False,
+              escritorio=None):
+    perfil_peca, pend_escritorio = None, []
+    if identidade == "final":
+        perfil_peca, erro_escritorio = _perfil_da_peca(escritorio)
+        if erro_escritorio is not None:
+
+            if not minuta_pendencias or str(erro_escritorio).startswith(
+                    ("ESCRITÓRIO DESCONHECIDO", "ESCRITÓRIO DIFERENTE")):
+                print(f"ERRO: {erro_escritorio}")
+                print("Nada foi gerado.")
+                sys.exit(6)
+            incompleto = str(erro_escritorio).startswith("ESCRITÓRIO SEM DADOS DO PAPEL PADRÃO")
+            print("AVISO: sai sem o papel do escritório ("
+                  + ("faltam dados do escritório para o papel padrão" if incompleto
+                     else "falta escolher por qual escritório a peça sai")
+                  + "); a minuta segue sem cabeçalho e rodapé.")
+            print(f"  detalhe para o assistente: {erro_escritorio}")
+            identidade = "fragmento"
+            pend_escritorio.append(PENDENCIA_PADRAO_INCOMPLETO if incompleto else PENDENCIA_ESCRITORIO)
+    if identidade != "final":
+        perfil_peca = _perfil_do_fragmento(escritorio)
     work = core.dir_de_trabalho("dsrvl_tf_")
     try:
         core.unpack(src_docx, work)
@@ -123,7 +184,7 @@ def transform(src_docx, out_docx, identidade="fragmento", driver=None, minuta_pe
                 import build_docx
                 build_docx.parar_por_parada(_parada, EXIT_FALTA_ESCOLHA_OU_ETAPA, out_docx)
 
-        core.universal_pass(work, identidade=identidade)
+        core.universal_pass(work, identidade=identidade, perfil=perfil_peca)
 
         if driver:
             with open(doc_path, encoding="utf-8") as f:
@@ -177,12 +238,14 @@ def transform(src_docx, out_docx, identidade="fragmento", driver=None, minuta_pe
 
         if identidade == "final":
 
-            _perfil_tf = None
-            try:
-                import perfil_advogado as _pa
-                _perfil_tf = _pa.carregar()
-            except Exception:
-                _perfil_tf = None
+
+            _perfil_tf = perfil_peca
+            if _perfil_tf is None:
+                try:
+                    import perfil_advogado as _pa
+                    _perfil_tf = _pa.carregar()
+                except Exception:
+                    _perfil_tf = None
             carimbo_timbrado.carimbar_do_perfil(work, _perfil_tf)
         if minuta_pendencias:
             carimbo_timbrado.carimbar_minuta_pendencias(work)
@@ -223,7 +286,7 @@ def transform(src_docx, out_docx, identidade="fragmento", driver=None, minuta_pe
         if minuta_pendencias:
             print("MINUTA COM PENDÊNCIAS: faixa no corpo e marca gravadas. Não é a peça "
                   "liberada: não passou pela revisão completa e não se protocola como está.")
-            _imprimir_pendencias(realcados_enc, realcados_marc)
+            _imprimir_pendencias(realcados_enc, realcados_marc, pend_escritorio)
             for _frase in pend_pesquisa:
                 print(f"  · {_frase}")
         return same
@@ -255,13 +318,16 @@ def _resumo(trechos, limite=90):
     return vistos
 
 
-def _imprimir_pendencias(encanamento, marcadores):
+def _imprimir_pendencias(encanamento, marcadores, frases=()):
     'As pendências do transformer no formato do builder: a linha «·» vai ao advogado, em'
 
-    if not (encanamento or marcadores):
+
+    if not (encanamento or marcadores or frases):
         print("Pendências apontadas pelo transformador: nenhuma; as da revisão continuam.")
         return
     print("Pendências apontadas pelo transformador:")
+    for frase in frases:
+        print(f"  · {frase}")
     if marcadores:
         print(f"  · {len(marcadores)} trecho(s) marcado(s) para conferência, realçado(s) no "
               "documento: " + "; ".join(_resumo(marcadores)))
@@ -276,8 +342,17 @@ def _imprimir_pendencias(encanamento, marcadores):
 
 
 if __name__ == "__main__":
-    args = [a for a in sys.argv[1:] if not a.startswith("--")]
-    flags = {a for a in sys.argv[1:] if a.startswith("--")}
+    brutos, esc = list(sys.argv[1:]), None
+    if "--escritorio" in brutos:
+        _i = brutos.index("--escritorio")
+        if _i + 1 >= len(brutos) or brutos[_i + 1].startswith("--"):
+            print("ERRO: --escritorio pede o id do escritório (principal ou esc-xxxxxx). "
+                  "Nada foi gerado.")
+            sys.exit(1)
+        esc = brutos[_i + 1]
+        del brutos[_i:_i + 2]
+    args = [a for a in brutos if not a.startswith("--")]
+    flags = {a for a in brutos if a.startswith("--")} | ({"--escritorio"} if esc else set())
     desconhecidas = sorted(flags - set(FLAGS_CONHECIDAS))
     if desconhecidas:
         print(f"ERRO: flag desconhecida: {', '.join(desconhecidas)}. Aceitas: "
@@ -292,4 +367,4 @@ if __name__ == "__main__":
     if "--manter-identidade" in flags:
         mode = "manter"
     transform(args[0], args[1], identidade=mode,
-              minuta_pendencias="--minuta-pendencias" in flags)
+              minuta_pendencias="--minuta-pendencias" in flags, escritorio=esc)

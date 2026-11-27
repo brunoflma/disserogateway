@@ -368,6 +368,36 @@ def validar_documento(dados, schema_path=SCHEMA_PADRAO):
 _ELIPSES = ("[...]", "[…]", "(...)", "(…)", "…", "...")
 
 
+
+
+
+_ELIPSE_RX = re.compile(r"[\[(]\s*(?:…|\.\s*\.\s*\.)\s*[\])]|\.[ \t]+\.[ \t]+\.")
+
+
+
+
+_INVISIVEIS = dict.fromkeys(map(ord, "\u00ad\u200c\u200d\u2060\ufeff"))
+
+
+
+
+
+
+
+
+
+
+_ESPACO_LARGURA_ZERO = "\u200b"
+
+
+
+
+
+
+
+_HIFEN_QUEBRA_RX = re.compile(r"(?<=\w)-[ \t]*\r?\n[ \t]*(?=\w)")
+
+
 def normalizar_trecho(valor, manter_acento=False):
     'Forma canônica de comparação: sem acento, minúscula, TODA pontuação virando espaço,'
 
@@ -382,10 +412,11 @@ def normalizar_trecho(valor, manter_acento=False):
 
 
 
+    valor = str(valor or "").translate(_INVISIVEIS).replace(_ESPACO_LARGURA_ZERO, " ")
     if manter_acento:
-        texto_ = unicodedata.normalize("NFC", str(valor or ""))
+        texto_ = unicodedata.normalize("NFC", valor)
     else:
-        texto_ = unicodedata.normalize("NFKD", str(valor or ""))
+        texto_ = unicodedata.normalize("NFKD", valor)
         texto_ = "".join(c for c in texto_ if not unicodedata.combining(c))
     texto_ = "".join(c if (c.isalnum() or c.isspace()) else " " for c in texto_)
     return " ".join(texto_.casefold().split())
@@ -402,6 +433,45 @@ def _casa_em_ordem(partes, fonte):
             return False
         pos = achou + len(parte)
     return True
+
+
+def _leituras(bruto):
+    'As leituras do texto bruto que a conferência aceita: a original; com a quebra hifenizada'
+
+
+    s = str(bruto or "")
+    saida = [s]
+    if _HIFEN_QUEBRA_RX.search(s):
+        saida.append(_HIFEN_QUEBRA_RX.sub("", s))
+    if _ESPACO_LARGURA_ZERO in s:
+        saida += [x.replace(_ESPACO_LARGURA_ZERO, "") for x in list(saida)]
+    return saida
+
+
+def _partes_da_transcricao(trecho, manter_acento, minimo_parte):
+    'As partes normalizadas da transcrição, partidas nas marcas de corte; None quando não'
+
+
+
+    partes_brutas = _ELIPSE_RX.split(str(trecho or ""))
+    for marca in _ELIPSES:
+        novas = []
+        for p in partes_brutas:
+            novas += p.split(marca)
+        partes_brutas = novas
+    partes = [normalizar_trecho(p, manter_acento) for p in partes_brutas]
+    filtradas = [p for p in partes if len(p) >= minimo_parte]
+    if not filtradas:
+
+
+
+
+
+
+
+
+        filtradas = [p for p in partes if p]
+    return filtradas or None
 
 
 def confere_transcricao(trecho, armazenados, minimo=25, minimo_parte=12, manter_acento=False):
@@ -421,31 +491,24 @@ def confere_transcricao(trecho, armazenados, minimo=25, minimo_parte=12, manter_
         return True
 
 
-    partes_brutas = [str(trecho or "")]
-    for marca in _ELIPSES:
-        novas = []
-        for p in partes_brutas:
-            novas += p.split(marca)
-        partes_brutas = novas
-    partes = [normalizar_trecho(p, manter_acento) for p in partes_brutas]
-    filtradas = [p for p in partes if len(p) >= minimo_parte]
-    if not filtradas:
-
-
-
-
-
-
-
-
-        filtradas = [p for p in partes if p]
-    if not filtradas:
+    _tr = str(trecho or "")
+    leituras_peca = [_tr] + ([_tr.replace(_ESPACO_LARGURA_ZERO, "")]
+                             if _ESPACO_LARGURA_ZERO in _tr else [])
+    conjuntos = [c for c in (_partes_da_transcricao(t, manter_acento, minimo_parte)
+                             for t in leituras_peca) if c]
+    if not conjuntos:
         return False
-    partes = filtradas
-    fontes = [normalizar_trecho(b, manter_acento) for b in armazenados]
-    if len(fontes) > 1:
-        fontes.append(" ".join(f for f in fontes if f))
-    return any(f and _casa_em_ordem(partes, f) for f in fontes)
+    por_fonte = [_leituras(b) for b in armazenados]
+    fontes = [normalizar_trecho(x, manter_acento) for ls in por_fonte for x in ls]
+    if len(armazenados) > 1:
+
+
+        fontes.append(" ".join(normalizar_trecho(ls[0], manter_acento)
+                               for ls in por_fonte if ls[0]))
+        if any(len(ls) > 1 for ls in por_fonte):
+            fontes.append(" ".join(normalizar_trecho(ls[-1], manter_acento)
+                                   for ls in por_fonte if ls[-1]))
+    return any(f and _casa_em_ordem(partes, f) for partes in conjuntos for f in fontes)
 
 
 NUMERACOES = ("autos", "arquivo")

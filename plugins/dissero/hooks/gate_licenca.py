@@ -1141,7 +1141,7 @@ def _rpc_mcp(origem, token_oauth, nome, argumentos, timeout=20):
         raise OSError(str(e)) from None
 
 
-def baixar_perfil_http(origem, token_oauth, parte="perfil"):
+def baixar_perfil_http(origem, token_oauth, parte="perfil", escritorio=None):
     '`tools/call perfil_do_advogado` no /mcp, `parte` em {"perfil", "identidade"}; com'
 
 
@@ -1149,7 +1149,10 @@ def baixar_perfil_http(origem, token_oauth, parte="perfil"):
 
     if parte == "clone":
         return _rpc_mcp(origem, token_oauth, "clone_do_advogado", {}, timeout=TIMEOUT_PERFIL_S)
-    return _rpc_mcp(origem, token_oauth, "perfil_do_advogado", {"parte": parte}, timeout=TIMEOUT_PERFIL_S)
+    args = {"parte": parte}
+    if escritorio:
+        args["escritorio"] = escritorio
+    return _rpc_mcp(origem, token_oauth, "perfil_do_advogado", args, timeout=TIMEOUT_PERFIL_S)
 
 
 def _perfil_valido(perfil) -> bool:
@@ -1283,6 +1286,20 @@ def _quarentenar_advogado_anterior(destino, identidade, clone=None) -> None:
                 pass
     except Exception:
         pass
+
+
+    try:
+        outros = Path(identidade).with_name("identidades")
+        if outros.is_dir():
+            alvo_o = outros.with_name(outros.name + ".anterior")
+            try:
+                if alvo_o.exists():
+                    shutil.rmtree(alvo_o, ignore_errors=True)
+                outros.replace(alvo_o)
+            except Exception:
+                pass
+    except Exception:
+        pass
     try:
         identidade = Path(identidade)
 
@@ -1394,8 +1411,12 @@ def _entradas_zip(z):
 TETO_IDENTIDADE_BYTES = 20 * 1024 * 1024
 
 
-def _gravar_identidade_local(resultado, destino) -> bool:
+def _gravar_identidade_local(resultado, destino, escritorio="principal") -> bool:
     'Extrai o pacote de timbrado próprio (zip com header/footer/rels/media) em `destino`.'
+
+
+
+
 
 
 
@@ -1482,6 +1503,8 @@ def _gravar_identidade_local(resultado, destino) -> bool:
         marca_identidade = str((resultado.get("_meta") or {}).get("email_marca") or "")
         if marca_identidade:
             mapping["marca"] = marca_identidade
+        if escritorio and escritorio != "principal":
+            mapping["escritorio"] = escritorio
         (novo / "mapping.json").write_text(json.dumps(mapping), encoding="utf-8")
 
 
@@ -1569,6 +1592,68 @@ def gravar_clone_local(resultado, destino) -> bool:
         return False
 
 
+RE_ID_ESCRITORIO = re.compile(r"esc-[0-9a-f]{6}")
+
+
+def _sincronizar_escritorios(origem, token_oauth, http, meta, identidade, mudou) -> None:
+    'Baixa o pacote de cada escritório que não é o principal (`_meta.escritorios` com `pacote`)'
+
+
+
+
+
+    try:
+        base = Path(identidade).with_name("identidades")
+        lista = meta.get("escritorios")
+        if not isinstance(lista, list):
+
+
+            return
+        ids = set()
+        for e in lista:
+            eid = e.get("id") if isinstance(e, dict) else None
+            if isinstance(eid, str) and RE_ID_ESCRITORIO.fullmatch(eid):
+                ids.add(eid)
+        for e in lista:
+            try:
+                eid = e.get("id") if isinstance(e, dict) else None
+                if eid not in ids or not e.get("pacote"):
+                    continue
+                destino = base / eid
+                motivos = mudou or not destino.is_dir()
+                backfill = not motivos and _identidade_marca_ausente(destino)
+                if not (motivos or backfill):
+                    continue
+                baixou = False
+                try:
+                    baixou = _gravar_identidade_local(http(origem, token_oauth, "identidade", escritorio=eid),
+                                                      destino, escritorio=eid)
+                except Exception:
+                    baixou = False
+                if not baixou:
+                    if backfill:
+                        _anotar_backfill_falho(destino)
+                    print(f"DISSERO — não consegui baixar o timbrado do escritório {eid}; "
+                          "tento de novo na próxima sessão.", file=sys.stderr)
+            except Exception:
+                pass
+        if base.is_dir():
+            for filho in base.iterdir():
+                try:
+                    if filho.is_dir() and RE_ID_ESCRITORIO.fullmatch(filho.name) and filho.name not in ids:
+                        shutil.rmtree(filho, ignore_errors=True)
+                except Exception:
+                    pass
+
+            try:
+                if not any(base.iterdir()):
+                    base.rmdir()
+            except Exception:
+                pass
+    except Exception:
+        pass
+
+
 def sincronizar_perfil(origem, token_oauth, http=baixar_perfil_http, destino=PERFIL_LOCAL,
                        identidade=IDENTIDADE_LOCAL, clone=None) -> bool:
     'Perfil do servidor -> arquivo local, logo depois do login. NUNCA levanta e nunca bloqueia: é'
@@ -1620,6 +1705,10 @@ def sincronizar_perfil(origem, token_oauth, http=baixar_perfil_http, destino=PER
                     baixou = False
                 if backfill and not baixou:
                     _anotar_backfill_falho(identidade)
+
+        if not r.get("isError"):
+            _sincronizar_escritorios(origem, token_oauth, http, meta_perfil, identidade,
+                                     gravou or troca_de_advogado)
 
         try:
             gravar_clone_local(http(origem, token_oauth, "clone"), clone)

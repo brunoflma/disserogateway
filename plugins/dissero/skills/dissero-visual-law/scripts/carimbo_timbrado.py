@@ -42,11 +42,17 @@ def _xml_escape(v):
     return (str(v).replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;"))
 
 
-def carimbar(work, origem, sha_manifesto):
+def carimbar(work, origem, sha_manifesto, escritorio="principal"):
     'Grava `docProps/custom.xml` no pacote DESEMPACOTADO, com o content-type e a'
 
 
+
+
+
+
     props = (("DSRTimbradoOrigem", origem), ("DSRTimbradoManifesto", sha_manifesto or ""))
+    if escritorio and escritorio != "principal":
+        props += (("DSRTimbradoEscritorio", escritorio),)
     _gravar_propriedades(work, props, lambda nome: nome.startswith("DSRTimbrado"))
 
 
@@ -126,8 +132,10 @@ def carimbar_do_perfil(work, perfil=None):
     try:
         import perfil_advogado as _pa
         origem = _pa.origem_timbrado(perfil)
+        escritorio = _pa._id_do_escritorio(perfil)
         carimbar(work, origem,
-                 _pa.sha_manifesto_identidade() if origem == "proprio" else "")
+                 _pa.sha_manifesto_identidade(escritorio=escritorio) if origem == "proprio" else "",
+                 escritorio)
         return origem
     except Exception:
         return None

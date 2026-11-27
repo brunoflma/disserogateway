@@ -11,6 +11,7 @@ Uso:
   python build_docx.py entrada.md saida.docx --force        # gera mesmo com AVISOS (nunca com ERROS)
   python build_docx.py entrada.md saida.docx --precedentes achados.json   # resolve `>> achado: <id>`
   python build_docx.py entrada.md saida.docx --minuta-pendencias   # MINUTA COM PENDÊNCIAS
+  python build_docx.py entrada.md saida.docx --identidade --escritorio <id>   # papel de outro escritório
   (`--fragmento` é aceito e é o padrão: sem `--identidade`. Flag desconhecida é recusada.)
 
 MINUTA COM PENDÊNCIAS (`--minuta-pendencias`), sempre que a peça não libera: o documento sai com
@@ -34,7 +35,9 @@ um .docx parcial que perde conteúdo em silêncio.
 Saída: 0 gerado (ou válido, no --check) · 1 uso · 2 OOXML inválido · 3 dialeto ou Jusmanizer
 reprovado · 4 avisos sem --force · 5 --precedentes ilegível ou fora do contrato
 dsr.achados.v2 ou v3, `achado:` sem dataset ou com id inexistente, saída em uso · 6 timbrado não
-resolvido · 7 placeholder não resolvido ou timbrado colado no corpo · 8 jusmanizer.py ausente ·
+resolvido, ou escritório da peça não escolhido, desconhecido ou removido (quem atua por vários:
+`escritorio_do_caso.py`; recusa anterior à escrita) · 7 placeholder não resolvido ou timbrado
+colado no corpo · 8 jusmanizer.py ausente ·
 9 MINUTA COM PENDÊNCIAS de peça com tese jurídica sem a escolha do advogado (minuta rápida ou
 método completo) ou, no método completo, com etapa anterior à redação ou a pesquisa de
 jurisprudência por fazer, ou com o registro da pesquisa que deixou de valer (por exemplo, o
@@ -81,6 +84,14 @@ try:
     import escolha_do_metodo
 except Exception:
     escolha_do_metodo = None
+try:
+    import escritorio_do_caso
+except Exception:
+    escritorio_do_caso = None
+try:
+    import situacao_julgados
+except Exception:
+    situacao_julgados = None
 
 
 
@@ -254,7 +265,7 @@ def dispensas_do_perfil(perfil):
 
 
 FLAGS_CONHECIDAS = ("--identidade", "--fragmento", "--force", "--check", "--precedentes",
-                    "--minuta-pendencias")
+                    "--minuta-pendencias", "--escritorio")
 
 
 
@@ -305,14 +316,97 @@ def texto_do_corpo(body_xml):
     return paras
 
 
+
+
+PENDENCIA_ESCRITORIO = ("falta escolher por qual escritório esta peça sai: o documento saiu sem "
+                        "cabeçalho e rodapé")
+PENDENCIA_PADRAO_INCOMPLETO = ("faltam dados do escritório para o papel padrão (nome, endereço e "
+                               "cidade): o documento saiu sem cabeçalho e rodapé")
+
+
+def _resolver_texto_do_perfil(src, perfil, escritorio_em_aberto=False):
+    '`perfil_advogado.resolver_texto`, menos os campos do escritório quando ele está em aberto:'
+
+
+    guardados = {}
+    if escritorio_em_aberto and escritorio_do_caso is not None:
+        for i, campo in enumerate(escritorio_do_caso.CAMPOS_DO_ESCRITORIO):
+            if campo in src:
+                marca = f"\x00DSRCAMPO{i}\x00"
+                guardados[marca] = campo
+                src = src.replace(campo, marca)
+    try:
+        src = _pa.resolver_texto(src, perfil)
+    except Exception:
+        pass
+    for marca, campo in guardados.items():
+        src = src.replace(marca, campo)
+    return src
+
+
 def _marcador_de_campo(m):
     campo = m.group(0)[2:-2]
     return "==[COMPLETAR: " + _CAMPO_EM_PORTUGUES.get(campo, "dado do advogado") + "]=="
 
 
+def _pendencia_da_situacao(dados, precedentes, out_docx):
+    '(frase, detalhe) da pendência da MINUTA para o julgado liberado sem situação válida na'
+
+
+
+
+
+
+
+    detalhe = ("consulte `situacao_dos_julgados` do conector dissero com os itens e o nonce de uso único que "
+               "`situacao_julgados.py itens <achados.json> --pasta <pasta da peça>` imprime, e grave o envelope, sem "
+               "mexer, como SITUACAO_JULGADOS.json na pasta da peça; a entrega o exige")
+    if situacao_julgados is None:
+        try:
+            n = sum(1 for a in (dados.get("achados") or [])
+                    if isinstance(a, dict) and a.get("use_status") == "allowed")
+        except Exception:
+            n = 0
+        r = {"itens": [None] * n, "geral": object() if n else None, "julgados": []}
+    else:
+        pastas = [os.path.dirname(os.path.abspath(out_docx)),
+                  os.path.dirname(os.path.abspath(precedentes))]
+        r = None
+
+
+
+        for pasta in dict.fromkeys(pastas):
+            env = situacao_julgados.ler_envelope(pasta)
+            if env is None:
+                continue
+
+            nonce = getattr(situacao_julgados, "nonce_pendente", lambda *_a, **_k: None)(pasta, criar=False)
+            r_pasta = situacao_julgados.avaliar(dados, env, nonce)
+            if not r_pasta["geral"] and not r_pasta["julgados"]:
+                return None
+            if r is None:
+                r = r_pasta
+        if r is None:
+            r = situacao_julgados.avaliar(dados, None)
+
+
+    codigos_veto = getattr(situacao_julgados, "CODIGOS_VETO", ("REPROVADO_DEPOIS", "PENDENTE_DEPOIS"))
+    vetados = [j for j in r["julgados"] if j["codigo"] in codigos_veto]
+    if vetados:
+        return (f"{len(vetados)} julgado(s) reprovado(s) ou deixado(s) pendente(s) numa conferência "
+                f"da banca encerrada depois da que os liberou; tirar da peça ou conferir de novo",
+                "códigos " + ", ".join(sorted({j["codigo"] for j in vetados})) + "; " + detalhe)
+    n = len(r["itens"]) + sum(1 for j in r["julgados"] if not j.get("sha256"))
+    if r["geral"] is not None or r["julgados"]:
+        return (f"{max(n, 1)} julgado(s) liberado(s) sem a confirmação recente de que a "
+                f"conferência da banca continua valendo; a peça final só sai com ela", detalhe)
+    return None
+
+
 def build(md_path, out_docx, identidade=False, force=False, check_only=False,
-          precedentes=None, jusmanizer_ativo=True, minuta_pendencias=False):
+          precedentes=None, jusmanizer_ativo=True, minuta_pendencias=False, escritorio=None):
     '`minuta_pendencias=True` é a MINUTA COM PENDÊNCIAS (docstring do módulo): o que é rito'
+
 
 
     pendencias = []
@@ -344,13 +438,55 @@ def build(md_path, out_docx, identidade=False, force=False, check_only=False,
 
 
     _perfil = None
+
+
+
+
+
+
+    _perfil_peca = None
+    _escritorio_em_aberto = False
     if _pa is not None:
         try:
             _perfil = _pa.carregar()
-            if _perfil:
-                src = _pa.resolver_texto(src, _perfil)
         except Exception:
-            pass
+            _perfil = None
+
+
+        if _perfil and escritorio_do_caso is not None:
+            try:
+                _eid_pedido = escritorio_do_caso.resolver(_perfil, explicito=escritorio, modulo=_pa)
+                _pa.perfil_do_escritorio(_perfil, _eid_pedido)
+            except Exception as erro:
+                if str(erro).startswith(("ESCRITÓRIO DESCONHECIDO", "ESCRITÓRIO DIFERENTE")):
+                    print(f"ERRO: {erro}")
+                    _parar_sem_gerar(6, out_docx, check_only)
+        if _perfil and identidade:
+            try:
+                _perfil_peca = _pa.exigir(escritorio=escritorio)
+                _perfil = _perfil_peca
+            except Exception as erro:
+                _perfil_peca = None
+                if str(erro).startswith("ESCRITÓRIO"):
+                    if not minuta_pendencias:
+                        print(f"ERRO: {erro}")
+                        _parar_sem_gerar(6, out_docx, check_only)
+                    _incompleto = str(erro).startswith("ESCRITÓRIO SEM DADOS DO PAPEL PADRÃO")
+                    print("AVISO: sai sem o papel do escritório ("
+                          + ("faltam dados do escritório para o papel padrão" if _incompleto
+                             else "falta escolher por qual escritório a peça sai")
+                          + "); a minuta segue sem cabeçalho e rodapé.")
+                    print(f"  detalhe para o assistente: {erro}")
+                    identidade = False
+                    pendencias.append((PENDENCIA_PADRAO_INCOMPLETO if _incompleto
+                                       else PENDENCIA_ESCRITORIO, None))
+
+        if _perfil and not identidade and escritorio_do_caso is not None:
+            _perfil, _eid = escritorio_do_caso.visao_sem_recusa(_perfil, explicito=escritorio,
+                                                                 modulo=_pa)
+            _escritorio_em_aberto = _eid is None
+        if _perfil:
+            src = _resolver_texto_do_perfil(src, _perfil, _escritorio_em_aberto)
 
 
 
@@ -369,10 +505,17 @@ def build(md_path, out_docx, identidade=False, force=False, check_only=False,
     _orfaos = sorted(set(re.findall(r"\{\{[A-Z_]{2,}\}\}", src)))
     if _orfaos and minuta_pendencias:
         src = re.sub(r"\{\{[A-Z_]{2,}\}\}", _marcador_de_campo, src)
-        pendencias.append(("dados do advogado marcados para completar (perfil não configurado): "
+        _motivo = ("falta escolher por qual escritório a peça sai" if _escritorio_em_aberto
+                   else "perfil não configurado")
+        pendencias.append((f"dados do advogado marcados para completar ({_motivo}): "
                            + ", ".join(sorted({_CAMPO_EM_PORTUGUES.get(o[2:-2], "dado do advogado")
                                                for o in _orfaos})), None))
         _orfaos = []
+    if _orfaos and _escritorio_em_aberto:
+        print("ERRO: " + escritorio_do_caso.MSG_NAO_ESCOLHIDO + ".")
+        print(f"  Os dados do escritório no texto ({', '.join(_orfaos)}) dependem do escritório da "
+              "peça, e não saem com os do principal.")
+        _parar_sem_gerar(7, out_docx, check_only)
     if _orfaos:
         print(f"ERRO: placeholder não resolvido no texto: {', '.join(_orfaos)}")
         print("  São campos do perfil que ninguém preencheu, ou nomes que não existem.")
@@ -487,6 +630,10 @@ def build(md_path, out_docx, identidade=False, force=False, check_only=False,
         except core.AchadoAusente as e:
             print(f"ERRO: {e}")
             _parar_sem_gerar(5, out_docx, check_only)
+        if minuta_pendencias:
+            _p = _pendencia_da_situacao(dados, precedentes, out_docx)
+            if _p:
+                pendencias.append(_p)
     else:
         pendentes = [l for _k, p in blocks if _k == "juris" for _c, em in p
                      for l in em if core.RX_REF_ACHADO.match(l or "")]
@@ -511,6 +658,7 @@ def build(md_path, out_docx, identidade=False, force=False, check_only=False,
 
     core.definir_layout(_perfil)
     core.definir_tema(_perfil)
+    core.definir_perfil(_perfil)
     _ass = None
     if _pa is not None:
         try:
@@ -566,7 +714,7 @@ def build(md_path, out_docx, identidade=False, force=False, check_only=False,
 
 
             try:
-                core.inject_header_footer(work)
+                core.inject_header_footer(work, perfil=_perfil_peca)
                 if _pa is not None:
                     try:
                         core.injetar_brasao(work, _pa.imagem_avulsa(_perfil, "brasao"))
@@ -587,7 +735,7 @@ def build(md_path, out_docx, identidade=False, force=False, check_only=False,
                 raise
 
 
-            carimbo_timbrado.carimbar_do_perfil(work, _perfil)
+            carimbo_timbrado.carimbar_do_perfil(work, _perfil_peca or _perfil)
             advogado = ((_perfil or {}).get("advogado") or {}).get("nome")
         if minuta_pendencias:
 
@@ -742,12 +890,20 @@ def _tem_marca(caminho):
 
 if __name__ == "__main__":
     brutos = sys.argv[1:]
-    args, prec, i = [], None, 0
+    args, prec, esc, i = [], None, None, 0
     while i < len(brutos):
         a = brutos[i]
         if a == "--precedentes":
             if i + 1 < len(brutos):
                 prec = brutos[i + 1]
+            i += 2
+            continue
+        if a == "--escritorio":
+            if i + 1 >= len(brutos) or brutos[i + 1].startswith("--"):
+                print("ERRO: --escritorio pede o id do escritório (principal ou esc-xxxxxx). "
+                      "Nada foi gerado.")
+                sys.exit(1)
+            esc = brutos[i + 1]
             i += 2
             continue
         if not a.startswith("--"):
@@ -769,4 +925,5 @@ if __name__ == "__main__":
           force="--force" in flags,
           check_only=check_only,
           precedentes=prec,
-          minuta_pendencias="--minuta-pendencias" in flags)
+          minuta_pendencias="--minuta-pendencias" in flags,
+          escritorio=esc)
