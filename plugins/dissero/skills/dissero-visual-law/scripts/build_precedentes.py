@@ -81,6 +81,20 @@ def registro_legado(a):
     return all(isinstance(v.get(k), str) and v.get(k).strip() for k in ("status", "data"))
 
 
+def rebaixar_legados(achados):
+    'Leva a pendente, em memória, todo achado de pasta antiga marcado `allowed`, e devolve'
+
+
+
+
+    n = 0
+    for a in achados or []:
+        if isinstance(a, dict) and a.get("use_status") == "allowed" and registro_legado(a):
+            a["use_status"] = "pending"
+            n += 1
+    return n
+
+
 VERIFICACAO_AUSENTE = "verificacao_ausente"
 
 
@@ -182,6 +196,18 @@ SELO_LEGADO = "CONFIRMADO — método não declarado"
 def texto_url(a):
     u = a.get("official_url")
     return u.strip() if isinstance(u, str) else ""
+
+
+def documento_fornecido(a):
+    'O inteiro teor que o advogado baixou e forneceu, quando a confirmação humana se ancorou'
+
+    if texto_url(a):
+        return {}
+    at = (a.get("verification") or {}).get("human_attestation")
+    d = at.get("documento") if isinstance(at, dict) else None
+    if not isinstance(d, dict) or not isinstance(d.get("sha256"), str) or not isinstance(d.get("origem"), str):
+        return {}
+    return d
 
 
 def link_descoberta(a):
@@ -339,7 +365,13 @@ def selo(a):
 
 
 
+
     if a.get("use_status") == "pending":
+
+
+        if achado_contract.falta_ratificar(a):
+            return ("A CONFERIR NA FONTE OFICIAL ANTES DO PROTOCOLO · teor conferido pela "
+                    "máquina, falta ratificar na conferência")
         return "A CONFERIR NA FONTE OFICIAL ANTES DO PROTOCOLO"
     v = a.get("verification") or {}
     data = _data_br(v)
@@ -528,8 +560,13 @@ def montar_fonte(usados, caso="", estrategia=None):
             linhas.append("")
 
         pend = a.get("pendencia_fonte") or {}
+        doc_forn = documento_fornecido(a)
         if link:
             linhas.append(f"**Fonte:** {link}")
+        elif doc_forn:
+            linhas.append(f"**Fonte:** inteiro teor baixado pelo advogado ({_esc(doc_forn['origem'])})"
+                          f" e conferido no documento {_esc(doc_forn.get('arquivo') or '')}, "
+                          f"SHA-256 {doc_forn['sha256'][:16]}…")
         elif pend.get("falta"):
 
             linhas.append("**Fonte:** ==[A OBTER — ver Pendência abaixo]==")
@@ -621,6 +658,7 @@ def build_precedentes(achados_json, out_docx, caso="", pdf=False, exigir_link_e_
                 print("  ·", falha)
             sys.exit(2)
     achados = dados.get("achados", [])
+    legados_rebaixados = rebaixar_legados(achados)
     usados = precedentes_usados(achados)
     if not usados:
         print("ERRO: nenhum precedente selecionado com estado allowed ou pending — "
@@ -680,6 +718,9 @@ def build_precedentes(achados_json, out_docx, caso="", pdf=False, exigir_link_e_
         shutil.rmtree(work, ignore_errors=True)
     carimbar_origem(out_docx, sha256_arquivo(achados_json), marca_lacunas(lac))
 
+    if legados_rebaixados:
+        print(f"AVISO: {legados_rebaixados} precedente(s) de registro antigo, sem a conferência "
+              f"da tela, saem como a conferir: confira-os no Minha banca antes do protocolo.")
     legados = [i for i, x in enumerate(usados, 1) if selo(x).startswith(SELO_LEGADO)]
     if legados:
         print(f"AVISO: {len(legados)} de {len(usados)} precedente(s) sem `verification.method` do "

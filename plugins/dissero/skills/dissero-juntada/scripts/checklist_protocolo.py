@@ -176,6 +176,18 @@ def declarado_no_estado(caminho):
     return fonte
 
 
+
+
+
+
+
+REMEDIO_CURADORIA = (
+    "Para curá-lo, registre a leitura dele pela ingestão do Dissero, na conferência do caso (o que a "
+    "leitura extraiu, com as páginas e a impressão do arquivo), e só então marque-o como curado na "
+    "juntada. A declaração do advogado na conversa de que leu o documento não substitui esse registro: "
+    "o que se prova é que o texto citado na peça está no documento.")
+
+
 def conferir_documentos(citados, tracker, pasta_por_numero):
     pend, lint = [], []
     registro = jc.indexar_por_numero(tracker) if tracker is not None else None
@@ -193,8 +205,9 @@ def conferir_documentos(citados, tracker, pasta_por_numero):
                                      "juntada; a revisão automática da peça já a recusa por isso"})
         elif doc.get("status") != "curado":
             lint.append({"codigo": "citado_nao_curado", "regra": "CRUZAMENTO-DOC", "documentos": [n],
-                         "mensagem": f"o Doc. {n:02d} é citado na peça e ainda não está pronto na "
-                                     "juntada; a revisão automática da peça já a recusa por isso"})
+                         "mensagem": f"o Doc. {n:02d} é citado na peça e ainda não está curado na "
+                                     "juntada; a revisão automática da peça já a recusa por isso. "
+                                     + REMEDIO_CURADORIA})
         elif pasta_por_numero is not None and doc.get("status") == "curado" and n not in pasta_por_numero:
             pend.append(_pendencia(
                 "citado_sem_arquivo_na_pasta",
@@ -217,8 +230,10 @@ def conferir_documentos(citados, tracker, pasta_por_numero):
             pend.append(_pendencia(
                 "juntado_pendente_de_curadoria",
                 f"O Doc. {n:02d} ({doc.get('descricao')}) está registrado e ainda não pode ser "
-                "citado (ilegível ou não curado). Obtenha cópia legível e cure-o, ou retire-o da "
-                "juntada e renumere os seguintes.", documento=n, status=status))
+                "citado (ilegível ou não curado). "
+                + ("Obtenha antes uma cópia legível. " if status == "ilegivel" else "")
+                + REMEDIO_CURADORIA + " Se ele não for usado, retire-o da juntada e renumere os "
+                "seguintes.", documento=n, status=status))
     for n, nomes in sorted((pasta_por_numero or {}).items()):
         if n not in registro:
             pend.append(_pendencia(

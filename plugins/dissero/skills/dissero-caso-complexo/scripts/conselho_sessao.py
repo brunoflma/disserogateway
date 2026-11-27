@@ -593,7 +593,20 @@ def cmd_lint(args):
     st["lint"] = r["lint"]
     _toca(st, args.ts)
     _gravar(args.state, st)
-    return _saida("lint_registrado", [], 0, extra={k: r["lint"][k] for k in ("resultado", "exit_code", "docx")})
+    extra = {k: r["lint"][k] for k in ("resultado", "exit_code", "docx")}
+    nat = r["lint"].get("natureza") if isinstance(r["lint"].get("natureza"), dict) else None
+    motivos = []
+    if nat is not None and r["lint"]["exit_code"] != 0:
+        extra["defeitos_de_texto"] = len(nat.get("texto") or [])
+        extra["pendencias_de_registro"] = len(nat.get("registro") or [])
+        # Decisão do titular (26/11/2026): a turma julga o texto. Lint reprovado SÓ por registro não
+        # obriga devolução; o assento Conformidade o ressalva e vota pelo texto (regimento §2 item 3).
+        if nat.get("registro") and not nat.get("texto"):
+            motivos.append("o linter não aponta defeito de texto: o que falta é registro de conferência "
+                           "(julgado sem conferência registrada, documento sem leitura registrada ou sem "
+                           "curadoria). A turma julga o texto e registra a pendência como ressalva; a "
+                           "entrega fica barrada até o registro sair.")
+    return _saida("lint_registrado", motivos, 0, extra=extra)
 
 
 def cmd_art942(args):
@@ -902,4 +915,4 @@ def main():
 
 if __name__ == "__main__":
     sys.exit(main())
-# selo dsr: sha256=1f9011d1d76f0454c19c258dfcadee9d8b5a1da62f2eb0242000eafb2c52986c
+# selo dsr: sha256=52805ef9705448a4b8d0bd09e12798d244d925bb55f7c5a8fffac74100985485

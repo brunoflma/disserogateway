@@ -254,7 +254,10 @@ ITENS_RESULTADO = ("conforme", "nao_conforme", "nao_se_aplica")
 # artefatos (lint, jurisprudência, versão, prazo, completude), por cima do que o revisor declarar.
 CATALOGO_LIGHT = {
     "merito": (("M1", "a tese central tem fundamento legal correto e vigente", None),
-               ("M2", "nenhuma jurisprudência a conferir: todo precedente citado está confirmado", "jurisprudencia"),
+               # M2 e F1 julgam o TEXTO (decisão do titular, 26/11/2026): conferência ainda não
+               # registrada é ressalva de registro, que barra a entrega no gate e não devolve.
+               ("M2", "nenhum precedente vetado na conferência sustenta a tese; o que ainda falta "
+                      "registrar na conferência fica como ressalva, sem devolver", "jurisprudencia"),
                ("M3", "cada pedido decorre de um fundamento exposto na peça", None),
                ("M4", "preliminares e prejudiciais cabíveis foram enfrentadas ou afastadas com razão", None)),
     "coerencia": (("C1", "os fatos narrados batem com os documentos citados", None),
@@ -265,7 +268,8 @@ CATALOGO_LIGHT = {
                 ("E2", "clareza e concisão: um parágrafo, uma ideia", None),
                 ("E3", "nenhum nome interno, campo ou marca de ferramenta no texto da peça", "lint"),
                 ("E4", "ortografia, concordância e citações formatadas", None)),
-    "conformidade": (("F1", "o linter rodou sobre a versão julgada e aprovou (saída 0)", "lint"),
+    "conformidade": (("F1", "o linter rodou sobre a versão julgada sem defeito de texto (saída 0, ou só "
+                            "pendência de registro, ressalvada)", "lint"),
                      ("F2", "o prazo foi calculado e registrado", "prazo"),
                      ("F3", "o levantamento do caso está concluído para esta peça", "completude"),
                      ("F4", "a versão revisada é a mesma que o linter conferiu", "versao"),
@@ -528,4 +532,4 @@ def _proximo_light(state, painel="painel_fragmento.py --registrar"):
 # Tudo o que o principal usa, inclusive os nomes com sublinhado (o `import *` os pularia).
 __all__ = [_n for _n, _v in list(globals().items())
            if not _n.startswith("__") and type(_v) is not type(sys)]
-# selo dsr: sha256=c3bd7f9b0240856a6b393b67829a3cbe8b47cbb2a32314030a24afb43666a608
+# selo dsr: sha256=d6bdcb377ba3ae152e8f7fc9569200119040da677df087e032209c526a0a39c4

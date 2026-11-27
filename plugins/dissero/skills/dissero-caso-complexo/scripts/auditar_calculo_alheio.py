@@ -339,17 +339,106 @@ def auditar(calculo, autorizado=False, tolerancia=TOLERANCIA_PADRAO, hoje=None,
     }
 
 
+
+
+
+
+
+
+
+AVISO_COMPARA = ("A comparacao nao recalcula: a nossa conta vem da memoria do motor, anexada. A causa "
+                 "apontada e PROVAVEL; quem conclui e o advogado, com o assistente tecnico.")
+
+
+def _chave(p, i):
+    for campo in ("chave", "competencia", "rotulo"):
+        v = str((p or {}).get(campo) or "").strip().lower()
+        if v:
+            return re.sub(r"\s+", " ", v)
+    return "parcela[%d]" % i
+
+
+def comparar(deles, nosso, autorizado=False, tolerancia=TOLERANCIA_PADRAO, hoje=None,
+             registro_capacidades=None):
+    """Diferencas parcela a parcela entre o calculo do outro lado e a nossa memoria. Nunca conclui."""
+    trava = auditar({"parcelas": [{"valor": 0}]}, autorizado=autorizado, tolerancia=tolerancia,
+                    hoje=hoje, registro_capacidades=registro_capacidades)
+    if trava.get("estado") == "recusado":
+        return trava
+    lados = {}
+    for nome, calc in (("deles", deles), ("nosso", nosso)):
+        parcelas = calc.get("parcelas") if isinstance(calc, dict) else None
+        if not isinstance(parcelas, list) or not parcelas:
+            return {"schema_version": SCHEMA_VERSION, "estado": "recusado",
+                    "motivos": ["`parcelas` do calculo %s deve ser lista nao vazia" % nome]}
+        lados[nome] = {}
+        for i, p in enumerate(parcelas):
+            if isinstance(p, dict):
+                lados[nome].setdefault(_chave(p, i), p)
+    diferencas, iguais = [], 0
+    soma = {"deles": 0.0, "nosso": 0.0}
+    for k in list(lados["nosso"]) + [k for k in lados["deles"] if k not in lados["nosso"]]:
+        d, n = lados["deles"].get(k), lados["nosso"].get(k)
+        vd, vn = (_num(d.get("valor")) if d else None), (_num(n.get("valor")) if n else None)
+        soma["deles"] += vd or 0.0
+        soma["nosso"] += vn or 0.0
+        if d is None or n is None:
+            diferencas.append({"parcela": k, "estado": "a_conferir",
+                               "causa_provavel": ["parcela_so_nossa" if d is None else "parcela_so_deles"],
+                               "deles": vd, "nosso": vn})
+            continue
+        if vd is None or vn is None:
+            diferencas.append({"parcela": k, "estado": "a_conferir", "causa_provavel": ["valor_ilegivel"],
+                               "deles": vd, "nosso": vn})
+            continue
+        if abs(vd - vn) <= tolerancia:
+            iguais += 1
+            continue
+        causas = []
+        for campo, causa, eh_fator in (("base", "base_diferente", False), ("fator", "fator_ou_indice_diferente", True),
+                                       ("juros", "juros_diferente", False)):
+            a, b = _ler(d.get(campo), fator=eh_fator)[0], _ler(n.get(campo), fator=eh_fator)[0]
+            if a is not None and b is not None and abs(a - b) > (1e-6 if eh_fator else tolerancia):
+                causas.append(causa)
+        if not causas:
+            causas.append("arredondamento_provavel" if abs(vd - vn) <= tolerancia * 10 else "conta_diferente")
+        diferencas.append({"parcela": k, "estado": "a_conferir", "causa_provavel": causas,
+                           "deles": round(vd, 4), "nosso": round(vn, 4), "diferenca": round(vd - vn, 4)})
+    nossas = list(lados["nosso"].items())
+    idx = sorted({0, len(nossas) // 2, len(nossas) - 1})
+    amostra = [{"parcela": nossas[i][0], **{c: nossas[i][1].get(c) for c in ("base", "fator", "juros", "valor")
+                                           if nossas[i][1].get(c) is not None}} for i in idx]
+    return {
+        "schema_version": SCHEMA_VERSION, "estado": "comparado",
+        "parcelas_iguais": iguais, "diferencas": diferencas,
+        "total_deles": round(soma["deles"], 4), "total_nosso": round(soma["nosso"], 4),
+        "diferenca_total": round(soma["deles"] - soma["nosso"], 4),
+        "amostra_para_conferir_na_calculadora": amostra,
+        "tolerancia_por_parcela": tolerancia, "avisos": [AVISO_COMPARA, AVISO_A_CONFERIR],
+    }
+
+
 def main(argv=None):
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     ap.add_argument("--arquivo", required=True, help="JSON com o calculo da outra parte")
+    ap.add_argument("--comparar-com", dest="comparar_com",
+                    help="JSON com a NOSSA memoria de calculo (parcelas), feita por um motor do plugin")
     ap.add_argument("--tolerancia", type=float, default=TOLERANCIA_PADRAO)
     args = ap.parse_args(argv)
     try:
         dado = json.load(io.open(args.arquivo, encoding="utf-8"))
+        nosso = json.load(io.open(args.comparar_com, encoding="utf-8")) if args.comparar_com else None
     except (OSError, ValueError) as erro:
         print(json.dumps({"schema_version": SCHEMA_VERSION, "estado": "recusado",
                           "motivos": ["arquivo ilegivel: %s" % erro]}, ensure_ascii=False))
         return 2
+    if nosso is not None:
+        r = comparar(dado, nosso, autorizado=os.environ.get(VARIAVEL_AMBIENTE) == "1",
+                     tolerancia=args.tolerancia)
+        print(json.dumps(r, ensure_ascii=False, indent=2))
+        if r["estado"] != "comparado":
+            return 2
+        return 1 if r["diferencas"] else 0
     r = auditar(dado, autorizado=os.environ.get(VARIAVEL_AMBIENTE) == "1",
                 tolerancia=args.tolerancia)
     print(json.dumps(r, ensure_ascii=False, indent=2))

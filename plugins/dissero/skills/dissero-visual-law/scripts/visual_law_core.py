@@ -416,6 +416,17 @@ def dir_de_trabalho(prefixo="dsrvl_"):
     return tempfile.mkdtemp(prefix=prefixo)
 
 
+
+
+
+_PERFIL_EM_VIGOR = None
+
+
+def definir_perfil(perfil):
+    global _PERFIL_EM_VIGOR
+    _PERFIL_EM_VIGOR = perfil if isinstance(perfil, dict) else None
+
+
 def _estilo_corpo():
     'Fonte, tamanho e cor do corpo: do perfil quando houver, do TEMA em vigor quando não.'
 
@@ -430,7 +441,7 @@ def _estilo_corpo():
               "cor": INK}
     try:
         import perfil_advogado as _pa
-        perfil = _pa.carregar()
+        perfil = _PERFIL_EM_VIGOR if _PERFIL_EM_VIGOR is not None else _pa.carregar()
         if not perfil:
             return padrao
         fonte = _pa._get(perfil, "identidade_visual.fonte_corpo")
@@ -3029,8 +3040,10 @@ def _remover_partes_orfas(work_dir, copiados):
         f.write(ct)
 
 
-def inject_header_footer(work_dir, ident_dir=None):
+def inject_header_footer(work_dir, ident_dir=None, perfil=None):
     'Injeta o timbrado completo (cabeçalho e rodapé even/default/first) no docx'
+
+
 
 
 
@@ -3049,7 +3062,7 @@ def inject_header_footer(work_dir, ident_dir=None):
                 "  A peça NÃO sai sem o timbrado do perfil. Reinstale o plugin para restaurar "
                 "os scripts da skill."
             ) from None
-        ident_dir = _pa.dir_identidade(_pa.exigir())
+        ident_dir = _pa.dir_identidade(perfil if perfil is not None else _pa.exigir())
 
     plano = timbrado_em_toda_pagina(planejar_identidade(ident_dir), ident_dir)
 
@@ -3346,19 +3359,23 @@ def bold_dados_objetivos(doc):
     return doc
 
 
-def universal_pass(work_dir, identidade="fragmento"):
+def universal_pass(work_dir, identidade="fragmento", perfil=None):
     'Normalização determinística do transformer:'
 
 
 
 
 
-    perfil_up = None
-    try:
-        import perfil_advogado as _pa
-        perfil_up = _pa.carregar()
-    except Exception:
-        perfil_up = None
+
+
+    perfil_up = perfil
+    if perfil_up is None:
+        try:
+            import perfil_advogado as _pa
+            perfil_up = _pa.carregar()
+        except Exception:
+            perfil_up = None
+    definir_perfil(perfil)
     definir_layout(perfil_up)
 
 
@@ -3379,7 +3396,7 @@ def universal_pass(work_dir, identidade="fragmento"):
     if identidade == "fragmento":
         strip_header_footer(work_dir)
     elif identidade == "final":
-        inject_header_footer(work_dir)
+        inject_header_footer(work_dir, perfil=perfil)
 
         try:
             import perfil_advogado as _pa

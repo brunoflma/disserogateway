@@ -60,6 +60,7 @@ import os
 import re
 import shutil
 import sys
+import types
 import unicodedata
 import zipfile
 
@@ -687,6 +688,104 @@ def _nome_do_campo(caminho):
     return _NOME_DO_CAMPO.get(caminho, caminho)
 
 
+
+
+
+
+ID_PRINCIPAL = "principal"
+_RX_ID_ESCRITORIO = re.compile(r"^esc-[0-9a-f]{6}$")
+
+
+def atende_varios(perfil):
+    """True só quando o advogado declarou que atua por mais de um escritório."""
+    return _get(perfil, "atuacao.varios_escritorios") is True
+
+
+def escritorios(perfil):
+    """Lista de escritórios do perfil: o principal primeiro, depois os cadastrados."""
+    nome = _get(perfil, "atuacao.nome_curto_principal") or _get(perfil, "advogado.banca") or ""
+    lista = [{"id": ID_PRINCIPAL, "nome_curto": nome}]
+    extras = perfil.get("escritorios") if isinstance(perfil, dict) else None
+    if isinstance(extras, list):
+        lista.extend(e for e in extras if isinstance(e, dict))
+    return lista
+
+
+def perfil_do_escritorio(perfil, escritorio_id):
+    'Visão do perfil para UM escritório: cópia profunda com os dados do escritório no lugar'
+
+
+    achado = next((e for e in escritorios(perfil) if e.get("id") == escritorio_id), None)
+    if achado is None:
+        raise PerfilError(f"ESCRITÓRIO DESCONHECIDO — «{escritorio_id}» não está no perfil. "
+                          f"Escolha um dos escritórios cadastrados.")
+    visao = json.loads(json.dumps(perfil))
+    visao["_escritorio"] = {"id": achado["id"], "nome_curto": achado.get("nome_curto", "")}
+    if escritorio_id == ID_PRINCIPAL:
+        return visao
+
+    def _poe(bloco, chave, valor):
+        visao.setdefault(bloco, {})
+        if not isinstance(visao[bloco], dict):
+            visao[bloco] = {}
+        visao[bloco][chave] = valor
+
+
+    _poe("advogado", "banca", achado.get("banca") or "")
+    for chave in ("endereco", "cidade_uf", "cep"):
+        _poe("contato", chave, achado.get(chave) or "")
+    for chave in ("email", "telefone"):
+        if achado.get(chave) is not None:
+            _poe("contato", chave, achado[chave])
+    for chave, destino in (("cidade_assinatura", "cidade_assinatura"),
+                           ("comarca_padrao", "comarca_padrao"),
+                           ("tribunal_local_padrao", "tribunal_local_padrao")):
+        if achado.get(chave) is not None:
+            _poe("foro", destino, achado[chave])
+    _poe("identidade_visual", "timbrado", achado.get("timbrado"))
+
+    if achado.get("layout") is None:
+        visao.get("identidade_visual", {}).pop("layout", None)
+    else:
+        _poe("identidade_visual", "layout", achado["layout"])
+    for chave in ("fonte_corpo", "tamanho_corpo_pt", "cor_texto_hex"):
+        if achado.get(chave) is not None:
+            _poe("identidade_visual", chave, achado[chave])
+    return visao
+
+
+def _validar_escritorios(perfil):
+    """Erros de `atuacao` e `escritorios`. Perfil sem esses blocos não tem nada a validar."""
+    erros = []
+    atuacao = perfil.get("atuacao")
+    if atuacao is not None and not isinstance(atuacao, dict):
+        erros.append("atuação por escritórios deve ser um bloco de campos")
+    lista = perfil.get("escritorios")
+    if lista is None:
+        return erros
+    if not isinstance(lista, list):
+        return erros + ["lista de escritórios deve ser uma lista"]
+    vistos = set()
+    for i, e in enumerate(lista, 1):
+        rotulo = f"escritório nº {i}"
+        if not isinstance(e, dict):
+            erros.append(f"{rotulo} deve ser um bloco de campos")
+            continue
+        eid = e.get("id")
+        if not isinstance(eid, str) or not _RX_ID_ESCRITORIO.match(eid):
+            erros.append(f"{rotulo}: identificador inválido (esperado esc- e 6 hexadecimais)")
+        elif eid in vistos:
+            erros.append(f"{rotulo}: identificador repetido «{eid}»")
+        else:
+            vistos.add(eid)
+        nome = e.get("nome_curto")
+        if not isinstance(nome, str) or not nome.strip():
+            erros.append(f"{rotulo}: falta preencher o nome curto")
+        if e.get("timbrado") not in ("padrao", "proprio"):
+            erros.append(f"{rotulo}: timbrado deve ser «padrao» ou «proprio»")
+    return erros
+
+
 def validar(perfil):
     'Lista de erros (vazia = válido). As mensagens são para o ADVOGADO: nomeiam o campo'
 
@@ -788,6 +887,8 @@ def validar(perfil):
                          f"assim. Peça ao operador do escritório para reinstalar o tema no "
                          f"seu perfil")
 
+    erros.extend(_validar_escritorios(perfil))
+
 
 
 
@@ -806,8 +907,13 @@ def _remedio():
     return "  " + MSG_SEM_PERFIL
 
 
-def exigir(caminho=None):
-    """Perfil válido, ou levanta. Ponto fail-closed de quem produz PEÇA."""
+def exigir(caminho=None, escritorio=None):
+    'Perfil válido, na visão do escritório da peça, ou levanta. Ponto fail-closed de quem'
+
+
+
+
+
     perfil = carregar(caminho)
     if perfil is None:
         raise PerfilAusente(
@@ -821,7 +927,53 @@ def exigir(caminho=None):
     if divergente(perfil):
         raise PerfilError("cópia divergente do servidor — chame perfil_do_advogado de novo e "
                           "grave com --gravar-do-servidor")
-    return perfil
+
+
+    try:
+        import escritorio_do_caso
+    except ImportError:
+        escritorio_do_caso = None
+    if escritorio_do_caso is not None:
+
+
+        proprio = types.SimpleNamespace(atende_varios=atende_varios, escritorios=escritorios,
+                                        PerfilError=PerfilError)
+        eid = escritorio_do_caso.resolver(perfil, explicito=escritorio, modulo=proprio)
+    else:
+
+
+        eid = escritorio or (os.environ.get("DSR_ESCRITORIO") or "").strip()
+        if not eid:
+            if atende_varios(perfil) and len(escritorios(perfil)) >= 2:
+                raise PerfilError("ESCRITÓRIO NÃO ESCOLHIDO — passe --escritorio <id> ao gerador.")
+            eid = ID_PRINCIPAL
+    visao = perfil_do_escritorio(perfil, eid)
+    _exigir_dados_do_papel_padrao(perfil, visao, eid)
+    return visao
+
+
+
+
+
+_DADOS_DO_PAPEL_PADRAO = (("banca", "o nome do escritório"), ("endereco", "o endereço"),
+                          ("cidade_uf", "a cidade e o estado"))
+MSG_SEM_DADOS_PAPEL_PADRAO = "ESCRITÓRIO SEM DADOS DO PAPEL PADRÃO"
+
+
+def _exigir_dados_do_papel_padrao(perfil, visao, eid):
+    if eid == ID_PRINCIPAL or _get(visao, "identidade_visual.timbrado") == "proprio":
+        return
+    achado = next((e for e in escritorios(perfil) if e.get("id") == eid), {})
+    faltam = [rotulo for chave, rotulo in _DADOS_DO_PAPEL_PADRAO
+              if not str(achado.get(chave) or "").strip()]
+    if faltam:
+        nome = achado.get("nome_curto") or eid
+        raise PerfilError(
+            f"{MSG_SEM_DADOS_PAPEL_PADRAO} — o escritório «{nome}» usa o papel padrão e falta "
+            f"{', '.join(faltam)}; o cabeçalho e o rodapé sairiam vazios ou com o contato de outro "
+            f"escritório. Peça ao advogado que complete os dados deste escritório (página Seus "
+            f"dados, ou registrar_perfil com escritorio=\"{eid}\"), baixe o perfil de novo com "
+            f"perfil_do_advogado e grave com --gravar-do-servidor.")
 
 
 
@@ -2390,7 +2542,7 @@ def dir_templates_identidade():
     return candidatos[-1]
 
 
-def _verificar_marca_identidade(diretorio, perfil):
+def _verificar_marca_identidade(diretorio, perfil, conferir_escritorio=True):
     'Recusa quando o timbrado em `diretorio` foi marcado para um advogado DIFERENTE do'
 
 
@@ -2419,9 +2571,23 @@ def _verificar_marca_identidade(diretorio, perfil):
             _mapa = json.load(fh) or {}
         marca_disco = str(_mapa.get("marca") or "")
         marca_indeterminada = bool(_mapa.get("marca_indeterminada"))
+        escritorio_disco = str(_mapa.get("escritorio") or ID_PRINCIPAL)
     except (OSError, ValueError):
-        marca_disco, marca_indeterminada = "", False
+        marca_disco, marca_indeterminada, escritorio_disco = "", False, None
     marca_perfil = str(_get(perfil, "email_marca") or "")
+
+
+
+
+
+    escritorio_perfil = _id_do_escritorio(perfil)
+    if (conferir_escritorio and escritorio_disco is not None
+            and escritorio_disco != escritorio_perfil):
+        raise PerfilError(
+            f"TIMBRADO DE OUTRO ESCRITÓRIO — o pacote em {diretorio} é do escritório "
+            f"«{escritorio_disco}» e a peça é do «{escritorio_perfil}». "
+            + _passo_gravar_identidade(escritorio_perfil) + "; a peça não sai com o timbrado "
+            "de outro escritório.")
     if marca_disco and marca_perfil and marca_disco != marca_perfil:
         raise PerfilError(
             "TIMBRADO DE OUTRO ADVOGADO — o pacote em identidade/ pertence a outra conta; "
@@ -2444,7 +2610,8 @@ def dir_identidade(perfil, dir_templates=None):
     'Diretório com o timbrado do advogado, gerado sob demanda e cacheado ao lado do'
 
     if _get(perfil, "identidade_visual.timbrado") == "proprio":
-        d = dir_identidade_propria()
+        escritorio = _id_do_escritorio(perfil)
+        d = _dir_do_escritorio(escritorio)
 
 
 
@@ -2455,9 +2622,8 @@ def dir_identidade(perfil, dir_templates=None):
             achados = []
         if not any(re.fullmatch(r"(header|footer)\d+\.xml", n) for n in achados):
             raise PerfilError(
-                "TIMBRADO PRÓPRIO SEM PACOTE — chame perfil_do_advogado(parte=\"identidade\") e "
-                "grave com `perfil_advogado.py --gravar-identidade <zip>`; a peça não sai com "
-                "o timbrado errado. Cabeçalho e rodapé vêm só do pacote do Dissero ou do "
+                "TIMBRADO PRÓPRIO SEM PACOTE — " + _passo_gravar_identidade(escritorio)
+                + "; a peça não sai com o timbrado errado. Cabeçalho e rodapé vêm só do pacote do Dissero ou do "
                 "timbrado padrão do plugin: não escreva, não copie de outra peça e não ajuste "
                 "nenhum dos dois à mão. Se o pacote não vier, entregue o trabalho em fragmento "
                 "(sem --identidade) e diga ao advogado que ele precisa enviar o timbrado na "
@@ -2478,7 +2644,8 @@ def dir_identidade(perfil, dir_templates=None):
         gerar_identidade(perfil, dir_templates, destino)
 
 
-    _verificar_marca_identidade(destino, perfil)
+
+    _verificar_marca_identidade(destino, perfil, conferir_escritorio=False)
     return destino
 
 
@@ -2758,9 +2925,44 @@ def divergente(perfil) -> bool:
     return atual != original
 
 
-def dir_identidade_propria():
-    """Onde o timbrado PRÓPRIO (o pacote extraído por `--gravar-identidade`) vive."""
-    return os.path.join(os.path.expanduser("~"), ".config", "dissero", "identidade")
+def dir_identidade_propria(escritorio=ID_PRINCIPAL):
+    'Onde o timbrado PRÓPRIO (o pacote extraído por `--gravar-identidade`) vive.'
+
+
+
+    base = os.path.join(os.path.expanduser("~"), ".config", "dissero")
+    if escritorio in (None, ID_PRINCIPAL):
+        return os.path.join(base, "identidade")
+    if not isinstance(escritorio, str) or not _RX_ID_ESCRITORIO.fullmatch(escritorio):
+        raise PerfilError(f"ESCRITÓRIO DESCONHECIDO — «{escritorio}» não é um id de escritório "
+                          f"válido. Escolha um dos escritórios cadastrados.")
+    return os.path.join(base, "identidades", escritorio)
+
+
+def _dir_do_escritorio(escritorio):
+    '`dir_identidade_propria` do escritório. O principal é chamado SEM argumento, como sempre'
+
+
+    if escritorio in (None, ID_PRINCIPAL):
+        return dir_identidade_propria()
+    return dir_identidade_propria(escritorio)
+
+
+def _id_do_escritorio(perfil):
+    """Id do escritório de que `perfil` é a visão; sem `_escritorio`, é o principal."""
+    marca = perfil.get("_escritorio") if isinstance(perfil, dict) else None
+    if isinstance(marca, dict):
+        return marca.get("id") or ID_PRINCIPAL
+    return marca if isinstance(marca, str) and marca else ID_PRINCIPAL
+
+
+def _passo_gravar_identidade(escritorio=ID_PRINCIPAL):
+    """Texto do «chame ... e grave com ...» no escritório certo."""
+    if escritorio in (None, ID_PRINCIPAL):
+        return ("chame perfil_do_advogado(parte=\"identidade\") e grave com "
+                "`perfil_advogado.py --gravar-identidade <zip>`")
+    return (f"chame perfil_do_advogado(parte=\"identidade\", escritorio=\"{escritorio}\") e grave com "
+            f"`perfil_advogado.py --gravar-identidade <zip> --escritorio {escritorio}`")
 
 
 
@@ -2925,13 +3127,13 @@ def origem_timbrado(perfil):
     return "proprio" if _get(perfil, "identidade_visual.timbrado") == "proprio" else "padrao"
 
 
-def sha_manifesto_identidade(diretorio=None):
+def sha_manifesto_identidade(diretorio=None, escritorio=ID_PRINCIPAL):
     'sha256 do MANIFESTO do pacote de timbrado próprio, ou `""` quando não há manifesto.'
 
 
 
 
-    hashes = _manifesto_do_pacote(diretorio or dir_identidade_propria())
+    hashes = _manifesto_do_pacote(diretorio or _dir_do_escritorio(escritorio))
     if not hashes:
         return ""
     return _sha_texto(json.dumps(hashes, sort_keys=True, separators=(",", ":")))
@@ -3019,13 +3221,42 @@ def _baixar_pacote(url):
         with urllib.request.urlopen(req, timeout=30) as r:
             dados = r.read(TETO_PACOTE_BAIXADO + 1)
     except urllib.error.HTTPError as e:
-        raise PerfilError(f"o endereço do timbrado não serviu (HTTP {e.code}); ele vale 15 minutos: chame "
-                          "perfil_do_advogado(parte=\"identidade\") de novo")
+        raise PerfilError(f"ETAPA BAIXAR — o endereço do timbrado não serviu (HTTP {e.code}); ele vale 15 minutos: "
+                          "chame perfil_do_advogado(parte=\"identidade\") de novo e rode com o endereço novo")
     except (urllib.error.URLError, OSError, ValueError) as e:
-        raise PerfilError(f"não foi possível baixar o timbrado ({type(e).__name__}); tente de novo")
+        raise PerfilError(f"ETAPA BAIXAR — esta sessão não alcançou o endereço do timbrado ({type(e).__name__}). "
+                          "Chame perfil_do_advogado(parte=\"identidade\") uma vez mais e rode com o endereço novo; "
+                          "se falhar de novo, a peça não sai com o timbrado: diga ao advogado em que etapa parou")
     if len(dados) > TETO_PACOTE_BAIXADO:
-        raise PerfilError("o pacote de timbrado baixado é maior que o permitido")
+        raise PerfilError("ETAPA BAIXAR — o pacote de timbrado baixado é maior que o permitido")
     return dados
+
+
+def escritorio_do_endereco(url):
+    'Escritório dono do pacote de um endereço `<origem>/identidade/<token>`, lido do token.'
+
+
+
+
+
+
+    import base64
+    m = re.search(r"/identidade/([A-Za-z0-9_-]{8,400})/?(?:[?#].*)?$", str(url or ""))
+    if not m:
+        return None
+    tok = m.group(1)
+    try:
+        bruto = base64.urlsafe_b64decode(tok + "=" * (-len(tok) % 4))
+        n = bruto[0]
+        sujeito = bruto[1:1 + n].decode("utf-8")
+    except (ValueError, IndexError, UnicodeDecodeError):
+        return None
+    if len(bruto) < 1 + n + 8 + 32 or not sujeito:
+        return None
+    if ":" not in sujeito:
+        return ID_PRINCIPAL
+    eid = sujeito.split(":", 1)[1]
+    return eid if _RX_ID_ESCRITORIO.match(eid) else None
 
 
 def marca_do_pacote_no_disco(destino=None):
@@ -3041,7 +3272,7 @@ def marca_do_pacote_no_disco(destino=None):
         return ""
 
 
-def troca_de_dono_do_timbrado(destino=None):
+def troca_de_dono_do_timbrado(destino=None, escritorio=ID_PRINCIPAL):
     '`(marca_no_disco, marca_do_perfil)` quando `--gravar-identidade` vai APAGAR um pacote'
 
 
@@ -3057,14 +3288,14 @@ def troca_de_dono_do_timbrado(destino=None):
 
 
 
-    disco = marca_do_pacote_no_disco(destino)
+    disco = marca_do_pacote_no_disco(destino or _dir_do_escritorio(escritorio))
     perfil_marca, _ilegivel = _marca_e_legibilidade()
     if disco and perfil_marca and disco != perfil_marca:
         return disco, perfil_marca
     return None
 
 
-def gravar_identidade(pacote, destino=None):
+def gravar_identidade(pacote, destino=None, escritorio=None):
     'Extrai o zip do timbrado próprio (header*/footer*/rels/media, assinatura e brasão) em'
 
 
@@ -3078,8 +3309,23 @@ def gravar_identidade(pacote, destino=None):
 
 
 
-    destino = destino or dir_identidade_propria()
-    if isinstance(pacote, str) and re.match(r"^https?://", pacote, re.I):
+
+
+
+
+
+
+    eh_endereco = isinstance(pacote, str) and re.match(r"^https?://", pacote, re.I)
+    do_token = escritorio_do_endereco(pacote) if eh_endereco else None
+    if do_token and escritorio and escritorio != do_token:
+        raise PerfilError(
+            f"TIMBRADO DE OUTRO ESCRITÓRIO — este endereço é do pacote do escritório «{do_token}», e "
+            f"--escritorio pede «{escritorio}». Nada foi gravado nem apagado. Rode de novo sem "
+            f"--escritorio (o pacote vai para a pasta de «{do_token}»), ou peça o endereço do "
+            f"escritório certo com perfil_do_advogado(parte=\"identidade\", escritorio=\"{escritorio}\").")
+    escritorio = escritorio or do_token or ID_PRINCIPAL
+    destino = destino or _dir_do_escritorio(escritorio)
+    if eh_endereco:
         dados = _baixar_pacote(pacote)
     else:
         dados = open(pacote, "rb").read() if isinstance(pacote, str) else pacote
@@ -3088,13 +3334,19 @@ def gravar_identidade(pacote, destino=None):
         entradas = _entradas_zip(z)
     except zipfile.BadZipFile:
         raise PerfilError(
-            "o pacote de timbrado não é um zip válido; chame "
+            "ETAPA ABRIR — o pacote de timbrado não é um zip válido; chame "
             "perfil_do_advogado(parte=\"identidade\") de novo")
 
 
     for nome, _info in entradas:
         if not _RX_ENTRADA_IDENTIDADE.fullmatch(nome):
-            raise PerfilError(f"o pacote de timbrado tem um arquivo inesperado: {nome}")
+            raise PerfilError(f"ETAPA ABRIR — o pacote de timbrado tem um arquivo inesperado: {nome}")
+        if escritorio != ID_PRINCIPAL and re.fullmatch(r"(assinatura|brasao)\.(png|jpe?g)", nome):
+            raise PerfilError(
+                f"ETAPA ABRIR — o pacote do escritório «{escritorio}» traz {nome}, e assinatura e "
+                "brasão são só do pacote do escritório principal. Chame "
+                f"perfil_do_advogado(parte=\"identidade\", escritorio=\"{escritorio}\") de novo: "
+                "o pacote certo não os traz.")
     if os.path.isdir(destino):
         shutil.rmtree(destino)
     n = 0
@@ -3108,7 +3360,7 @@ def gravar_identidade(pacote, destino=None):
         with open(alvo, "wb") as fh:
             fh.write(z.read(info))
         n += 1
-    mapping = {"origem": "servidor", "arquivos": n}
+    mapping = {"origem": "servidor", "arquivos": n, "escritorio": escritorio}
     if avulsas:
         mapping["avulsas"] = sorted(avulsas)
 
@@ -3127,7 +3379,64 @@ def gravar_identidade(pacote, destino=None):
         mapping["marca_indeterminada"] = True
     with open(os.path.join(destino, "mapping.json"), "w", encoding="utf-8") as fh:
         json.dump(mapping, fh, ensure_ascii=False)
+
+
+
+    estado, detalhe = conferir_pacote_identidade(destino)
+    if estado != "integro":
+        raise PerfilError(f"ETAPA CONFERIR — o pacote gravado não confere ({estado}: {detalhe}); chame "
+                          "perfil_do_advogado(parte=\"identidade\") de novo")
     return n
+
+
+def estado_da_identidade(perfil, escritorio=None):
+    'O pacote de identidade que o perfil exige está aqui, íntegro e é deste advogado?'
+
+
+
+
+
+
+
+
+
+    if not isinstance(perfil, dict):
+        return {"pendente": False, "motivo": "sem perfil", "proximo_passo": None}
+    escritorio = escritorio or _id_do_escritorio(perfil)
+    if _id_do_escritorio(perfil) != escritorio:
+        perfil = perfil_do_escritorio(perfil, escritorio)
+    if escritorio == ID_PRINCIPAL:
+        proximo = ("chame perfil_do_advogado(parte=\"identidade\") e rode `perfil_advogado.py --gravar-identidade "
+                   "<endereço>` com o endereço da resposta, nesta mesma sessão; depois `--status` tem de dizer "
+                   "identidade_pendente: false. Não peça o Word de novo ao advogado.")
+        avulsas = [t for t in ("assinatura", "brasao") if _get(perfil, f"identidade_visual.{t}")]
+    else:
+        proximo = (f"chame perfil_do_advogado(parte=\"identidade\", escritorio=\"{escritorio}\") e rode "
+                   f"`perfil_advogado.py --gravar-identidade <endereço> --escritorio {escritorio}` com o "
+                   "endereço da resposta, nesta mesma sessão; depois `--status` tem de dizer "
+                   "identidade_pendente: false para este escritório. Não peça o Word de novo ao advogado.")
+        avulsas = []
+    proprio = _get(perfil, "identidade_visual.timbrado") == "proprio"
+    if not proprio and not avulsas:
+        return {"pendente": False, "motivo": "timbrado padrão, sem pacote a baixar", "proximo_passo": None}
+    d = _dir_do_escritorio(escritorio)
+    estado, detalhe = conferir_pacote_identidade(d)
+    if estado != "integro":
+        return {"pendente": True, "motivo": f"pacote {estado}: {detalhe}", "proximo_passo": proximo}
+    try:
+        _verificar_marca_identidade(d, perfil)
+    except PerfilError as e:
+        return {"pendente": True, "motivo": str(e), "proximo_passo": proximo}
+    try:
+        achados = os.listdir(d)
+    except OSError:
+        achados = []
+    if proprio and not any(re.fullmatch(r"(header|footer)\d+\.xml", n) for n in achados):
+        return {"pendente": True, "motivo": "o pacote não traz cabeçalho nem rodapé", "proximo_passo": proximo}
+    faltam = [t for t in avulsas if not any(os.path.isfile(os.path.join(d, f"{t}.{x}")) for x in ("png", "jpg", "jpeg"))]
+    if faltam:
+        return {"pendente": True, "motivo": "o pacote não traz " + " nem ".join(faltam), "proximo_passo": proximo}
+    return {"pendente": False, "motivo": "pacote íntegro e deste advogado", "proximo_passo": None}
 
 
 
@@ -3144,6 +3453,9 @@ def imagem_avulsa(perfil, tipo):
         return None
     if not _get(perfil, f"identidade_visual.{tipo}"):
         return None
+
+
+    perfil = {k: v for k, v in perfil.items() if k != "_escritorio"}
     d = dir_identidade_propria()
     caminho = next((os.path.join(d, f"{tipo}.{ext}") for ext in ("png", "jpg", "jpeg")
                     if os.path.isfile(os.path.join(d, f"{tipo}.{ext}"))), None)
@@ -3360,8 +3672,11 @@ def pontos_a_conferir(perfil, dir_pacote=None):
                           + ", ".join(faltam))
     corpo = str(_get(perfil, "identidade_visual.fonte_corpo") or "").strip()
     if corpo and _get(perfil, "identidade_visual.timbrado") == "proprio":
-        diretorio = dir_pacote or dir_identidade_propria()
-        for arquivo, fontes in _fontes_do_pacote(diretorio).items():
+        try:
+            diretorio = dir_pacote or _dir_do_escritorio(_id_do_escritorio(perfil))
+        except PerfilError:
+            diretorio = None
+        for arquivo, fontes in (_fontes_do_pacote(diretorio) if diretorio else {}).items():
             outras = [f for f in fontes if f.lower() != corpo.lower()]
             if outras:
                 parte = "rodapé" if arquivo.startswith("footer") else "cabeçalho"
@@ -3394,8 +3709,30 @@ def status():
     if _get(perfil, "identidade_visual.timbrado") == "proprio":
         est_p, det_p = conferir_pacote_identidade()
         pacote = {"estado": est_p, "detalhe": det_p}
+    identidade = estado_da_identidade(perfil)
+
+
+    por_escritorio = []
+    for esc in escritorios(perfil):
+        eid = esc.get("id")
+        try:
+            est = identidade if eid == ID_PRINCIPAL else estado_da_identidade(perfil, eid)
+            timbrado = _get(perfil_do_escritorio(perfil, eid), "identidade_visual.timbrado")
+            pendente = est["pendente"]
+        except PerfilError:
+
+
+            timbrado, pendente = esc.get("timbrado"), True
+        por_escritorio.append({"id": eid, "nome_curto": esc.get("nome_curto", ""),
+                               "timbrado": timbrado, "identidade_pendente": pendente})
     return {"resolvido": True, "caminho": caminho, "valido": not erros, "erros": erros,
             "timbrado_proprio": pacote,
+            "atende_varios_escritorios": atende_varios(perfil),
+            "escritorios": por_escritorio,
+
+
+            "identidade_pendente": identidade["pendente"],
+            "identidade": identidade,
             "pontos_a_conferir": pontos_a_conferir(perfil),
             "advogado": _get(perfil, "advogado.nome") if not erros else None,
             "origem": perfil.get("_origem") or "local", "em": perfil.get("_em"),
@@ -3422,6 +3759,9 @@ def main(argv=None):
                     help="grava o perfil que `perfil_do_advogado` devolveu ('-' lê stdin)")
     ap.add_argument("--gravar-identidade", metavar="ZIP_OU_ENDERECO",
                     help="extrai o pacote de timbrado próprio de um .zip ou do endereço que o servidor devolveu")
+    ap.add_argument("--escritorio", metavar="ID", default=None,
+                    help="com --gravar-identidade, o escritório dono do pacote (padrão: o do "
+                         "endereço; zip local: o principal)")
     ap.add_argument("--clone", action="store_true",
                     help="imprime o clone do advogado gravado nesta máquina (Mente, Voz, Repertório)")
     ap.add_argument("--gravar-clone-do-servidor", metavar="ARQUIVO",
@@ -3481,9 +3821,13 @@ def main(argv=None):
 
 
 
-        _troca = troca_de_dono_do_timbrado()
         try:
-            gravar_identidade(a.gravar_identidade)
+
+            _esc_alvo = a.escritorio or (escritorio_do_endereco(a.gravar_identidade)
+                                         if re.match(r"^https?://", a.gravar_identidade, re.I)
+                                         else None)
+            _troca = troca_de_dono_do_timbrado(escritorio=_esc_alvo or ID_PRINCIPAL)
+            gravar_identidade(a.gravar_identidade, escritorio=a.escritorio)
         except (PerfilError, OSError, UnicodeDecodeError) as e:
             print(f"ERRO: {e}")
             return 1

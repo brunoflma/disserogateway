@@ -60,14 +60,10 @@
 
 
 
-
-
-
-
-
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import os
 import re
@@ -121,7 +117,9 @@ ATESTACAO_RECUSADA = "ATESTACAO_RECUSADA"
 
 URL_OFICIAL_SEM_ACHADO = "URL_OFICIAL_SEM_ACHADO"
 REMEDIO_ENDERECO = ("informe o endereço do documento no portal do tribunal com "
-                    "--url-oficial {id}=https://<endereço oficial> e rode de novo")
+                    "--url-oficial {id}=https://<endereço oficial>, ou, se o advogado baixou o "
+                    "inteiro teor no sistema do tribunal (PJe, e-SAJ) e não há endereço, pergunte "
+                    "onde baixou e rode de novo com --origem \"<as palavras dele>\"")
 
 try:
     sys.stdout.reconfigure(encoding="utf-8")
@@ -398,10 +396,10 @@ def _ler_urls_informadas(itens):
 
 
 def _veredito(out, gravou, parcial, atestando):
-    conf = len(out.get("confirmados") or [])
+    conf = len(out.get("prontos_para_a_tela") or [])
     pend = len(out.get("pendentes_endereco") or [])
     div = len(out.get("divergentes") or [])
-    contagem = (f"{conf} confirmado(s) · {pend} pendente(s) por endereço oficial · "
+    contagem = (f"{conf} pronto(s) para a tela · {pend} pendente(s) por endereço oficial · "
                 f"{div} divergente(s)")
     if not gravou:
         motivo = "contrato do teor violado" if out.get("violacoes") else "divergência"
@@ -409,7 +407,7 @@ def _veredito(out, gravou, parcial, atestando):
     if not atestando:
         return (f"PROCEDÊNCIA GRAVADA: {len(out.get('atestados') or [])} achado(s) com teor "
                 f"verbatim · {div} divergente(s)")
-    return ("ATESTAÇÃO PARCIAL GRAVADA: " if parcial else "ATESTAÇÃO GRAVADA: ") + contagem
+    return ("PROCEDÊNCIA PARCIAL GRAVADA: " if parcial else "PROCEDÊNCIA GRAVADA: ") + contagem
 
 
 def _imprimir(out, primeira, extras=()):
@@ -440,6 +438,9 @@ def main():
                     help="endereço oficial do documento do achado ID (repetível)")
     ap.add_argument("--manter-v2", action="store_true",
                     help="não migra registro v2 para v3")
+    ap.add_argument("--origem", default="",
+                    help="onde o advogado baixou o inteiro teor, nas palavras dele (ex.: «PJe do "
+                         "TJCE»): sem endereço oficial, atesta pelo próprio documento")
     ap.add_argument("-o", "--saida", required=True)
     a = ap.parse_args()
 
@@ -488,15 +489,9 @@ def main():
     except Exception:
         fontes = {}
 
-    ator = data = ""
-    if a.atestar:
-        import registrar_confirmacao_manual as rcm
-        ator = texto(a.ator) or rcm.ator_do_perfil()
-        data = texto(a.data) or rcm.hoje()
-        if not ator:
-            return recusa_uso("--atestar precisa de quem atesta: o nome vem do perfil do "
-                              "advogado (advogado.nome), que não está configurado nesta "
-                              "máquina; configure o perfil ou passe --ator")
+
+
+
 
     textos, ilegiveis, identidade = {}, [], []
     if a.documentos:
@@ -527,6 +522,7 @@ def main():
 
     atestados, divergentes, sem_documento, confirmados = [], [], [], []
     pendentes_endereco, usadas, avisos_anatomia = [], set(), []
+    prontos_para_a_tela = []
     for achado in achados:
         ident = texto(achado.get("id"))
         doc = mapa.get(ident)
@@ -561,40 +557,47 @@ def main():
                 continue
 
 
+
+
+
             usadas.add(ident)
             url, origem, motivo_url = escolher_endereco(achado, informadas, fontes)
-            if not url:
-                pendentes_endereco.append({
-                    "id": ident, "codigo": SEM_ENDERECO_OFICIAL,
-                    "documento": os.path.basename(doc),
-                    "motivo": f"teor conferido verbatim, mas sem endereço oficial: {motivo_url}",
-                    "o_que_fazer": REMEDIO_ENDERECO.format(id=ident)})
+            if url:
+                if texto(achado.get("official_url")) != url:
+                    achado["official_url"] = url
+                    sinais = (achado.get("verification") or {}).setdefault("signals", {})
+                    sinais["official_url_origem"] = origem
+                prontos_para_a_tela.append({"id": ident, "ancora": "endereco",
+                                            "documento": os.path.basename(doc)})
                 continue
-            declaracao = (f"PDF do inteiro teor obtido pelo advogado na fonte oficial "
-                          f"({os.path.basename(doc)}); a máquina localizou no documento o "
-                          f"número e o relator registrados e conferiu o trecho verbatim.")
-            sinais = {"documento_conferido_por_maquina": True,
-                      "documento_sha256_extracao": reg.get("sha256_extracao")}
-            if origem in ("descoberta", "informada"):
-                sinais["official_url_origem"] = origem
-            ok_at, erro = rcm._atestar(achado, ator, data, url, declaracao, sinais)
-            if ok_at:
-                confirmados.append(ident)
-            else:
-                pendentes_endereco.append({
-                    "id": ident, "codigo": ATESTACAO_RECUSADA,
-                    "documento": os.path.basename(doc),
-                    "motivo": f"o registro da atestação foi recusado: {erro}",
-                    "o_que_fazer": ("corrija o que o erro aponta no achado e rode de novo; se o "
-                                    "erro for do endereço, " + REMEDIO_ENDERECO.format(id=ident))})
+
+
+            prontos_para_a_tela.append({"id": ident, "ancora": "documento",
+                                        "documento": os.path.basename(doc),
+                                        "motivo_sem_endereco": motivo_url})
 
     divergentes += identidade
-    violacoes = violacoes_do_teor(dados, a.fontes) if confirmados else []
+    violacoes = violacoes_do_teor(dados, a.fontes) if prontos_para_a_tela else []
     out = {"ok": not divergentes and not violacoes, "atestados": atestados,
            "divergentes": divergentes, "sem_documento": sem_documento}
     if a.atestar:
         out.update({"confirmados": confirmados, "pendentes_endereco": pendentes_endereco,
-                    "ator": ator, "data": data})
+                    "prontos_para_a_tela": prontos_para_a_tela})
+        if prontos_para_a_tela:
+            out["mensagem_ao_advogado"] = (
+                f"A máquina conferiu, palavra por palavra, o trecho de {len(prontos_para_a_tela)} "
+                f"julgado(s) no inteiro teor que você enviou. Falta a conferência de uma pessoa da "
+                f"banca, que se faz no Minha banca: quem conferir entra com o próprio login, "
+                f"marca se cada julgado confere e, quando estiver tudo certo, clica Encerrar e "
+                f"liberar.")
+            out["para_o_assistente"] = (
+                "Nada foi confirmado aqui: o PDF prova o trecho, não a conferência de pessoa. "
+                "Gere a lista da tela (`folha_atestacao.py achados.json -o "
+                "CONFERENCIA_PENDENTE.json`), abra a conferência com `preparar_conferencia` e, "
+                "avisado de que clicaram Encerrar e liberar, registre o recibo do encerramento "
+                "(o de conferência aberta não libera) de `recibo_da_conferencia` com "
+                "`registrar_confirmacao_manual.py achados.json --recibo <envelope.json> -o "
+                "achados.json`.")
         sem_achado = [{"id": i, "url": u, "codigo": URL_OFICIAL_SEM_ACHADO,
                        "motivo": ("nenhum achado com este ID foi atestado nesta rodada (ID "
                                   "inexistente, sem documento casado ou já liberado): confira "
@@ -659,8 +662,8 @@ def main():
         out["codigo"] = "GRAVOU_PARCIAL"
     out["resumo"] = (f"{len(atestados)} achado(s) com teor conferido VERBATIM contra o "
                      f"documento do tribunal"
-                     + (f"; {len(confirmados)} registrado(s) como conferido(s) pelo advogado"
-                        if a.atestar else "")
+                     + (f"; {len(prontos_para_a_tela)} pronto(s) para a conferência na tela "
+                        f"(nenhum confirmado aqui)" if a.atestar else "")
                      + (f"; {len(pendentes_endereco)} pendente(s) por falta de endereço oficial "
                         f"(teor conferido, sem liberação)" if pendentes_endereco else "")
                      + (f"; {len(sem_documento)} sem documento para conferir (seguem sem "

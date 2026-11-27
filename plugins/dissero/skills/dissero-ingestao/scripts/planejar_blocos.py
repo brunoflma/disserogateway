@@ -63,8 +63,125 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 try:
     from aval_subagentes import ler_aval
+    import aval_subagentes as _aval
 except Exception:
     ler_aval = None
+    _aval = None
+
+
+
+
+
+
+USO_LEITURA = "leitura_em_blocos"
+MARCA_LEITOR = "[Dissero · leitor de bloco {k}/{n} · {doc}]"
+
+TIPO_LEITOR = "dissero:leitor-de-bloco"
+
+
+try:
+    MAX_LEITORES_POR_DOCUMENTO = max(1, int(os.environ.get("DSR_LEITURA_MAX_LEITORES") or 120))
+except ValueError:
+    MAX_LEITORES_POR_DOCUMENTO = 120
+
+
+MAX_LEITORES_POR_SESSAO = 2 * MAX_LEITORES_POR_DOCUMENTO
+
+
+def contar_paginas_pdf(caminho):
+    'Páginas do PDF lidas do PRÓPRIO arquivo (o número que o modelo declara não autoriza nada).'
+
+    import re as _re
+    try:
+        with open(caminho, "rb") as fh:
+            dados = fh.read()
+    except OSError:
+        return None
+    if not dados.startswith(b"%PDF"):
+        return None
+    contagens = [int(m) for m in _re.findall(rb"/Type\s*/Pages\b[^>]*?/Count\s+(\d+)", dados)]
+    contagens += [int(m) for m in _re.findall(rb"/Count\s+(\d+)[^>]*?/Type\s*/Pages\b", dados)]
+    soltas = len(_re.findall(rb"/Type\s*/Page(?![a-zA-Z])", dados))
+    n = max(contagens) if contagens else 0
+    n = max(n, soltas)
+    return n or None
+
+
+def id_do_documento(caminho):
+    """Identidade do documento: os 16 primeiros hexadecimais do SHA-256 do arquivo."""
+    import hashlib as _h
+    h = _h.sha256()
+    with open(caminho, "rb") as fh:
+        for bloco in iter(lambda: fh.read(1 << 20), b""):
+            h.update(bloco)
+    return h.hexdigest()[:16]
+
+
+def registrar_leitura(session_id, raiz, blocos_n, documento, arquivo="", agora=None):
+    'Autoriza, no aval da sessão, os leitores que FALTAM para este documento (id = hash do'
+
+
+    import datetime as _dt
+    if _aval is None or not _s(session_id):
+        return False, "sem a sessão identificada (--session-id) não há aval a registrar"
+    alvo, origem = _aval._caminho(_aval.NOME_AVAL, session_id, None, env=_aval.ENV_AVAL)
+    if origem == "cwd":
+        return False, ("a raiz do caso não está registrada: o gate procuraria o aval em outra pasta. "
+                       "Rode `caso_raiz.py registrar --raiz <pasta do caso> --session-id <id>` e planeje de novo")
+    if _s(raiz) and os.path.normcase(os.path.abspath(os.path.dirname(alvo))) != os.path.normcase(os.path.abspath(raiz)):
+        return False, (f"--raiz {raiz} não é a raiz do caso que o gate enxerga ({os.path.dirname(alvo)}): "
+                       "registre a raiz com `caso_raiz.py registrar` em vez de passá-la por argumento")
+    agora = agora or _dt.datetime.now().isoformat(timespec="seconds")
+    d = None
+    if os.path.exists(alvo):
+        try:
+            with open(alvo, encoding="utf-8") as fh:
+                d = json.load(fh)
+        except Exception:
+            return False, f"o aval em {alvo} está ilegível e não é sobrescrito: confira o arquivo"
+        if not isinstance(d, dict):
+            return False, f"o aval em {alvo} não é um objeto e não é sobrescrito: confira o arquivo"
+        if not _aval._vale_para_a_sessao(d, session_id):
+            return False, (f"o aval em {alvo} é de outra sessão ({d.get('session_id')}) e não é sobrescrito: "
+                           "peça o aval desta sessão com `autorizar_subagentes.py`")
+    else:
+        d = {"session_id": session_id.strip(), "max_simultaneos": _aval.PADRAO_SIMULTANEOS,
+             "ondas": _aval.PADRAO_ONDAS, "concedido_em": agora,
+             "escopo": "padrão sem aval expresso; a leitura em blocos foi acrescida pelo pedido de análise"}
+    por_doc = _aval.leitura_por_documento(d)
+    consumidos = _aval.ler_consumo_leitura(session_id, None).get(documento, 0)
+    falta = blocos_n - (por_doc.get(documento, 0) - consumidos)
+    if falta <= 0:
+        return True, alvo
+    if sum(por_doc.values()) + falta > MAX_LEITORES_POR_SESSAO:
+        return False, (f"a sessão já autorizou {sum(por_doc.values())} leitores e o teto da sessão é "
+                       f"{MAX_LEITORES_POR_SESSAO}: peça o aval expresso ao advogado para seguir")
+    lista = d.get("acrescimos") if isinstance(d.get("acrescimos"), list) else []
+    lista.append({"agentes": falta, "uso": USO_LEITURA, "documento": documento, "arquivo": arquivo,
+                  "escopo": f"leitura em blocos de {arquivo or documento} ({blocos_n} blocos), pelo pedido de análise",
+                  "concedido_em": agora})
+    d["acrescimos"] = lista
+    try:
+        with open(alvo, "w", encoding="utf-8") as fh:
+            json.dump(d, fh, ensure_ascii=False, indent=2)
+    except OSError as e:
+        return False, f"não foi possível gravar o aval em {alvo}: {e}"
+    return True, alvo
+
+
+def anotar_leitores(blocos, documento):
+    """O pedido de cada leitor, com a marca que o gate reconhece e a instrução de leitura."""
+    n = len(blocos)
+    for k, b in enumerate(blocos, 1):
+        ini, fim = b["paginas"]
+        b["tipo_do_leitor"] = TIPO_LEITOR
+        b["prompt_do_leitor"] = (
+            MARCA_LEITOR.format(k=k, n=n, doc=documento)
+            + f" Leia SOMENTE as páginas {ini} a {fim}, com {b['instrucao']}, e devolva a extração "
+              "estruturada do contrato do agente de bloco (dissero-ingestao/references/mapa-sintese.md). "
+              "Não leia o resto do documento, não conclua sobre o caso e marque como lacuna a página "
+              "ilegível.")
+    return blocos
 
 
 
@@ -358,6 +475,52 @@ def main(argv=None):
                   "distribuída evita a diluição de atenção da leitura acumulada",
     })
 
+    documento = (args.arquivo or args.processo or "documento").strip()
+    doc_id, motivo_auto = None, None
+    if os.environ.get("DSR_LEITURA_PEDE_AVAL") == "1":
+        motivo_auto = "DSR_LEITURA_PEDE_AVAL=1: o escritório pede o aval expresso para a leitura em blocos"
+    elif not _s(args.arquivo) or not os.path.isfile(args.arquivo):
+        motivo_auto = ("a autorização pelo pedido só vale para o arquivo no disco (--arquivo com o PDF "
+                       "existente): sem ele, o número de páginas não é conferível; peça o aval expresso")
+    elif bloco != BLOCO_PAGINAS or overlap != OVERLAP_PAGINAS:
+        motivo_auto = (f"a autorização pelo pedido usa os blocos padrão ({BLOCO_PAGINAS} páginas, sobreposição "
+                       f"de {OVERLAP_PAGINAS}); com outro tamanho, peça o aval expresso")
+    else:
+        reais = contar_paginas_pdf(args.arquivo)
+        if not reais:
+            motivo_auto = "não deu para contar as páginas do arquivo: peça o aval expresso"
+        elif args.paginas > reais:
+            motivo_auto = (f"o documento tem {reais} páginas, não {args.paginas}: planeje de novo com "
+                           f"--paginas {reais}")
+        else:
+            doc_id = id_do_documento(args.arquivo)
+    anotar_leitores(blocos, doc_id or "0" * 16)
+    n = len(blocos)
+    if doc_id:
+        if n > MAX_LEITORES_POR_DOCUMENTO:
+            base.update({"acao": "escalar",
+                         "erro": (f"{n} blocos passam do teto de {MAX_LEITORES_POR_DOCUMENTO} leitores por documento: "
+                                  "divida o documento (por volume ou por fase) ou peça o aval expresso ao advogado")})
+            return _saida(base, 1)
+        ok, info = registrar_leitura(args.session_id, args.raiz, n, doc_id, os.path.basename(args.arquivo))
+        if ok:
+            teto, det_aval = ler_aval(args.session_id, args.raiz)
+            base.update({"aval_subagentes": det_aval, "teto_autorizado": teto, "aval_registrado_em": info,
+                         "leitura_autorizada_pelo_pedido": True, "leitores_autorizados": n, "documento_id": doc_id,
+                         "aviso_ao_advogado": (
+                             f"Vou ler o documento em {n} partes de até {bloco} páginas, cada uma por um leitor "
+                             f"independente, e juntar o resultado depois, para nada se perder no meio. São {n} "
+                             f"leitores, e isso consome uso do seu plano. Se preferir uma leitura mais curta ou só "
+                             f"de alguns trechos, diga.")})
+            if args.sintese_subagente and det_aval.get("restante", 0) < 1:
+                base.update({"acao": "escalar",
+                             "erro": "a síntese em subagente usa o orçamento comum, que está esgotado nesta sessão: "
+                                     "faça a síntese no processo raiz ou peça o aval expresso"})
+                return _saida(base, 1)
+            return _saida(base)
+    else:
+        info = motivo_auto
+    base["leitura_nao_registrada"] = info
     if agentes > teto:
         base.update({
             "acao": "escalar",

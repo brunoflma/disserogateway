@@ -92,6 +92,54 @@ PADRAO_SIMULTANEOS = 2
 PADRAO_ONDAS = 1
 
 
+
+
+USO_LEITURA = "leitura_em_blocos"
+NOME_CONSUMO_LEITURA = "LEITURA_EM_BLOCOS.jsonl"
+
+
+def leitura_por_documento(d):
+    """{documento: agentes} dos acréscimos de leitura válidos — gêmeo do gate."""
+    out = {}
+    lista = d.get("acrescimos") if isinstance(d, dict) else None
+    if isinstance(lista, list):
+        for a in lista:
+            if (isinstance(a, dict) and a.get("uso") == USO_LEITURA and _s(a.get("documento"))
+                    and _int(a.get("agentes"))):
+                doc = a["documento"].strip()
+                out[doc] = out.get(doc, 0) + a["agentes"]
+    return out
+
+
+def soma_leitura_bruta(d):
+    """Todo acréscimo marcado como leitura, válido ou não: nenhum é orçamento comum (gêmeo do gate)."""
+    lista = d.get("acrescimos") if isinstance(d, dict) else None
+    if not isinstance(lista, list):
+        return 0
+    return sum(a["agentes"] for a in lista if isinstance(a, dict) and _int(a.get("agentes")) and a.get("uso") == USO_LEITURA)
+
+
+def ler_consumo_leitura(session_id, raiz=None):
+    """{documento: leitores já liberados pelo gate} desta sessão — gêmeo do `ler_consumo`."""
+    alvo, _ = _caminho(NOME_CONSUMO_LEITURA, session_id, raiz)
+    out = {}
+    try:
+        with open(alvo, encoding="utf-8", errors="replace") as fh:
+            for linha in fh:
+                try:
+                    d = json.loads(linha)
+                except Exception:
+                    continue
+                if not isinstance(d, dict) or not _s(d.get("documento")):
+                    continue
+                if _s(session_id) and _s(d.get("session_id")) and d["session_id"].strip() != session_id.strip():
+                    continue
+                out[d["documento"].strip()] = out.get(d["documento"].strip(), 0) + 1
+    except Exception:
+        return {}
+    return out
+
+
 def _s(x):
     return isinstance(x, str) and bool(x.strip())
 
@@ -229,7 +277,10 @@ def _com_o_gasto(teto, det, session_id, raiz):
 
 
     ledger, origem_ledger = _caminho(NOME_LEDGER, session_id, raiz, env=ENV_LEDGER)
-    ja = contar_disparos(ledger, session_id)
+    consumo = ler_consumo_leitura(session_id, raiz)
+    ja = max(0, contar_disparos(ledger, session_id) - sum(consumo.values()))
+    if consumo:
+        det["leitura_consumida"] = consumo
     det["ledger"] = ledger
     det["origem_ledger"] = origem_ledger
     det["ja_disparados"] = ja
@@ -279,7 +330,7 @@ def ler_aval(session_id, raiz=None):
     tortos = [(c, d[c]) for c in ("max_simultaneos", "ondas")
               if c in d and _int(d[c]) is None]
     extra, acr_tortos = soma_acrescimos(d)
-    det["acrescimo_total"] = extra
+    det["acrescimo_total"] = extra - soma_leitura_bruta(d)
     notas = ["%s %r ignorado: o gate só aceita inteiro > 0" % (c, v) for c, v in tortos]
     if acr_tortos:
         notas.append("acrescimos %r ignorado(s): o gate só soma item com `agentes` inteiro > 0"
@@ -289,4 +340,7 @@ def ler_aval(session_id, raiz=None):
                             + " — regrave o aval com `autorizar_subagentes.py`")
 
 
-    return _com_o_gasto(simult * ondas + extra, det, session_id, raiz)
+    leitura = leitura_por_documento(d)
+    if leitura:
+        det["leitura_por_documento"] = leitura
+    return _com_o_gasto(simult * ondas + extra - soma_leitura_bruta(d), det, session_id, raiz)

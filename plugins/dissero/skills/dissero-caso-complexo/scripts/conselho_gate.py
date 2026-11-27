@@ -75,7 +75,11 @@
 
 
 
-import sys, os, json, argparse, time
+
+
+
+
+import sys, os, json, argparse, time, re
 
 try:
     sys.stdout.reconfigure(encoding="utf-8")
@@ -113,6 +117,15 @@ try:
     import escolha_do_conselho as _escolha
 except Exception:
     _escolha = None
+
+
+
+try:
+    import situacao_julgados as _situacao
+    _SITUACAO_ERRO = ""
+except Exception as _e_sit:
+    _situacao = None
+    _SITUACAO_ERRO = str(_e_sit)
 
 
 class CaminhoRecusado(Exception):
@@ -511,8 +524,17 @@ def peca_julgada(st, state_path, peca_state=None, conferir=True):
 
     pasta = os.path.dirname(os.path.abspath(state_path))
     ps = os.path.abspath(peca_state) if _s(peca_state) else os.path.join(pasta, "PECA_STATE.json")
-    remedio = ("Registre a peça no PECA_STATE.json da pasta do caso (`estado_peca.py canonico "
-               "--arquivo <peça>.docx`) ou passe-o com --peca-state.")
+
+
+
+
+
+    remedio = (f"Se o registro da peça existe noutro lugar, passe-o com --peca-state. Se a peça foi "
+               f"editada fora do fluxo (o .docx alterado à mão) e o advogado pediu para adotá-la "
+               f"como a peça vigente: `estado_peca.py canonico --state \"{ps}\" --arquivo "
+               f"\"<peça>.docx\" --adotar`. Ele cria o registro mínimo da peça, carimba a impressão "
+               f"do arquivo e anota que ela foi adotada depois de editada fora do fluxo; o lint e o "
+               f"Conselho passam a julgar esse arquivo.")
     if _s(peca_state) and not os.path.isfile(ps):
         raise PecaRecusada("peca_nao_localizada", f"o PECA_STATE indicado não existe: {ps}. " + remedio)
     if os.path.isfile(ps):
@@ -596,10 +618,30 @@ def lint_real(st, state_path, args):
     for numero in (pst.get("processos") if isinstance(pst.get("processos"), list) else []):
         if _s(numero):
             cmd += ["--processo", _s(numero)]
+
+
+
+    import tempfile
+    fd, rel_path = tempfile.mkstemp(prefix="dsr_lint_", suffix=".json")
+    os.close(fd)
+    os.remove(rel_path)
+    cmd += ["--json", rel_path]
     try:
         r = subprocess.run(cmd, capture_output=True, text=True, encoding="utf-8", timeout=60)
     except Exception as e:
         return {"codigo": "lint_nao_reexecutado", "recusa": f"o linter não rodou sobre {docx} ({e})."}
+    relatorio = None
+    try:
+        if os.path.isfile(rel_path):
+            with open(rel_path, encoding="utf-8") as fh:
+                relatorio = json.load(fh)
+    except Exception:
+        relatorio = None
+    finally:
+        try:
+            os.remove(rel_path)
+        except OSError:
+            pass
     resultado = "APROVADO" if r.returncode == 0 else "REPROVADO"
     dres, dec = getattr(args, "resultado", None), getattr(args, "exit_code", None)
     if (dres is not None and dres != resultado) or (dec is not None and dec != r.returncode):
@@ -609,10 +651,212 @@ def lint_real(st, state_path, args):
             f"sem --resultado e --exit-code.")}
     bloco = {"resultado": resultado, "exit_code": r.returncode,
              "saida": (r.stdout or "")[-2000:], "reexecutado": True, "docx": docx,
-             "docx_sha256": sha, "origem": origem}
+             "docx_sha256": sha, "origem": origem,
+
+             "natureza": natureza_do_lint(r.stdout or "", r.returncode, relatorio)}
     if _s(getattr(args, "peca_state", None)):
         bloco["peca_state"] = os.path.abspath(args.peca_state)
     return {"lint": bloco}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+_TIPOS_REGISTRO = ("julgado", "julgado_fora_da_relacao", "relacao", "documento", "juntada", "outro",
+                   "situacao")
+_REGRAS_REGISTRO = (
+    ("julgado", re.compile(r"^julgado\s+n\.?\s*[º°]\s*(\S+?)\s+consta na Relação", re.I)),
+    ("julgado", re.compile(r"^(.{1,90}?)\s+consta na Relação\b.*use_status≠allowed")),
+    ("relacao", re.compile(r"^L11\b")),
+    ("julgado_fora_da_relacao",
+     re.compile(r"^CRUZAMENTO: julgado citado na peça AUSENTE da Relação de Precedentes \(nº ([^)]+)\)")),
+    ("julgado_fora_da_relacao", re.compile(r"^CRUZAMENTO: (.+?) citada na peça AUSENTE da Relação")),
+    ("relacao", re.compile(r"^CRUZAMENTO: --precedentes ilegível")),
+    ("documento", re.compile(r"^CRUZAMENTO-DOC: \(Doc\. (\d+)\)")),
+    ("juntada", re.compile(r"^CRUZAMENTO-DOC: --juntada ilegível")),
+    ("juntada", re.compile(r"^L13\b")),
+)
+_PREFIXO_LINHA = re.compile(r"^(ERRO|PENDENTE):\s*")
+
+
+def itens_de_registro(linha):
+    'Os itens de registro [{tipo, ref, linha}] que a linha do linter nomeia; [] se nenhuma regra'
+
+    linha = _s(linha)
+    for tipo, rx in _REGRAS_REGISTRO:
+        achado = rx.match(linha)
+        if not achado:
+            continue
+        if tipo == "juntada" and linha.startswith("L13"):
+            docs = re.search(r"\(Doc\. ([\d, ]+)\)", linha)
+            return ([{"tipo": "documento", "ref": f"{int(n):02d}", "linha": linha[:300]}
+                     for n in re.findall(r"\d+", docs.group(1) if docs else "")]
+                    + [{"tipo": "juntada", "ref": "", "linha": linha[:300]}])
+        ref = achado.group(1).strip() if achado.groups() else ""
+        if tipo == "documento":
+            ref = f"{int(ref):02d}"
+        return [{"tipo": tipo, "ref": ref, "linha": linha[:300]}]
+    return []
+
+
+def _natureza_do_relatorio(rel, exit_code):
+    """A natureza do relatório estruturado do linter, ou None se ele não veio na forma esperada."""
+    rel = _d(rel)
+    achados = [rel.get("erros"), rel.get("pendencias")]
+    if rel.get("formato") != 1 or not all(isinstance(a, list) for a in achados):
+        return None
+    reg, txt = [], []
+    for a in achados[0] + achados[1]:
+        a = _d(a)
+        msg = _s(a.get("mensagem"))
+        if a.get("natureza") != "registro":
+            txt.append(msg[:300] or "achado do linter sem mensagem")
+            continue
+
+
+
+        reg += itens_de_registro(msg) or [{"tipo": "outro", "ref": "", "linha": msg[:300],
+                                           "o_que_falta": _s(a.get("o_que_falta"))[:300],
+                                           "como_resolver": _s(a.get("como_resolver"))[:400]}]
+    if exit_code not in (0, None) and not reg and not txt:
+        txt.append(f"o linter saiu {exit_code} sem achado no relatório; leia a saída dele")
+
+
+
+    return {"formato": 1, "fonte": "linter", "registro": reg, "texto": txt}
+
+
+def natureza_do_lint(saida, exit_code, relatorio=None):
+    '{formato, fonte, registro: [{tipo, ref, linha}], texto: [linha]}: a do relatório estruturado'
+
+    do_linter = _natureza_do_relatorio(relatorio, exit_code) if relatorio is not None else None
+    if do_linter is not None:
+        return do_linter
+    reg, txt = [], []
+    for bruta in (saida or "").splitlines():
+        m = _PREFIXO_LINHA.match(bruta)
+        if not m:
+            if bruta.startswith("REPROVADO:"):
+                txt.append(bruta[:300])
+            continue
+        linha = bruta[m.end():].strip()
+        achados = itens_de_registro(linha)
+        if achados:
+            reg += achados
+        else:
+            txt.append(linha[:300])
+    if exit_code not in (0, None) and not reg and not txt:
+        txt.append(f"o linter saiu {exit_code} sem item reconhecido; leia a saída dele")
+    return {"formato": 1, "fonte": "regras", "registro": reg, "texto": txt}
+
+
+def _natureza(lint):
+    'A natureza gravada com o lint; sem ela (lint de cópia anterior), a da `saida` guardada, mas só'
+
+
+    nat = _d(lint.get("natureza"))
+    if nat.get("formato") == 1 and isinstance(nat.get("registro"), list) and isinstance(nat.get("texto"), list):
+
+        reg = [dict(_d(r), ref=_s(_d(r).get("ref")), linha=_s(_d(r).get("linha"))) for r in nat["registro"]
+               if _d(r).get("tipo") in _TIPOS_REGISTRO]
+        txt = [_s(t) or "achado do linter ilegível" for t in nat["texto"]]
+        txt += ["item de registro malformado no lint gravado"] * (len(nat["registro"]) - len(reg))
+        return {"formato": 1, "fonte": _s(nat.get("fonte")), "registro": reg, "texto": txt}
+    saida = _s(lint.get("saida"))
+    if "lint_peca —" in saida:
+        return natureza_do_lint(saida, lint.get("exit_code"))
+    return None
+
+
+def separar_pendencias(lint, lint_ok, pend):
+    '(texto_ok, registro): texto_ok diz se o lint não aponta defeito de TEXTO (True também quando'
+
+
+    registro = [{"tipo": "julgado", "ref": _s(p), "linha": _s(p)} for p in pend]
+    if lint_ok:
+        return True, registro
+    nat = _natureza(lint)
+    if nat is None:
+        return False, registro
+    registro = list(nat["registro"]) + registro
+    return (not nat["texto"] and bool(nat["registro"])), registro
+
+
+def mensagem_registro(registro):
+    """O que falta, quem resolve e como: uma linha por natureza de pendência."""
+    julg = list(dict.fromkeys(r["ref"] or r["linha"] for r in registro if r["tipo"] == "julgado"))
+    fora = list(dict.fromkeys(r["ref"] or r["linha"] for r in registro if r["tipo"] == "julgado_fora_da_relacao"))
+    docs = sorted({r["ref"] for r in registro if r["tipo"] == "documento" and r["ref"]})
+    relacao = any(r["tipo"] == "relacao" for r in registro)
+    juntada = any(r["tipo"] == "juntada" for r in registro)
+    linhas = []
+    if julg or relacao:
+        qtd = f"{len(julg)} julgado(s)" if julg else "os julgados citados"
+        amostra = f" ({'; '.join(julg[:6])}{'…' if len(julg) > 6 else ''})" if julg else ""
+        linhas.append(
+            f"registro_pendente_julgado: falta conferir {qtd} da jurisprudência citada{amostra}; "
+            f"sem a conferência, o julgado não está confirmado na Relação de Precedentes. QUEM "
+            f"RESOLVE: confere qualquer pessoa da banca, não necessariamente o advogado, entrando "
+            f"com o próprio login; a conferência grava o nome real de quem conferiu e o advogado "
+            f"responsável. Encerra o titular da banca ou quem abriu a conferência. COMO: no Minha "
+            f"banca, na tela de conferência, a única que confirma julgado (a resposta na conversa e "
+            f"a folha só tiram julgado da peça): abra a conferência, revise (os julgados que a "
+            f"máquina já conferiu na fonte vêm marcados como confere, para ratificar) e, quando "
+            f"estiver tudo certo, o titular da banca ou quem abriu a conferência clica Encerrar e "
+            f"liberar; só o encerramento libera a peça. Julgado que veio dos autos, sem endereço oficial, confere-se pelo "
+            f"documento dos autos. PARA O ASSISTENTE: abra a conferência com `preparar_conferencia` "
+            f"(itens do CONFERENCIA_TELA.json que o `folha_atestacao.py` grava, todos os "
+            f"selecionados, os da máquina com origem maquina) e, avisado de que encerraram, busque o "
+            f"recibo com `recibo_da_conferencia` e registre-o com `registrar_confirmacao_manual.py "
+            f"--recibo`; o recibo de conferência ainda aberta não libera nada.")
+    if fora:
+        linhas.append(
+            f"registro_pendente_relacao: {len(fora)} precedente(s) citado(s) e ausente(s) da Relação de "
+            f"Precedentes ({'; '.join(fora[:6])}{'…' if len(fora) > 6 else ''}). QUEM RESOLVE: quem conduz "
+            f"a pesquisa do caso. COMO: o precedente entra na Relação pela pesquisa e então é conferido; "
+            f"se não se confirmar, sai da peça, e aí é mudança de texto que volta à turma.")
+    if docs or juntada:
+        rot = ", ".join(docs)
+        linhas.append(
+            f"registro_pendente_documento: {f'(Doc. {rot})' if docs else 'documento(s) citado(s)'} sem "
+            f"a leitura registrada ou sem curadoria na juntada"
+            + (" (a relação dos documentos juntados não chegou à conferência da peça)" if juntada else "")
+            + ". QUEM RESOLVE: quem conduz o caso. COMO: registrar na conferência da ingestão a leitura "
+              "do documento (o que se leu, com páginas e a impressão do arquivo) e então marcá-lo curado na "
+              "juntada. A declaração na conversa não substitui a leitura: o que se prova é que o texto "
+              "citado está no documento.")
+    outros = [r for r in registro if r["tipo"] == "outro"]
+    for r in list({(r.get("o_que_falta") or r["linha"]): r for r in outros}.values())[:6]:
+        linhas.append(f"registro_pendente_outro: falta {r.get('o_que_falta') or r['linha']}. "
+                      + (f"COMO: {r['como_resolver']}" if r.get("como_resolver") else ""))
+
+    for r in registro:
+        if r["tipo"] == "situacao":
+            linhas.append(f"registro_pendente_situacao: {r['linha']}")
+    if linhas:
+        linhas.append("DEPOIS DO REGISTRO: rode o lint de novo e este gate. A turma não vota de novo: o "
+                      "texto que ela aprovou não mudou, e o registro não é motivo de devolução.")
+    return linhas
+
+
+def resumo_registro(registro):
+    return {"julgados": len({r["ref"] or r["linha"] for r in registro if r["tipo"] == "julgado"}),
+            "precedentes_fora_da_relacao": len({r["ref"] or r["linha"] for r in registro
+                                                if r["tipo"] == "julgado_fora_da_relacao"}),
+            "documentos": sorted({r["ref"] for r in registro if r["tipo"] == "documento" and r["ref"]}),
+            "relacao_pendente": any(r["tipo"] == "relacao" for r in registro),
+            "juntada_pendente": any(r["tipo"] == "juntada" for r in registro),
+            "situacao_pendente": any(r["tipo"] == "situacao" for r in registro)}
 
 
 _NOMES_ASSENTO = {"merito": "Mérito", "coerencia": "Coerência", "escrita": "Escrita",
@@ -985,8 +1229,16 @@ def _artefatos_light(st, estado, lint_ok, pend):
     """{artefato: (True|False|None, descrição)}: None = não há o que conferir (sem PECA_STATE)."""
     lint = _d(st.get("lint"))
     divs = versoes_divergentes(st)
-    out = {"lint": (lint_ok, f"lint {lint.get('resultado')} (saída {lint.get('exit_code')})"),
-           "jurisprudencia": (not pend, f"{len(pend)} pendência(s) de jurisprudência"),
+
+
+
+    texto_ok, registro = separar_pendencias(lint, lint_ok, pend)
+    nat = None if lint_ok else _natureza(lint)
+    vetados = [t for t in (nat or {}).get("texto", []) if t.startswith("CRUZAMENTO VETADO")]
+    out = {"lint": (texto_ok, f"lint {lint.get('resultado')} (saída {lint.get('exit_code')})"
+                    + (f", só pendência de registro ({len(registro)})" if texto_ok and not lint_ok else "")),
+           "jurisprudencia": ((None if (nat is None and not lint_ok) else not vetados),
+                              f"{len(vetados)} precedente(s) vetado(s) mantido(s) na peça"),
            "versao": (bool(_s(lint.get("docx_sha256"))) and not divs,
                       "versão linteada" + (" sem hash" if not _s(lint.get("docx_sha256")) else "")
                       + (f" divergente ({len(divs)})" if divs else ""))}
@@ -1033,6 +1285,72 @@ def _cobertura_light(cad, artefatos):
                 m.append(f"item_contra_artefato: o item {iid} do mandato {_NOMES_ASSENTO[a]} foi declarado "
                          f"'{decl[iid]}', e o artefato diz outra coisa ({desc}); vale o artefato")
     return m, n
+
+
+def _bloqueios_da_situacao(st, estado):
+    'Itens de REGISTRO da situação dos julgados na banca (`situacao_julgados.py`): sem a consulta'
+
+
+
+
+    if not estado:
+        return []
+    pasta_status = os.path.dirname(os.path.abspath(estado))
+    try:
+        pasta = peca_julgada(st, estado, _d(st.get("lint")).get("peca_state"), conferir=False)[4]
+    except Exception:
+        pasta = pasta_status
+    achados = os.path.join(pasta, "achados.json")
+    if not os.path.isfile(achados):
+        return []
+    if _situacao is None:
+        try:
+            dados = json.loads(open(achados, encoding="utf-8").read())
+            liberado = any(_d(a).get("use_status") == "allowed" for a in (_d(dados).get("achados") or []))
+        except Exception:
+            liberado = False
+        if not liberado:
+            return []
+        msgs = ["Falta: conferir com o servidor do Dissero que os julgados citados continuam liberados na "
+                "banca, e esta cópia do plugin está incompleta para isso. Quem resolve: o advogado. Como: "
+                "reinstalar o plugin. Para o assistente (não repita ao advogado): o módulo da situação dos "
+                f"julgados não carregou ao lado do gate ({_SITUACAO_ERRO})."]
+    else:
+        msgs = _situacao.motivos_da_entrega(achados, [pasta, pasta_status])
+    return [{"tipo": "situacao", "ref": "", "linha": m} for m in msgs]
+
+
+def _bloqueios_de_entrega(st, lint_ok, pend, estado=None):
+    '(bloqueios de TEXTO ou de versão, itens de REGISTRO pendentes) da peça que a turma aprovou.'
+
+    lint = _d(st.get("lint"))
+    bloq = versoes_divergentes(st)
+    texto_ok, registro = separar_pendencias(lint, lint_ok, pend)
+    registro = registro + _bloqueios_da_situacao(st, estado)
+    if not texto_ok:
+        nat = _natureza(lint)
+        if nat is None:
+            det = (". O lint gravado não separa texto de registro (veio de cópia anterior ou foi declarado): "
+                   "rode `conselho_sessao.py lint` de novo, que o reexecuta e classifica")
+        else:
+            det = (": defeito de texto, " + "; ".join(nat["texto"][:4])
+                   + ("…" if len(nat["texto"]) > 4 else "") + ". Corrija a peça, relinte e submeta a "
+                   "versão corrigida à turma (`conselho_sessao.py novo-ciclo`)") if nat["texto"] else ""
+        bloq.append(f"lint não APROVADO (resultado={lint.get('resultado')}, exit={lint.get('exit_code')}){det}")
+    return bloq, registro
+
+
+def _saida_bloqueada(resultado, placar, bloqueios, registro):
+    motivos = list(bloqueios)
+    if registro and not bloqueios:
+        motivos.append("A turma aprovou o texto da peça. A entrega aguarda só o registro de conferência "
+                       "abaixo, que não é motivo de devolução.")
+    motivos += mensagem_registro(registro)
+    saida = {"ok": True, "liberado": False, "resultado": resultado, "placar": placar, "motivos": motivos}
+    if registro:
+        saida["registro_pendente"] = resumo_registro(registro)
+    print(json.dumps(saida, ensure_ascii=False))
+    return 1
 
 
 def julgar_light(st, args, lint_ok, pend):
@@ -1124,20 +1442,15 @@ def julgar_light(st, args, lint_ok, pend):
                                       f"completo (`novo-ciclo --variante completo`)."] + devs},
                          ensure_ascii=False))
         return 1
-    bloqueios = versoes_divergentes(st)
-    if not lint_ok:
-        bloqueios.append(f"lint não APROVADO (resultado={_d(st.get('lint')).get('resultado')}, "
-                         f"exit={_d(st.get('lint')).get('exit_code')})")
-    if pend:
-        bloqueios.append(f"{len(pend)} pendência(s) de jurisprudência impede(m) protocolo: {pend}")
+    bloqueios, registro = _bloqueios_de_entrega(st, lint_ok, pend, estado)
 
 
     if getattr(args, "painel", False):
         bloqueios += _verificar_painel_light(st, estado)
-    if bloqueios:
-        print(json.dumps({"ok": True, "liberado": False, "resultado": "aprovado_light_mas_bloqueado",
-                          "placar": placar, "motivos": bloqueios}, ensure_ascii=False))
-        return 1
+    if bloqueios or registro:
+        r = _saida_bloqueada("aprovado_light_mas_bloqueado" if bloqueios else "aprovado_light_com_registro_pendente",
+                             placar, bloqueios, registro)
+        return r
     via = {"ledger": "registro do harness", "transcript": "transcript do harness"}.get(rota, "")
     acordao = (f"{LIGHT_RESSALVA} Peça «{st['peca']}» APROVADA na Revisão Light: os quatro mandatos (Mérito, "
                f"Coerência, Escrita, Conformidade) e a síntese do relator sem devolução, com o checklist de "
@@ -1225,11 +1538,8 @@ def main():
         if not _s(st.get("conselho_dispensado_justificativa")):
             motivos.append("conselho_dispensado exige 'conselho_dispensado_justificativa' "
                            "(registro de por que o risco é baixo)")
-        if not lint_ok:
-            motivos.append(f"lint não APROVADO (resultado={lint.get('resultado')}, exit={lint.get('exit_code')})")
-        motivos += versoes_divergentes(st)
-        if pend:
-            motivos.append(f"{len(pend)} pendência(s) de jurisprudência: {pend}")
+        textos, registro = _bloqueios_de_entrega(st, lint_ok, pend, os.path.abspath(args.status))
+        motivos += textos + mensagem_registro(registro)
         if motivos:
             return _erro(motivos)
         acordao = ("ENTREGA LIBERADA (risco baixo, conselho dispensado/opt-in): lint APROVADO e sem "
@@ -1340,14 +1650,10 @@ def main():
                           "motivos": ["DEVOLVIDA por maioria — redator corrige e ressubmete (novo ciclo)"] + devs},
                          ensure_ascii=False)); return 1
 
-    bloqueios = versoes_divergentes(st)
-    if not lint_ok:
-        bloqueios.append(f"lint não APROVADO (resultado={lint.get('resultado')}, exit={lint.get('exit_code')})")
-    if pend:
-        bloqueios.append(f"{len(pend)} pendência(s) de jurisprudência impede(m) protocolo: {pend}")
-    if bloqueios:
-        print(json.dumps({"ok": True, "liberado": False, "resultado": "aprovado_mas_bloqueado",
-                          "placar": placar, "motivos": bloqueios}, ensure_ascii=False)); return 1
+    bloqueios, registro = _bloqueios_de_entrega(st, lint_ok, pend, estado)
+    if bloqueios or registro:
+        return _saida_bloqueada("aprovado_mas_bloqueado" if bloqueios else "aprovado_com_registro_pendente",
+                                placar, bloqueios, registro)
 
 
     venc = " (relator vencido)" if _d(st.get("relator")).get("voto") == "devolver" else ""

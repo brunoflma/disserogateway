@@ -221,6 +221,60 @@
             "signals": {
               "type": "object"
             },
+            "ratificacao": {
+              "description": "Ratificação na tela de conferência do julgado que a máquina conferiu sozinha na fonte oficial (decisão do titular, 26/11/2026, D2): o selo do recibo FINAL (encerramento) que traz o julgado com origem maquina e resultado confere, e quem o ratificou. Só com method automatic e result confirmed; sem ela, a verificação automática fica pendente (teor conferido pela máquina, falta ratificar).",
+              "type": [
+                "object",
+                "null"
+              ],
+              "additionalProperties": false,
+              "required": [
+                "conferencia",
+                "chave",
+                "em",
+                "assinatura_sha256",
+                "envelope",
+                "por"
+              ],
+              "properties": {
+                "conferencia": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "chave": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "em": {
+                  "type": "string",
+                  "minLength": 10
+                },
+                "assinatura_sha256": {
+                  "type": "string",
+                  "minLength": 64
+                },
+                "por": {
+                  "type": "string",
+                  "minLength": 2
+                },
+                "envelope": {
+                  "type": "object",
+                  "required": [
+                    "recibo",
+                    "assinatura"
+                  ],
+                  "properties": {
+                    "recibo": {
+                      "type": "object"
+                    },
+                    "assinatura": {
+                      "type": "string",
+                      "minLength": 80
+                    }
+                  }
+                }
+              }
+            },
             "human_attestation": {
               "type": [
                 "object",
@@ -244,8 +298,38 @@
                   "minLength": 10
                 },
                 "official_url": {
-                  "type": "string",
+                  "type": [
+                    "string",
+                    "null"
+                  ],
                   "minLength": 8
+                },
+                "documento": {
+                  "description": "Inteiro teor que o advogado baixou na fonte oficial e forneceu (PDF do PJe, por exemplo), quando não há endereço oficial: hash do arquivo, hash da extração em que a máquina conferiu número, relator e trecho verbatim, e a origem nas palavras do advogado. Só com official_url nulo.",
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": [
+                    "sha256",
+                    "sha256_extracao",
+                    "origem"
+                  ],
+                  "properties": {
+                    "sha256": {
+                      "type": "string",
+                      "minLength": 64
+                    },
+                    "sha256_extracao": {
+                      "type": "string",
+                      "minLength": 64
+                    },
+                    "origem": {
+                      "type": "string",
+                      "minLength": 3
+                    },
+                    "arquivo": {
+                      "type": "string"
+                    }
+                  }
                 },
                 "declaration": {
                   "type": "string",
@@ -254,6 +338,57 @@
                 "syllabus_sha256": {
                   "type": "string",
                   "minLength": 64
+                },
+                "responsavel": {
+                  "description": "Advogado responsável pela peça, quando quem conferiu (actor) foi outra pessoa da banca. O actor é sempre quem de fato conferiu: atribuir ao advogado um ato que ele não praticou falsearia o registro.",
+                  "type": "string",
+                  "minLength": 2
+                },
+                "recibo": {
+                  "description": "Recibo assinado pelo servidor na tela de conferência: id da conferência, id da chave, momento, o SHA-256 da assinatura e o envelope inteiro. Obrigatório desde 26/11/2026 (só a tela vale), e só o recibo FINAL (o do encerramento, com final true) sustenta a confirmação: sem recibo final válido, a confirmação humana é recusada pelo contrato e rebaixada a pendente no registro.",
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": [
+                    "conferencia",
+                    "chave",
+                    "em",
+                    "assinatura_sha256"
+                  ],
+                  "properties": {
+                    "conferencia": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "chave": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "em": {
+                      "type": "string",
+                      "minLength": 10
+                    },
+                    "assinatura_sha256": {
+                      "type": "string",
+                      "minLength": 64
+                    },
+                    "envelope": {
+                      "description": "O envelope inteiro devolvido pelo servidor (recibo e assinatura), guardado para que a assinatura possa ser conferida de novo depois, na entrega, e não só no registro.",
+                      "type": "object",
+                      "required": [
+                        "recibo",
+                        "assinatura"
+                      ],
+                      "properties": {
+                        "recibo": {
+                          "type": "object"
+                        },
+                        "assinatura": {
+                          "type": "string",
+                          "minLength": 80
+                        }
+                      }
+                    }
+                  }
                 }
               }
             }

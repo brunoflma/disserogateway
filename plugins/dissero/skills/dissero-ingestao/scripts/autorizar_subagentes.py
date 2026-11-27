@@ -319,6 +319,15 @@ def main(argv=None):
     except AvalInvalido as e:
         return _saida({"ok": False, "erro": e.codigo, "detalhe": str(e)}, 2)
 
+
+
+
+    _ant, _ = _ler(alvo)
+    if (isinstance(_ant, dict) and _s(_ant.get("session_id")) and _ant["session_id"].strip() == reg["session_id"]
+            and isinstance(_ant.get("acrescimos"), list)):
+        leitura = [a for a in _ant["acrescimos"] if isinstance(a, dict) and a.get("uso") == "leitura_em_blocos"]
+        if leitura:
+            reg["acrescimos"] = leitura
     aviso = _aviso_descarte(alvo, reg)
     try:
         _gravar(alvo, reg)
@@ -341,6 +350,9 @@ def _aviso_descarte(alvo, reg):
 
     d, _ = _ler(alvo)
     if d is None or not soma_acrescimos(d):
+        return None
+    comuns = [a for a in d.get("acrescimos") or [] if isinstance(a, dict) and a.get("uso") != "leitura_em_blocos"]
+    if not comuns:
         return None
     if not (_s(d.get("session_id")) and d["session_id"].strip() == reg["session_id"]):
         return None

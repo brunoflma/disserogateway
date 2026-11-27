@@ -77,6 +77,9 @@
 
 
 
+
+
+
 import sys, os, re, json, argparse, subprocess, hashlib, html, math, shutil, tempfile, zipfile
 import datetime
 import xml.etree.ElementTree as ET
@@ -97,6 +100,11 @@ try:
     import aprovacao_na_conversa
 except Exception:
     aprovacao_na_conversa = None
+try:
+    import situacao_julgados
+except Exception as _erro_situacao:
+    situacao_julgados = None
+    _SITUACAO_INDISPONIVEL = str(_erro_situacao)
 GATE_CONSELHO = os.path.join(AQUI, "conselho_gate.py")
 _RE_CASO_ID = re.compile(r"^caso-[0-9a-f]{12}$")
 LINT_PECA = os.path.join(AQUI, "..", "..", "dissero-visual-law", "scripts", "lint_peca.py")
@@ -598,17 +606,60 @@ _SO_CONFERENCIA = (
 )
 
 _PREFIXO_PENDENTE = re.compile(r"^\W*(?:PENDENTE\b\W*)?", re.IGNORECASE)
-_CONFERIR_NA_FONTE = (
-    "Julgado a conferir na fonte oficial: na raiz do caso, gere a lista de conferência com "
-    "`folha_atestacao.py achados.json -o CONFERENCIA_PENDENTE.json` (skill "
-    "dissero-pesquisa-juridica) e mostre ao advogado o `texto_conversa`. O PDF que ele soltar "
-    "se confere com `atestar_literal.py achados.json --documentos <PDFs> --atestar -o "
-    "achados.json`; a resposta dele numa linha se registra com `registrar_confirmacao_manual.py "
-    "achados.json --lista CONFERENCIA_PENDENTE.json --confere <n> --nao-confere <n> --resposta "
-    "\"<palavras dele>\" -o achados.json`. O `achados.json` da raiz do caso "
-    "é o que o `pode-entregar` e a entrega leem sozinhos, e a conferência gravada com outro nome "
-    "fica fora da reverificação. Nas outras linhas PENDENTE, siga o remédio que o linter dá. "
-    "Depois relinte com `--precedentes achados.json`.")
+
+
+
+
+
+
+
+def _conferir_na_fonte(n=None):
+    quantos = (f"{n} julgado(s) da minuta" if isinstance(n, int) and n > 0
+               else "os julgados da minuta ainda não conferidos")
+    return (
+        f"Falta: conferir na fonte oficial {quantos}; enquanto isso, a peça não é entregue. "
+        "Quem resolve: confere qualquer pessoa da banca, entrando com o próprio login no Minha "
+        "banca; o nome de quem conferiu fica gravado, e o advogado que assina continua o "
+        "responsável. Encerra o titular da banca ou quem abriu a conferência. "
+        "Como: a pessoa abre a conferência no Minha banca e revisa: compara cada julgado com a "
+        "fonte e marca se confere, se não confere (sai da peça) ou se fica pendente; os que a "
+        "máquina já conferiu na fonte vêm marcados como confere, para ratificar. Quando estiver "
+        "tudo certo, o titular da banca ou quem abriu a conferência clica Encerrar e liberar: só o "
+        "encerramento libera a peça, e enquanto a "
+        "conferência estiver aberta nada é liberado; a confirmação só vale feita lá. "
+        "Para o assistente (não repita ao advogado): na raiz do caso, "
+        "`folha_atestacao.py achados.json -o CONFERENCIA_PENDENTE.json` (skill "
+        "dissero-pesquisa-juridica) mostra o `texto_conversa` e grava CONFERENCIA_TELA.json; abra a "
+        "conferência chamando `preparar_conferencia` do conector dissero com aqueles itens e mostre "
+        "o endereço devolvido; avisado de que clicaram Encerrar e liberar, busque o resultado com "
+        "`recibo_da_conferencia`, grave o envelope num .json sem mexer e registre com "
+        "`registrar_confirmacao_manual.py achados.json --recibo <envelope.json> -o achados.json` "
+        "(recibo de conferência ainda aberta volta como andamento e não libera nada). "
+        "O PDF do inteiro teor (`atestar_literal.py achados.json --documentos <PDFs> --atestar -o "
+        "achados.json`) só deixa o julgado pronto para a tela, e a resposta na conversa só veta "
+        "(`registrar_confirmacao_manual.py achados.json --lista CONFERENCIA_PENDENTE.json "
+        "--nao-confere <n> --resposta \"<palavras dele>\" -o achados.json`). O `achados.json` da raiz "
+        "do caso é o que o `pode-entregar` e a entrega leem sozinhos, e a conferência gravada com "
+        "outro nome fica fora da reverificação. Nas outras linhas PENDENTE, siga o remédio que o "
+        "linter dá. Depois relinte com `--precedentes achados.json`.")
+
+
+_CONFERIR_NA_FONTE = _conferir_na_fonte()
+
+_RX_JULGADO_A_CONFERIR = re.compile(r"julgado\s+n\.?\s*[º°]\s*(\S+).*use_status≠allowed",
+                                    re.IGNORECASE)
+
+
+def _julgados_a_conferir(linhas):
+    """Quantos julgados distintos o linter apontou como ainda não conferidos."""
+    vistos = set()
+    for linha in linhas or []:
+        m = _RX_JULGADO_A_CONFERIR.search(str(linha))
+        if m:
+            vistos.add(m.group(1))
+    return len(vistos)
+
+
 _SEM_CODIGO = "Há linha PENDENTE sem código de regra reconhecido: leia-a na saída do linter."
 
 
@@ -621,9 +672,11 @@ def _motivo_minuta(pendencias):
     inicio = ("fase lint: linter devolveu MINUTA (exit 3) — a ESTRUTURA está limpa e há "
               "pendência que impede o protocolo. ")
     na_fonte = ". A correção é na fonte da peça: gere o .docx de novo e relinte."
+    conferir = _conferir_na_fonte(_julgados_a_conferir(pendencias if isinstance(pendencias, list)
+                                                       else None))
     duas_saidas = ("Se o linter apontou L8, L26 TOM ou L34, edite a peça: "
                    + "; ".join(remedio for _, remedio in _EDICAO_NA_PECA) + na_fonte + " "
-                   + _CONFERIR_NA_FONTE)
+                   + conferir)
     if not (isinstance(pendencias, list) and pendencias):
         return inicio + duas_saidas
     edicoes, conferencia, duvida = set(), False, False
@@ -639,15 +692,15 @@ def _motivo_minuta(pendencias):
     if not edicoes:
         if duvida:
             return inicio + _SEM_CODIGO + " " + duas_saidas
-        return inicio + _CONFERIR_NA_FONTE + " Nada a corrigir na peça."
+        return inicio + conferir + " Nada a corrigir na peça."
     motivo = (inicio + "Edite a peça: "
               + "; ".join(r for i, (_, r) in enumerate(_EDICAO_NA_PECA) if i in edicoes)
               + na_fonte)
     if duvida:
         motivo += (" " + _SEM_CODIGO + " Se for L8, L26 TOM ou L34, ela também se resolve editando a "
-                   "peça. " + _CONFERIR_NA_FONTE)
+                   "peça. " + conferir)
     elif conferencia:
-        motivo += " As demais pendências não pedem edição. " + _CONFERIR_NA_FONTE
+        motivo += " As demais pendências não pedem edição. " + conferir
     return motivo
 
 
@@ -786,7 +839,10 @@ def _gate_fase(F, ev, modo, st):
         if not _is_bool(ev.get("aprovado")):
             raise Contrato(["fase lint: evidência aprovado (booleano) obrigatória"])
         if modo == "chat":
-            return ("bloqueada", ["modo chat: LINT fica PENDENTE, nunca APROVADO (peça sai como minuta)"])
+            return ("bloqueada", ["modo chat: LINT fica PENDENTE, nunca APROVADO (peça sai como minuta). Se esta "
+                                  "sessão tem a ferramenta de subagente (Cowork no computador ou no navegador, com ou "
+                                  "sem pasta), o modo foi escolhido errado: `estado_peca.py corrigir-modo --para "
+                                  "cowork --motivo \"<por quê>\"` e rode o linter de novo"])
         if ec == 3:
 
 
@@ -936,6 +992,11 @@ def cmd_init(args):
 
 
     motivos = [f"PECA_STATE criado em {_nome_arq(args.state)}"] + motivos_recomeco
+    if args.modo == "chat":
+        motivos.append(
+            "MODO CHAT: só para sessão SEM a ferramenta de subagente; nele a peça nunca sai final. Pasta não "
+            "conectada, nuvem ou VM não são motivo: no Cowork (computador ou navegador) é 'cowork'. Se escolheu "
+            "errado: `estado_peca.py corrigir-modo --para cowork --motivo \"<por quê>\"`")
     if herdado:
         st.update(herdado)
     if args.grau:
@@ -1042,6 +1103,67 @@ def cmd_status(args):
                          "dispensa_adversarial": st.get("dispensa_adversarial")})
 
 
+
+
+
+
+
+
+
+
+ADOCAO_MOTIVO = "adotada: editada fora do fluxo"
+
+
+def _adotar_peca(args, caminho):
+    pasta = os.path.dirname(os.path.abspath(args.state))
+    if not os.path.isdir(pasta):
+        raise Contrato([f"canonico: a pasta do registro da peça não existe ({_nome_arq(pasta)}); crie o "
+                        f"registro na pasta do caso"])
+    if not caminho.lower().endswith(".docx") or not os.path.isfile(caminho):
+        raise Contrato([f"canonico: para adotar a peça, --arquivo tem de ser o .docx que existe "
+                        f"({_nome_arq(caminho)})"])
+    h = _sha256(caminho)
+    if h is None:
+        raise Contrato([f"canonico: arquivo ilegível ({_nome_arq(caminho)})"])
+    em = args.ts or _agora_iso()
+    st = {
+        "peca": os.path.splitext(os.path.basename(caminho))[0],
+        "risco": getattr(args, "risco", None) or "alto",
+        "modo_execucao": getattr(args, "modo", None) or "cowork",
+        "fase_atual": "briefing",
+        "is_minuta": True,
+        "ciclo": 1,
+        "exigir_adversarial": True, "dispensa_adversarial": None,
+        "exigir_estanqueidade": False,
+        "exigir_squad": True, "dispensa_squad": None,
+        "pendencias_jurisprudencia": [],
+        "exame_mapa": True,
+        "fases": {f: {"status": "pendente", "artefato": "", "evidencia": {}} for f in ORDEM},
+        "arquivo_canonico": caminho,
+        "hash_canonico": h,
+        "canonico_em": em,
+        "atualizado": em,
+        "adocao": {"motivo": ADOCAO_MOTIVO, "em": em, "arquivo": os.path.basename(caminho), "sha256": h},
+    }
+    if getattr(args, "grau", None):
+        st["grau_jurisdicao"] = args.grau
+    if _full_str(getattr(args, "session_id", None)):
+        st["session_id"] = args.session_id.strip()
+    validar_contrato(st)
+    _gravar(args.state, st, novo=True)
+    motivos = [
+        f"peça adotada como a vigente: {_no_relato(args.state, caminho)} ({ADOCAO_MOTIVO}). O registro "
+        f"da peça foi criado em {_nome_arq(args.state)}, com a impressão do arquivo carimbada; a "
+        f"conferência e o Conselho passam a julgar este arquivo.",
+        "As etapas do rito ficam pendentes: a adoção localiza a peça e não dispensa etapa nenhuma. Risco "
+        + ("ALTO, por não ter sido declarado (para outro, recrie o registro com o risco certo)."
+           if not getattr(args, "risco", None) else f"declarado: {st['risco']}."),
+    ]
+    return _saida("peca_adotada", st, motivos, 0,
+                  extra={"arquivo_canonico": _no_relato(args.state, caminho), "hash_canonico": h,
+                         "adocao": st["adocao"]})
+
+
 def cmd_canonico(args):
     'Registra (ou reaponta) o arquivo DE TRABALHO da peça e carimba o hash.'
 
@@ -1049,10 +1171,28 @@ def cmd_canonico(args):
 
 
 
-    st = carregar(args.state)
     if not _full_str(args.arquivo):
         raise Contrato(["canonico exige --arquivo (caminho do .docx de trabalho)"])
     caminho = os.path.abspath(os.path.expanduser(args.arquivo.strip()))
+    if not os.path.exists(args.state):
+
+
+
+
+        if not getattr(args, "adotar", False):
+            raise Contrato([f"canonico: registro da peça inexistente ({_nome_arq(args.state)}). "
+                            f"Confira o --state (o registro da peça fica na pasta do caso). Se o "
+                            f"advogado pediu para adotar uma peça editada fora do fluxo, rode de "
+                            f"novo com --adotar"])
+        return _adotar_peca(args, caminho)
+    if getattr(args, "adotar", False):
+        raise Contrato([f"canonico: --adotar só vale sem registro da peça; {_nome_arq(args.state)} "
+                        f"já existe e esta peça já está no rito"])
+    so_na_adocao = [f"--{n}" for n in ("risco", "modo", "grau") if getattr(args, n, None)]
+    if so_na_adocao:
+        raise Contrato([f"canonico: {', '.join(so_na_adocao)} só vale(m) na adoção da peça (registro "
+                        f"ainda inexistente); o registro {_nome_arq(args.state)} já existe e guarda os seus"])
+    st = carregar(args.state)
     if not os.path.isfile(caminho):
         return _saida("bloqueado", st,
                       [f"canonico: arquivo inexistente ({_nome_arq(caminho)}) — registre o arquivo que "
@@ -1243,6 +1383,8 @@ def _contrato_do_achado():
 def _achado_legado(a):
     'Achado de pasta antiga (verification com status e data, sem result nem method): o'
 
+
+
     v = a.get("verification")
     if not isinstance(v, dict) or "result" in v or "method" in v:
         return False
@@ -1322,7 +1464,10 @@ def _precedentes_do_registro(caminho):
             else:
                 acima.append("referência com mais de %d caracteres" % _TETO_REFERENCIA)
 
-        campos = (("syllabus_literal", "full_text") if a.get("use_status") == "allowed"
+
+
+        campos = (("syllabus_literal", "full_text")
+                  if a.get("use_status") == "allowed" and not _achado_legado(a)
                   else ("syllabus_literal",))
         for k in campos:
             t = a.get(k)
@@ -2351,6 +2496,40 @@ def cmd_reabrir(args):
                   [f"fase '{F}' e posteriores reabertas (ciclo {st['ciclo']}); motivo registrado"], 0)
 
 
+def cmd_corrigir_modo(args):
+    'Corrige o modo gravado no `init` quando ele saiu `chat` numa sessão que TEM a ferramenta de'
+
+
+
+
+
+
+
+    st = carregar(args.state)
+    de, para = st.get("modo_execucao"), args.para
+    if de != "chat" or para not in ("cowork", "code"):
+        return _saida("bloqueado", st, [
+            f"corrigir-modo só passa de 'chat' para 'cowork' ou 'code' (o estado está em {de!r}, pedido {para!r}): "
+            "é a direção que exige LINT aprovado e Conselho, nunca a que os dispensa"], 1)
+    if not _full_str(args.motivo):
+        return _saida("bloqueado", st, ["corrigir-modo exige --motivo não-vazio (por que a sessão tem subagente)"], 1)
+    for f in ("lint", "conselho", "entrega"):
+        st["fases"][f] = {"status": "pendente", "artefato": "", "evidencia": {}}
+    if st.get("fase_atual") in ("lint", "conselho", "entrega"):
+        st["fase_atual"] = "visual_law"
+    st["modo_execucao"] = para
+    st["is_minuta"] = True
+    entrada = {"de": de, "para": para, "motivo": args.motivo.strip()}
+    if args.ts:
+        entrada["em"] = args.ts
+        st["atualizado"] = args.ts
+    st.setdefault("correcoes_modo", []).append(entrada)
+    _gravar(args.state, st)
+    return _saida("modo_corrigido", st, [
+        f"modo corrigido de 'chat' para '{para}'; LINT, Conselho e entrega voltaram a pendente: rode o "
+        "linter de novo e abra o Conselho com subagentes"], 0)
+
+
 def _status_do_conselho(cs_path, session_id=None):
     'Caminho absoluto do CONSELHO_STATUS.json que o `pode-entregar` lê e entrega ao gate.'
 
@@ -2803,6 +2982,37 @@ def _apontado_pelo_linter(saida, limite=3):
     return texto
 
 
+def _conferir_situacao(args, achados_path):
+    'Motivos de bloqueio da situação dos julgados (`situacao_julgados.py`): a consulta assinada'
+
+
+
+
+
+    if not achados_path or not os.path.isfile(achados_path):
+        return []
+    estado = getattr(args, "state", None)
+    pastas = ([os.path.dirname(os.path.abspath(estado))] if estado else []) + [
+        os.path.dirname(os.path.abspath(achados_path))]
+
+    args._situacao_para_consumir = (achados_path, pastas)
+    if situacao_julgados is None:
+        try:
+            with open(achados_path, encoding="utf-8") as fh:
+                dados = json.load(fh)
+            liberado = any(isinstance(a, dict) and a.get("use_status") == "allowed"
+                           for a in (dados.get("achados") or []))
+        except Exception:
+            liberado = False
+        if not liberado:
+            return []
+        return ["Falta: conferir com o servidor do Dissero que os julgados citados continuam "
+                "liberados na banca, e esta cópia do plugin está incompleta para isso. Quem "
+                "resolve: o advogado. Como: reinstalar o plugin. Para o assistente (não repita ao "
+                f"advogado): o módulo da situação dos julgados não carregou ({_SITUACAO_INDISPONIVEL})."]
+    return situacao_julgados.motivos_da_entrega(achados_path, pastas)
+
+
 def _reverificar_lint(st, args, docx_path, ev, motivos, avisos_entrega):
     'Reexecuta o lint_peca.py sobre `docx_path` e acrescenta a `motivos` o que bloqueia.'
 
@@ -2856,6 +3066,15 @@ def _reverificar_lint(st, args, docx_path, ev, motivos, avisos_entrega):
         motivos.extend(bloqueios_relacao)
         if not bloqueios_relacao:
             avisos_entrega.extend(_avisos_da_relacao(st, prec_arg))
+    if prec_arg:
+
+
+
+
+
+
+
+        motivos.extend(_conferir_situacao(args, prec_arg))
     if cita_doc and not jnt_arg:
         motivos.append(
             "LINT FAIL-CLOSED: peça cita (Doc. NN) e o "
@@ -2912,12 +3131,18 @@ def _reverificar_lint(st, args, docx_path, ev, motivos, avisos_entrega):
     if r.returncode != 0:
         cruz = " ".join(f"{f} {v}" for f, v in cruzamento if v) or "sem cruzamento"
         apontado = _apontado_pelo_linter(r.stdout)
-        motivos.append(f"LINT reprovado na reverificação da peça {docx_path} "
+        motivo_lint = (f"LINT reprovado na reverificação da peça {docx_path} "
                        f"(exit={r.returncode}; {cruz}). "
                        + (f"O linter apontou: {apontado}. Siga o remédio de cada linha e "
                           f"reexecute o `pode-entregar`." if apontado else
                           f"Rode `lint_peca.py` sobre ela com os mesmos argumentos para ver "
                           f"os erros."))
+
+
+        a_conferir = _julgados_a_conferir((r.stdout or "").splitlines())
+        if r.returncode == 3 and a_conferir:
+            motivo_lint += " " + _conferir_na_fonte(a_conferir)
+        motivos.append(motivo_lint)
 
 
     if ev.get("exit_code") != r.returncode:
@@ -4059,6 +4284,12 @@ def cmd_entregar(args):
                                "A peça não está liberada para entrega. Resolva os motivos e rode a "
                                "entrega de novo.", motivos,
                                terceira_via=_terceira_via(args.state))
+    consumir = getattr(args, "_situacao_para_consumir", None)
+    if consumir and situacao_julgados is not None and hasattr(situacao_julgados, "consumir_nonces"):
+
+
+
+        situacao_julgados.consumir_nonces(consumir[1])
     docx_da_entrega = [o for o, _h in copias if o.lower().endswith(".docx")]
     oculto = gate._varredura_bloqueia({"tool_input": {}}, canonico, docx_da_entrega)
     if oculto:
@@ -4283,10 +4514,25 @@ def main():
     pr.add_argument("--motivo", default="")
     pr.add_argument("--ts")
 
+    pm = sub.add_parser("corrigir-modo", help="corrige o modo 'chat' gravado por engano para 'cowork' ou 'code'")
+    pm.add_argument("--state", default="PECA_STATE.json")
+    pm.add_argument("--para", required=True)
+    pm.add_argument("--motivo", default="")
+    pm.add_argument("--ts")
+
     pc = sub.add_parser("canonico", help="registra/reaponta o .docx de trabalho e carimba o hash")
     pc.add_argument("--state", default="PECA_STATE.json")
     pc.add_argument("--arquivo", default="")
     pc.add_argument("--ts")
+
+    pc.add_argument("--risco", choices=RISCOS, default=None,
+                    help="na adoção da peça editada fora do fluxo: o risco dela (sem ele, alto)")
+    pc.add_argument("--modo", choices=MODOS, default=None, help="na adoção: o modo de execução (sem ele, cowork)")
+    pc.add_argument("--grau", choices=GRAUS, default=None, help="na adoção: o grau de jurisdição")
+    pc.add_argument("--session-id", dest="session_id", default=None, help="na adoção: a sessão do harness")
+    pc.add_argument("--adotar", action="store_true",
+                    help="adota a peça editada fora do fluxo (registro mínimo), só a pedido do "
+                         "advogado; sem a marca, registro inexistente é erro")
 
     pq = sub.add_parser("qual-arquivo", help="qual é o .docx de trabalho, e ele mudou?")
     pq.add_argument("--state", default="PECA_STATE.json")
@@ -4309,6 +4555,8 @@ def main():
             return cmd_pode_entregar(args)
         if args.cmd == "reabrir":
             return cmd_reabrir(args)
+        if args.cmd == "corrigir-modo":
+            return cmd_corrigir_modo(args)
         if args.cmd == "canonico":
             return cmd_canonico(args)
         if args.cmd == "qual-arquivo":

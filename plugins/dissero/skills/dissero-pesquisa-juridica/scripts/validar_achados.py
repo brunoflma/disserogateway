@@ -10,7 +10,8 @@ import subprocess
 import sys
 
 import acentuacao_pt
-from achado_contract import FONTES_PADRAO, SCHEMA_PADRAO, texto, validar_documento
+from achado_contract import (FONTES_PADRAO, MOTIVO_FALTA_RATIFICAR, SCHEMA_PADRAO, falta_ratificar,
+                             texto, validar_documento)
 
 try:
     sys.stdout.reconfigure(encoding="utf-8")
@@ -173,6 +174,14 @@ def validar_fonte(dados, fontes=FONTES_PADRAO):
     usados, diag = dfontes.diagnosticar(dados, fontes)
     for d, a in zip(diag, usados):
         i, classe = d["i"], d["classe"]
+        doc_fornecido = (((a.get("verification") or {}).get("human_attestation") or {}).get("documento")
+                         if isinstance((a.get("verification") or {}).get("human_attestation"), dict) else None)
+        if classe == "ausente" and isinstance(doc_fornecido, dict):
+
+
+            avisos.append(f"achado[{i}]: fonte é o inteiro teor fornecido pelo advogado "
+                          f"({texto(doc_fornecido.get('origem'))}), sem endereço oficial")
+            continue
         if classe == "ausente":
 
 
@@ -270,8 +279,12 @@ def main():
     out = {"ok": not erros, "codigo": "OK" if not erros else "CONTRATO_INVALIDO", "total": len(dados.get("achados", [])),
            "pendencias": pendencias, "violacoes": erros,
            "resumo": "APROVADO" if not erros else f"REPROVADO ({len(erros)} violação(ões)) — não entregar"}
+
+    avisos_ratificar = [f"achado[{i}]: {MOTIVO_FALTA_RATIFICAR}"
+                        for i, a in enumerate(dados.get("achados") or [])
+                        if isinstance(a, dict) and falta_ratificar(a)]
     avisos = (avisar_acentuacao(dados) + avisar_referencia_de_item(dados)
-              + avisos_fonte + avisos_proc)
+              + avisos_fonte + avisos_proc + avisos_ratificar)
     if avisos:
         out["avisos"] = avisos
     _emitir_trace(len(erros))
