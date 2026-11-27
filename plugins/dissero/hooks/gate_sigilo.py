@@ -2088,7 +2088,9 @@ _VERBOS_PS = frozenset(("copy-item", "move-item", "cpi", "mi", "expand-archive",
                         "start-bitstransfer", "curl", "wget"))
 
 
-_INTERPRETE_INLINE = re.compile(r"\b(?:python[\d.]*|py|node|perl|ruby|php|deno|bun)(?:\.exe)?\b[^;&|\n]{0,200}?"
+
+
+_INTERPRETE_INLINE = re.compile(r"(?<![\w.-])(?:python[\d.]*|py|node|perl|ruby|php|deno|bun)(?:\.exe)?\b[^;&|\n]{0,200}?"
                                 r"(?:\s-[a-z]*[cepr]\b|\s-(?=\s|$)|<<)")
 _ESCRITA_NO_CODIGO = re.compile(r"\bopen\([^)]*['\"][rbt]*[wax+]|write|copy|move|rename|replace|unlink|remove|rmtree|"
                                 r"mkdir|makedirs|extract|symlink|urlretrieve|\bsystem\(|popen|subprocess|spawn|\bexec")
@@ -2656,10 +2658,18 @@ _LER_REGISTRO_PRAZO_S = 1.5
 
 
 
+
+
+
+
 _FERRAMENTAS_CONECTOR = frozenset((
     "ativar_maquina", "baixar_atualizacao", "clone_do_advogado", "estado_do_primeiro_uso", "liberar_versao",
     "perfil_do_advogado", "preparar_envio_timbrado", "registrar_clone", "registrar_perfil", "registrar_recusa",
-    "versao_do_plugin", "guardar_julgados_conferidos", "julgados_conferidos"))
+    "versao_do_plugin", "guardar_julgados_conferidos", "julgados_conferidos", "carregar_recurso",
+    "preparar_conferencia", "recibo_da_conferencia", "situacao_dos_julgados"))
+
+
+_FERRAMENTAS_GENERICAS = frozenset(("listar_recursos",))
 
 
 def caminho_sessao(session_id):
