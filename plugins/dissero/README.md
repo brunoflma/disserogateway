@@ -1,4 +1,4 @@
-# Dissero 3.5.1
+# Dissero 3.5.2
 
 Elaboração jurídica no Claude, da leitura dos autos à peça com a sua voz.
 

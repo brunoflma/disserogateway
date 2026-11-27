@@ -46,6 +46,12 @@
 
 
 
+
+
+
+
+
+
 from __future__ import annotations
 
 import argparse
@@ -814,9 +820,16 @@ def _modo_recibo(dados, args):
         confirmados.append(ident)
 
     erros = validar_documento(dados, fontes_path=args.fontes)
+    desselecionados = []
     if erros:
-        return recusa("CONTRATO_VIOLADO", "nada foi registrado: a atestação violaria o contrato "
-                                          "do dataset", violacoes=erros)
+
+
+
+
+        desselecionados = _desselecionar_por_estrategia(dados, erros, confirmados, args.fontes)
+        if desselecionados is None:
+            return recusa("CONTRATO_VIOLADO", "nada foi registrado: a atestação violaria o "
+                                              "contrato do dataset", violacoes=erros)
     _gravar(dados, args.saida)
     saida = {"ok": True, "confirmados": confirmados, "recusados": recusados,
              "voltaram_a_pendente": reabertos, "conferido_por": nome,
@@ -835,11 +848,107 @@ def _modo_recibo(dados, args):
         saida["mensagem_ao_advogado"] = " ".join(dict.fromkeys(p["mensagem_ao_advogado"]
                                                               for p in pendencias))
         saida["resumo"] += f"; {len(pendencias)} julgado(s) continuam pendentes"
+    if desselecionados:
+        bloco = _pendencia_estrategia(desselecionados, confirmados, args.saida)
+        saida["estrategia_pendente"] = bloco
+        saida["pendencias"] = saida.get("pendencias", []) + [
+            {"id": ident, "codigo": "ESTRATEGIA_INCOMPLETA", "motivo": bloco["motivo"],
+             "mensagem_ao_advogado": bloco["mensagem_ao_advogado"]} for ident in desselecionados]
+        saida["mensagem_ao_advogado"] = " ".join(
+            m for m in (saida.get("mensagem_ao_advogado"), bloco["mensagem_ao_advogado"]) if m)
+        saida["para_o_assistente"] = bloco["para_o_assistente"]
+        saida["resumo"] += (f"; {len(desselecionados)} julgado(s) fora da peça até concluir a "
+                            f"estratégia de precedentes")
     if outros_tipos:
         saida["outros_tipos"] = outros_tipos
     print(json.dumps(saida, ensure_ascii=False))
 
-    return 3 if pendencias else 0
+    return 3 if (pendencias or desselecionados) else 0
+
+
+
+
+_SO_SELECAO = (
+    "precedente selecionado exige pesquisa contrária concluída",
+    "cobertura inexistente não pode manter precedente favorável selecionado",
+)
+
+
+def _desselecionar_por_estrategia(dados, erros, confirmados, fontes):
+    'Tira da seleção o mínimo para o registro caber no contrato; devolve os IDs tirados.'
+
+
+
+
+    if dados.get("schema_version") != "dsr.achados.v3" or not erros:
+        return None
+    if any(e not in _SO_SELECAO for e in erros):
+        return None
+    import copy as _copy
+    tentativa = _copy.deepcopy(dados)
+    achados = [a for a in tentativa.get("achados") or [] if isinstance(a, dict)]
+    tirados = []
+    for a in achados:
+        if texto(a.get("id")) in confirmados and a.get("selected_for_use") is True:
+            a["selected_for_use"] = False
+            tirados.append(texto(a.get("id")))
+    restantes = validar_documento(tentativa, fontes_path=fontes)
+    if restantes and all(e in _SO_SELECAO for e in restantes):
+        est = tentativa.get("estrategia") or {}
+        pesquisa = est.get("pesquisa_contraria") or {}
+        concluida = pesquisa.get("estado") in ("concluida_sem_achado", "concluida_com_achado")
+        for a in achados:
+            if a.get("selected_for_use") is not True:
+                continue
+            favoravel_liberado = ((a.get("estrategia_uso") or {}).get("posicao") == "favoravel"
+                                  and a.get("use_status") == "allowed")
+            if not concluida or (est.get("cobertura_precedente") == "inexistente"
+                                 and favoravel_liberado):
+                a["selected_for_use"] = False
+                tirados.append(texto(a.get("id")))
+        restantes = validar_documento(tentativa, fontes_path=fontes)
+    if restantes or not tirados:
+        return None
+    dados.clear()
+    dados.update(tentativa)
+    return tirados
+
+
+def _pendencia_estrategia(desselecionados, confirmados, saida):
+    agora = [i for i in desselecionados if i in confirmados]
+    outros = [i for i in desselecionados if i not in confirmados]
+    script = os.path.join(os.path.dirname(os.path.abspath(__file__)), "estrategia_precedentes.py")
+    selecionar = " ".join(f"--selecionar {i}" for i in desselecionados)
+    comando = (f'python "{script}" definir --achados "{saida}" '
+               f"--pesquisa-contraria concluida_sem_achado "
+               f'--consulta "<fonte>" "<termos>" AAAA-MM-DD '
+               f"--cobertura confirmada --revisada-em AAAA-MM-DD --valida-ate AAAA-MM-DD "
+               f"{selecionar}")
+    partes = []
+    if agora:
+        partes.append(f"{len(agora)} julgado(s) conferido(s) na tela estão confirmados, mas ficam "
+                      f"fora da peça por enquanto")
+    if outros:
+        partes.append(f"{len(outros)} outro(s) julgado(s) já escolhido(s) para a peça também "
+                      f"saíram dela pelo mesmo motivo")
+    mensagem = ("; ".join(partes) + ". Falta: concluir a pesquisa de julgados em sentido contrário "
+                "e avaliar quanto os precedentes sustentam a tese. Quem resolve: o assistente, "
+                "com a sua revisão. Como: feita essa etapa, os julgados voltam à peça sem nova "
+                "conferência; a conferência que a banca fez continua valendo.")
+    assistente = (
+        "A confirmação foi gravada (selo do recibo, liberado), mas o julgado saiu da seleção "
+        "porque a estratégia do registro não admite precedente selecionado: pesquisa contrária "
+        "não concluída e/ou cobertura inexistente. Faça a pesquisa contrária de verdade, registre "
+        "as consultas e a cobertura e devolva os julgados à peça pelo comando abaixo, que valida "
+        "o registro inteiro e só grava se passar (não edite o arquivo à mão). Ajuste o estado "
+        "(concluida_com_achado exige --achado-contrario com julgado classificado como contrário) "
+        "e a cobertura (substituivel exige --autoridade-substituta; forcada exige "
+        "--fundamentacao-analogica) ao que a pesquisa mostrar. Comando: " + comando)
+    return {"codigo": "ESTRATEGIA_INCOMPLETA",
+            "motivo": "confirmado pela tela, fora da peça até concluir a estratégia de precedentes",
+            "confirmados_fora_da_peca": agora, "outros_fora_da_peca": outros,
+            "mensagem_ao_advogado": mensagem, "para_o_assistente": assistente,
+            "comando": comando}
 
 
 def main(argv=None):
